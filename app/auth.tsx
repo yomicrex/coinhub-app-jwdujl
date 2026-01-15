@@ -38,30 +38,38 @@ export default function AuthScreen() {
   // Check if user needs to complete profile
   useEffect(() => {
     const checkProfile = async () => {
-      console.log("AuthScreen: Checking user state, user:", user);
+      console.log("AuthScreen: Checking user state, user:", user, "authLoading:", authLoading);
       
-      if (user) {
-        console.log("AuthScreen: User detected, hasCompletedProfile:", user.hasCompletedProfile, "username:", user.username);
-        
-        // If user has completed profile, redirect to home
-        if (user.hasCompletedProfile && user.username) {
-          console.log("AuthScreen: Profile complete, redirecting to home");
-          router.replace("/(tabs)/(home)");
-          return;
-        }
-        
-        // User is authenticated but hasn't completed profile
-        console.log("AuthScreen: Profile incomplete, showing profile completion");
-        setMode("complete-profile");
-      } else {
-        // No user - show sign in page
+      // Don't do anything while auth is loading
+      if (authLoading) {
+        console.log("AuthScreen: Auth still loading, waiting...");
+        return;
+      }
+      
+      // No user - show sign in page
+      if (!user) {
         console.log("AuthScreen: No user, showing sign in page");
         setMode("signin");
+        return;
       }
+      
+      // User exists - check if profile is complete
+      console.log("AuthScreen: User detected, hasCompletedProfile:", user.hasCompletedProfile, "username:", user.username);
+      
+      // If user has completed profile, redirect to home
+      if (user.hasCompletedProfile && user.username) {
+        console.log("AuthScreen: Profile complete, redirecting to home");
+        router.replace("/(tabs)/(home)");
+        return;
+      }
+      
+      // User is authenticated but hasn't completed profile
+      console.log("AuthScreen: Profile incomplete, showing profile completion");
+      setMode("complete-profile");
     };
 
     checkProfile();
-  }, [user]);
+  }, [user, authLoading]);
 
   if (authLoading) {
     return (
