@@ -1,5 +1,4 @@
 
-import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,12 +10,14 @@ import {
   ActivityIndicator,
   Dimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { colors } from '@/styles/commonStyles';
+import React, { useState, useEffect } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
-import { IconSymbol } from '@/components/IconSymbol';
 import Constants from 'expo-constants';
+import { IconSymbol } from '@/components/IconSymbol';
+import { colors } from '@/styles/commonStyles';
+import { authClient } from '@/lib/auth';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 const { width } = Dimensions.get('window');
@@ -42,6 +43,7 @@ interface Coin {
   tradeStatus?: string;
   created_at?: string;
   createdAt?: string;
+  isLiked?: boolean;
 }
 
 export default function FeedScreen() {
@@ -59,27 +61,17 @@ export default function FeedScreen() {
   const fetchCoins = async () => {
     try {
       console.log('FeedScreen: Fetching coins from /api/coins/feed');
-      const response = await fetch(`${API_URL}/api/coins/feed?limit=20&offset=0`, {
-        credentials: 'include',
-      });
+      const response = await authClient.$fetch(`${API_URL}/api/coins/feed?limit=20&offset=0`);
       
-      console.log('FeedScreen: Feed response status:', response.status);
+      console.log('FeedScreen: Fetched', response.coins?.length || 0, 'coins');
       
-      if (response.ok) {
-        const data = await response.json();
-        console.log('FeedScreen: Fetched', data.coins?.length || 0, 'coins');
-        
-        // Log first coin to see structure
-        if (data.coins && data.coins.length > 0) {
-          console.log('FeedScreen: First coin structure:', JSON.stringify(data.coins[0], null, 2));
-          console.log('FeedScreen: First coin images:', data.coins[0].images);
-        }
-        
-        setCoins(data.coins || []);
-      } else {
-        const errorText = await response.text();
-        console.error('FeedScreen: Failed to fetch coins, status:', response.status, 'error:', errorText);
+      // Log first coin to see structure
+      if (response.coins && response.coins.length > 0) {
+        console.log('FeedScreen: First coin structure:', JSON.stringify(response.coins[0], null, 2));
+        console.log('FeedScreen: First coin images:', response.coins[0].images);
       }
+      
+      setCoins(response.coins || []);
     } catch (error) {
       console.error('FeedScreen: Error fetching coins:', error);
     } finally {
@@ -95,34 +87,53 @@ export default function FeedScreen() {
   };
 
   const handleLike = async (coinId: string) => {
-    console.log('FeedScreen: User tapped like on coin:', coinId);
+    console.log('FeedScreen: User tapped like/unlike on coin:', coinId);
+    
+    // Find the coin to check if it's already liked
+    const coin = coins.find(c => c.id === coinId);
+    const isCurrentlyLiked = coin?.isLiked || false;
+    
     try {
-      const response = await fetch(`${API_URL}/api/coins/${coinId}/like`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({}),
-      });
-
-      console.log('FeedScreen: Like response status:', response.status);
-
-      if (response.ok) {
-        const data = await response.json();
-        const newLikeCount = data.like_count ?? data.likeCount ?? 0;
-        console.log('FeedScreen: Like toggled, new count:', newLikeCount);
-        setCoins(prevCoins =>
-          prevCoins.map(coin =>
-            coin.id === coinId ? { ...coin, like_count: newLikeCount, likeCount: newLikeCount } : coin
-          )
-        );
+      let response;
+      
+      if (isCurrentlyLiked) {
+        // Unlike the coin
+        console.log('FeedScreen: Unliking coin');
+        response = await authClient.$fetch(`${API_URL}/api/coins/${coinId}/like`, {
+          method: 'DELETE',
+        });
       } else {
-        const errorText = await response.text();
-        console.error('FeedScreen: Like failed:', response.status, errorText);
+        // Like the coin
+        console.log('FeedScreen: Liking coin');
+        response = await authClient.$fetch(`${API_URL}/api/coins/${coinId}/like`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({}),
+        });
       }
+
+      console.log('FeedScreen: Like/unlike response:', response);
+      const newLikeCount = response.likeCount ?? response.like_count ?? 0;
+      const newLikedState = response.liked ?? false;
+      
+      console.log('FeedScreen: New like count:', newLikeCount, 'Liked:', newLikedState);
+      
+      setCoins(prevCoins =>
+        prevCoins.map(c =>
+          c.id === coinId 
+            ? { 
+                ...c, 
+                like_count: newLikeCount, 
+                likeCount: newLikeCount,
+                isLiked: newLikedState
+              } 
+            : c
+        )
+      );
     } catch (error) {
-      console.error('FeedScreen: Error liking coin:', error);
+      console.error('FeedScreen: Error toggling like:', error);
     }
   };
 
@@ -161,6 +172,7 @@ export default function FeedScreen() {
     const commentCount = item.comment_count ?? item.commentCount ?? 0;
     const tradeStatus = item.trade_status ?? item.tradeStatus ?? 'not_for_trade';
     const avatarUrl = item.user.avatar_url ?? item.user.avatarUrl;
+    const isLiked = item.isLiked || false;
     
     if (mainImage) {
       console.log('FeedScreen: Main image URL for', item.title, ':', mainImage.url);
@@ -242,10 +254,10 @@ export default function FeedScreen() {
               onPress={() => handleLike(item.id)}
             >
               <IconSymbol
-                ios_icon_name="heart.fill"
-                android_material_icon_name="favorite"
+                ios_icon_name={isLiked ? "heart.fill" : "heart"}
+                android_material_icon_name={isLiked ? "favorite" : "favorite-border"}
                 size={26}
-                color={colors.primary}
+                color={isLiked ? colors.primary : colors.text}
               />
             </TouchableOpacity>
 
@@ -469,7 +481,8 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
-    shadowRadius: 4,
+    shadowRadius: 8,
+    elevation: 4,
   },
   tradeBadgeText: {
     color: '#FFFFFF',

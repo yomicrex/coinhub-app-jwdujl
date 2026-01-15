@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
+import { authClient } from '@/lib/auth';
 import Constants from 'expo-constants';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
@@ -60,21 +61,12 @@ export default function ProfileScreen() {
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/users/${user.id}/coins`, {
-        credentials: 'include',
-      });
+      const data = await authClient.$fetch(`${API_URL}/api/users/${user.id}/coins`);
 
-      console.log('ProfileScreen: Coins response status:', response.status);
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch coins');
-      }
-
-      const data = await response.json();
       console.log('ProfileScreen: Response data:', data);
       
       // Handle both response formats: { coins: [...] } or [...]
-      const coinsArray = data.coins || data;
+      const coinsArray = Array.isArray(data) ? data : (data.coins || []);
       console.log('ProfileScreen: Fetched', coinsArray.length, 'coins');
       setCoins(coinsArray);
     } catch (error) {
@@ -89,23 +81,18 @@ export default function ProfileScreen() {
     if (!user) return;
 
     try {
-      const [followersRes, followingRes] = await Promise.all([
-        fetch(`${API_URL}/api/users/${user.id}/followers`, { credentials: 'include' }),
-        fetch(`${API_URL}/api/users/${user.id}/following`, { credentials: 'include' }),
+      const [followersData, followingData] = await Promise.all([
+        authClient.$fetch(`${API_URL}/api/users/${user.id}/followers`),
+        authClient.$fetch(`${API_URL}/api/users/${user.id}/following`),
       ]);
 
-      if (followersRes.ok && followingRes.ok) {
-        const followers = await followersRes.json();
-        const following = await followingRes.json();
-        
-        // Handle both response formats: { followers: [...], total: N } or [...]
-        const followersCount = followers.total !== undefined ? followers.total : (followers.followers?.length || followers.length || 0);
-        const followingCount = following.total !== undefined ? following.total : (following.following?.length || following.length || 0);
-        
-        console.log('ProfileScreen: Followers count:', followersCount, 'Following count:', followingCount);
-        setFollowerCount(followersCount);
-        setFollowingCount(followingCount);
-      }
+      // Handle both response formats: { followers: [...], total: N } or [...]
+      const followersCount = followersData.total !== undefined ? followersData.total : (followersData.followers?.length || followersData.length || 0);
+      const followingCount = followingData.total !== undefined ? followingData.total : (followingData.following?.length || followingData.length || 0);
+      
+      console.log('ProfileScreen: Followers count:', followersCount, 'Following count:', followingCount);
+      setFollowerCount(followersCount);
+      setFollowingCount(followingCount);
     } catch (error) {
       console.error('ProfileScreen: Error fetching follow counts:', error);
     }

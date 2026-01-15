@@ -323,24 +323,32 @@ export default function EditCoinScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            console.log('EditCoin: User confirmed delete');
+            console.log('EditCoin: User confirmed delete for coin:', coinId);
             setLoading(true);
             
             try {
-              await authClient.$fetch(`${API_URL}/api/coins/${coinId}`, {
+              console.log('EditCoin: Sending DELETE request to:', `${API_URL}/api/coins/${coinId}`);
+              
+              const response = await authClient.$fetch(`${API_URL}/api/coins/${coinId}`, {
                 method: 'DELETE',
               });
 
+              console.log('EditCoin: Delete response:', response);
               console.log('EditCoin: Coin deleted successfully');
+              
               Alert.alert('Deleted', 'Your coin has been deleted.', [
                 {
                   text: 'OK',
-                  onPress: () => router.back(),
+                  onPress: () => {
+                    console.log('EditCoin: Navigating back after delete');
+                    router.replace('/(tabs)/profile');
+                  },
                 },
               ]);
             } catch (error: any) {
               console.error('EditCoin: Error deleting coin:', error);
-              Alert.alert('Error', 'Failed to delete coin. Please try again.');
+              console.error('EditCoin: Error details:', JSON.stringify(error, null, 2));
+              Alert.alert('Error', error.message || 'Failed to delete coin. Please try again.');
             } finally {
               setLoading(false);
             }
