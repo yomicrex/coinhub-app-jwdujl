@@ -30,7 +30,6 @@ export default function AddCoinScreen() {
   // Form fields
   const [title, setTitle] = useState('');
   const [country, setCountry] = useState('');
-  const [year, setYear] = useState('');
   const [unit, setUnit] = useState('');
   const [organization, setOrganization] = useState('');
   const [agency, setAgency] = useState('');
@@ -117,10 +116,6 @@ export default function AddCoinScreen() {
       Alert.alert('Required Field', 'Please enter the country');
       return;
     }
-    if (!year.trim() || isNaN(Number(year))) {
-      Alert.alert('Invalid Year', 'Please enter a valid year');
-      return;
-    }
     if (images.length === 0) {
       Alert.alert('No Images', 'Please add at least one image of your coin');
       return;
@@ -131,11 +126,11 @@ export default function AddCoinScreen() {
     try {
       console.log('AddCoin: Creating coin without images first...');
 
-      // Step 1: Create coin without images
+      // Step 1: Create coin without images - using camelCase field names
       const coinData = {
         title: title.trim(),
         country: country.trim(),
-        year: parseInt(year),
+        year: new Date().getFullYear(), // Default to current year since year field was removed
         unit: unit.trim() || undefined,
         organization: organization.trim() || undefined,
         agency: agency.trim() || undefined,
@@ -150,8 +145,8 @@ export default function AddCoinScreen() {
 
       console.log('AddCoin: Creating coin with data:', coinData);
 
-      // Use authClient for authenticated requests
-      const response = await authClient.fetch('/api/coins', {
+      // Use authClient.$fetch for authenticated requests (not authClient.fetch)
+      const createdCoin = await authClient.$fetch(`${API_URL}/api/coins`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -159,15 +154,6 @@ export default function AddCoinScreen() {
         body: JSON.stringify(coinData),
       });
 
-      console.log('AddCoin: Response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('AddCoin: Coin creation failed:', response.status, errorText);
-        throw new Error(`Failed to create coin: ${response.status} ${errorText}`);
-      }
-
-      const createdCoin = await response.json();
       console.log('AddCoin: Coin created successfully:', createdCoin);
 
       const coinId = createdCoin.id;
@@ -203,23 +189,17 @@ export default function AddCoinScreen() {
             } as any);
           }
 
-          // Upload image using authClient.fetch
-          const uploadResponse = await authClient.fetch(`/api/coins/${coinId}/images`, {
+          // Upload image using authClient.$fetch (not authClient.fetch)
+          const uploadData = await authClient.$fetch(`${API_URL}/api/coins/${coinId}/images`, {
             method: 'POST',
             body: formData,
           });
 
-          if (!uploadResponse.ok) {
-            const errorText = await uploadResponse.text();
-            console.error('AddCoin: Image upload failed:', uploadResponse.status, errorText);
-            console.warn(`AddCoin: Failed to upload image ${i + 1}, continuing...`);
-          } else {
-            const uploadData = await uploadResponse.json();
-            console.log(`AddCoin: Image ${i + 1} uploaded successfully:`, uploadData.id);
-            uploadedCount++;
-          }
-        } catch (imageError) {
+          console.log(`AddCoin: Image ${i + 1} uploaded successfully:`, uploadData.id);
+          uploadedCount++;
+        } catch (imageError: any) {
           console.error(`AddCoin: Error uploading image ${i + 1}:`, imageError);
+          console.warn(`AddCoin: Failed to upload image ${i + 1}, continuing...`);
           // Continue with other images
         }
       }
@@ -334,16 +314,6 @@ export default function AddCoinScreen() {
               value={country}
               onChangeText={setCountry}
               placeholder="e.g., United States"
-              placeholderTextColor={colors.textSecondary}
-            />
-
-            <Text style={styles.label}>Year *</Text>
-            <TextInput
-              style={styles.input}
-              value={year}
-              onChangeText={setYear}
-              placeholder="e.g., 1943"
-              keyboardType="numeric"
               placeholderTextColor={colors.textSecondary}
             />
           </View>
