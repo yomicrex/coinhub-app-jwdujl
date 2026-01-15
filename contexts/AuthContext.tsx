@@ -1,178 +1,182 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import * as SecureStore from 'expo-secure-store';
-import Constants from 'expo-constants';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { Platform } from "react-native";
+import { authClient, storeWebBearerToken } from "@/lib/auth";
 
 interface User {
   id: string;
   email: string;
-  username: string;
-  displayName: string;
-  avatar_url?: string;
-  bio?: string;
-  location?: string;
-  collection_privacy: string;
-  role: string;
+  name?: string;
+  image?: string;
 }
 
 interface AuthContextType {
   user: User | null;
-  token: string | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, username: string, displayName: string, inviteCode: string) => Promise<void>;
-  logout: () => Promise<void>;
-  refreshUser: () => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<void>;
+  signUpWithEmail: (email: string, password: string, name?: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
+  signInWithApple: () => Promise<void>;
+  signInWithGitHub: () => Promise<void>;
+  signOut: () => Promise<void>;
+  fetchUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API_URL = Constants.expoConfig?.extra?.backendUrl || 'http://localhost:3000';
+function openOAuthPopup(provider: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const popupUrl = `${window.location.origin}/auth-popup?provider=${provider}`;
+    const width = 500;
+    const height = 600;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+
+    const popup = window.open(
+      popupUrl,
+      "oauth-popup",
+      `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`
+    );
+
+    if (!popup) {
+      reject(new Error("Failed to open popup. Please allow popups."));
+      return;
+    }
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === "oauth-success" && event.data?.token) {
+        window.removeEventListener("message", handleMessage);
+        clearInterval(checkClosed);
+        resolve(event.data.token);
+      } else if (event.data?.type === "oauth-error") {
+        window.removeEventListener("message", handleMessage);
+        clearInterval(checkClosed);
+        reject(new Error(event.data.error || "OAuth failed"));
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+
+    const checkClosed = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(checkClosed);
+        window.removeEventListener("message", handleMessage);
+        reject(new Error("Authentication cancelled"));
+      }
+    }, 500);
+  });
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    console.log('AuthProvider: Loading stored token');
-    loadStoredToken();
+    console.log("AuthProvider: Initializing, fetching user");
+    fetchUser();
   }, []);
 
-  const loadStoredToken = async () => {
+  const fetchUser = async () => {
     try {
-      const storedToken = await SecureStore.getItemAsync('auth_token');
-      if (storedToken) {
-        console.log('AuthProvider: Found stored token, fetching user data');
-        setToken(storedToken);
-        await fetchUser(storedToken);
+      console.log("AuthProvider: Fetching user session");
+      setLoading(true);
+      const session = await authClient.getSession();
+      console.log("AuthProvider: Session data:", session);
+      
+      if (session?.data?.user) {
+        console.log("AuthProvider: User found:", session.data.user);
+        setUser(session.data.user as User);
+      } else {
+        console.log("AuthProvider: No user session found");
+        setUser(null);
       }
     } catch (error) {
-      console.error('AuthProvider: Error loading token:', error);
+      console.error("AuthProvider: Failed to fetch user:", error);
+      setUser(null);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchUser = async (authToken: string) => {
+  const signInWithEmail = async (email: string, password: string) => {
     try {
-      console.log('AuthProvider: Fetching user data from /api/auth/me');
-      const response = await fetch(`${API_URL}/api/auth/me`, {
-        headers: {
-          'Authorization': `Bearer ${authToken}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('AuthProvider: User data fetched successfully:', data.user.username);
-        setUser(data.user);
-      } else {
-        console.log('AuthProvider: Failed to fetch user, clearing token');
-        await SecureStore.deleteItemAsync('auth_token');
-        setToken(null);
-      }
+      console.log("AuthProvider: Signing in with email:", email);
+      await authClient.signIn.email({ email, password });
+      console.log("AuthProvider: Sign in successful, fetching user");
+      await fetchUser();
     } catch (error) {
-      console.error('AuthProvider: Error fetching user:', error);
-    }
-  };
-
-  const login = async (email: string, password: string) => {
-    console.log('AuthProvider: Attempting login for:', email, 'to URL:', `${API_URL}/api/auth/login`);
-    
-    try {
-      const response = await fetch(`${API_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
-      });
-
-      console.log('AuthProvider: Login response status:', response.status);
-
-      if (!response.ok) {
-        let errorMessage = 'Login failed';
-        try {
-          const error = await response.json();
-          errorMessage = error.message || errorMessage;
-          console.error('AuthProvider: Login failed with error:', error);
-        } catch (e) {
-          console.error('AuthProvider: Could not parse error response');
-        }
-        throw new Error(errorMessage);
-      }
-
-      const data = await response.json();
-      console.log('AuthProvider: Login successful for user:', data.user.username);
-      await SecureStore.setItemAsync('auth_token', data.token);
-      setToken(data.token);
-      setUser(data.user);
-    } catch (error: any) {
-      console.error('AuthProvider: Login error:', error);
-      if (error.message === 'Failed to fetch' || error.message === 'Network request failed') {
-        throw new Error('Cannot connect to server. Please check your internet connection.');
-      }
+      console.error("AuthProvider: Email sign in failed:", error);
       throw error;
     }
   };
 
-  const register = async (email: string, password: string, username: string, displayName: string, inviteCode: string) => {
-    console.log('AuthProvider: Attempting registration for:', username, 'to URL:', `${API_URL}/api/auth/register`);
-    
+  const signUpWithEmail = async (email: string, password: string, name?: string) => {
     try {
-      const response = await fetch(`${API_URL}/api/auth/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password, username, displayName, inviteCode }),
+      console.log("AuthProvider: Signing up with email:", email);
+      await authClient.signUp.email({
+        email,
+        password,
+        name,
       });
-
-      console.log('AuthProvider: Registration response status:', response.status);
-
-      if (!response.ok) {
-        let errorMessage = 'Registration failed';
-        try {
-          const error = await response.json();
-          errorMessage = error.message || errorMessage;
-          console.error('AuthProvider: Registration failed with error:', error);
-        } catch (e) {
-          console.error('AuthProvider: Could not parse error response');
-        }
-        throw new Error(errorMessage);
-      }
-
-      const data = await response.json();
-      console.log('AuthProvider: Registration successful for user:', data.user.username);
-      await SecureStore.setItemAsync('auth_token', data.token);
-      setToken(data.token);
-      setUser(data.user);
-    } catch (error: any) {
-      console.error('AuthProvider: Registration error:', error);
-      if (error.message === 'Failed to fetch' || error.message === 'Network request failed') {
-        throw new Error('Cannot connect to server. Please check your internet connection.');
-      }
+      console.log("AuthProvider: Sign up successful, fetching user");
+      await fetchUser();
+    } catch (error) {
+      console.error("AuthProvider: Email sign up failed:", error);
       throw error;
     }
   };
 
-  const logout = async () => {
-    console.log('AuthProvider: Logging out user');
-    await SecureStore.deleteItemAsync('auth_token');
-    setToken(null);
-    setUser(null);
+  const signInWithSocial = async (provider: "google" | "apple" | "github") => {
+    try {
+      console.log("AuthProvider: Signing in with social provider:", provider);
+      if (Platform.OS === "web") {
+        const token = await openOAuthPopup(provider);
+        storeWebBearerToken(token);
+        await fetchUser();
+      } else {
+        await authClient.signIn.social({
+          provider,
+          callbackURL: "/(tabs)/(home)",
+        });
+        await fetchUser();
+      }
+      console.log("AuthProvider: Social sign in successful");
+    } catch (error) {
+      console.error(`AuthProvider: ${provider} sign in failed:`, error);
+      throw error;
+    }
   };
 
-  const refreshUser = async () => {
-    if (token) {
-      console.log('AuthProvider: Refreshing user data');
-      await fetchUser(token);
+  const signInWithGoogle = () => signInWithSocial("google");
+  const signInWithApple = () => signInWithSocial("apple");
+  const signInWithGitHub = () => signInWithSocial("github");
+
+  const signOut = async () => {
+    try {
+      console.log("AuthProvider: Signing out");
+      await authClient.signOut();
+      setUser(null);
+      console.log("AuthProvider: Sign out successful");
+    } catch (error) {
+      console.error("AuthProvider: Sign out failed:", error);
+      throw error;
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout, refreshUser }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        signInWithEmail,
+        signUpWithEmail,
+        signInWithGoogle,
+        signInWithApple,
+        signInWithGitHub,
+        signOut,
+        fetchUser,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -181,7 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within AuthProvider");
   }
   return context;
 }
