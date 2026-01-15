@@ -151,7 +151,7 @@ export default function AddCoinScreen() {
       console.log('AddCoin: Creating coin with data:', coinData);
 
       // Use authClient.$fetch for authenticated requests
-      const createdCoin = await authClient.$fetch('/coins', {
+      const createdCoin = await authClient.$fetch('/api/coins', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
