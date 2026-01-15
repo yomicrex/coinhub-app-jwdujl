@@ -265,26 +265,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     try {
-      console.log("AuthProvider: Signing out user");
+      console.log("AuthProvider: Starting sign out process");
       
-      // Call Better Auth signOut
-      await authClient.signOut();
-      
-      // Clear all auth tokens
-      clearAuthTokens();
-      
-      // Clear user state
+      // First, clear the user state immediately to prevent UI issues
       setUser(null);
+      console.log("AuthProvider: User state cleared");
       
-      console.log("AuthProvider: Sign out successful, user cleared");
+      // Call Better Auth signOut to invalidate the session on the server
+      try {
+        console.log("AuthProvider: Calling Better Auth signOut");
+        await authClient.signOut();
+        console.log("AuthProvider: Better Auth signOut successful");
+      } catch (signOutError) {
+        console.error("AuthProvider: Better Auth signOut failed (continuing anyway):", signOutError);
+        // Continue even if signOut fails - we still want to clear local state
+      }
+      
+      // Clear all auth tokens and storage
+      console.log("AuthProvider: Clearing auth tokens");
+      await clearAuthTokens();
+      console.log("AuthProvider: Auth tokens cleared");
+      
+      console.log("AuthProvider: Sign out complete");
     } catch (error) {
-      console.error("AuthProvider: Sign out failed:", error);
+      console.error("AuthProvider: Sign out error:", error);
       
-      // Even if signOut fails, clear local state
-      clearAuthTokens();
+      // Even if there's an error, ensure local state is cleared
       setUser(null);
+      await clearAuthTokens();
       
-      throw error;
+      // Don't throw the error - logout should always succeed from the user's perspective
+      console.log("AuthProvider: Sign out completed with errors (local state cleared)");
     }
   };
 

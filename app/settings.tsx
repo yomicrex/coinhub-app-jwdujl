@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Alert,
   Switch,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
@@ -19,29 +20,45 @@ import { useAuth } from '@/contexts/AuthContext';
 export default function SettingsScreen() {
   const router = useRouter();
   const { user, logout } = useAuth();
-  const [notificationsEnabled, setNotificationsEnabled] = React.useState(true);
-  const [emailNotifications, setEmailNotifications] = React.useState(true);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [emailNotifications, setEmailNotifications] = useState(true);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const handleLogout = () => {
     console.log('Settings: User tapped logout');
+    
+    if (loggingOut) {
+      console.log('Settings: Logout already in progress, ignoring tap');
+      return;
+    }
+    
     Alert.alert(
       'Logout',
       'Are you sure you want to logout?',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Cancel', 
+          style: 'cancel',
+          onPress: () => console.log('Settings: User cancelled logout')
+        },
         {
           text: 'Logout',
           style: 'destructive',
           onPress: async () => {
             try {
-              console.log('Settings: User confirmed logout, calling logout function');
+              console.log('Settings: User confirmed logout, starting logout process');
+              setLoggingOut(true);
+              
               await logout();
+              
               console.log('Settings: Logout successful, redirecting to auth');
               router.replace('/auth');
             } catch (error) {
               console.error('Settings: Logout error:', error);
               // Even if logout fails, redirect to auth
               router.replace('/auth');
+            } finally {
+              setLoggingOut(false);
             }
           },
         },
@@ -303,14 +320,24 @@ export default function SettingsScreen() {
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.error }]}>Danger Zone</Text>
             
-            <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
-              <IconSymbol
-                ios_icon_name="arrow.right.square"
-                android_material_icon_name="logout"
-                size={24}
-                color={colors.error}
-              />
-              <Text style={[styles.menuItemText, { color: colors.error }]}>Logout</Text>
+            <TouchableOpacity 
+              style={[styles.menuItem, loggingOut && styles.menuItemDisabled]} 
+              onPress={handleLogout}
+              disabled={loggingOut}
+            >
+              {loggingOut ? (
+                <ActivityIndicator size="small" color={colors.error} />
+              ) : (
+                <IconSymbol
+                  ios_icon_name="arrow.right.square"
+                  android_material_icon_name="logout"
+                  size={24}
+                  color={colors.error}
+                />
+              )}
+              <Text style={[styles.menuItemText, { color: colors.error }]}>
+                {loggingOut ? 'Logging out...' : 'Logout'}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.menuItem} onPress={handleDeleteAccount}>
@@ -353,6 +380,9 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  menuItemDisabled: {
+    opacity: 0.5,
   },
   menuItemText: {
     flex: 1,

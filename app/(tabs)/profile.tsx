@@ -35,6 +35,7 @@ export default function ProfileScreen() {
   const { user, logout } = useAuth();
   const [coins, setCoins] = useState<UserCoin[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loggingOut, setLoggingOut] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -83,24 +84,39 @@ export default function ProfileScreen() {
 
   const handleLogout = () => {
     console.log('ProfileScreen: User tapped logout button');
+    
+    if (loggingOut) {
+      console.log('ProfileScreen: Logout already in progress, ignoring tap');
+      return;
+    }
+    
     Alert.alert(
       'Logout',
       'Are you sure you want to logout?',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Cancel', 
+          style: 'cancel',
+          onPress: () => console.log('ProfileScreen: User cancelled logout')
+        },
         {
           text: 'Logout',
           style: 'destructive',
           onPress: async () => {
             try {
-              console.log('ProfileScreen: User confirmed logout, calling logout function');
+              console.log('ProfileScreen: User confirmed logout, starting logout process');
+              setLoggingOut(true);
+              
               await logout();
+              
               console.log('ProfileScreen: Logout successful, redirecting to auth');
               router.replace('/auth');
             } catch (error) {
               console.error('ProfileScreen: Logout error:', error);
               // Even if logout fails, redirect to auth
               router.replace('/auth');
+            } finally {
+              setLoggingOut(false);
             }
           },
         },
@@ -338,14 +354,24 @@ export default function ProfileScreen() {
             />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
-            <IconSymbol
-              ios_icon_name="arrow.right.square"
-              android_material_icon_name="logout"
-              size={24}
-              color={colors.error}
-            />
-            <Text style={[styles.menuItemText, { color: colors.error }]}>Logout</Text>
+          <TouchableOpacity 
+            style={[styles.menuItem, loggingOut && styles.menuItemDisabled]} 
+            onPress={handleLogout}
+            disabled={loggingOut}
+          >
+            {loggingOut ? (
+              <ActivityIndicator size="small" color={colors.error} />
+            ) : (
+              <IconSymbol
+                ios_icon_name="arrow.right.square"
+                android_material_icon_name="logout"
+                size={24}
+                color={colors.error}
+              />
+            )}
+            <Text style={[styles.menuItemText, { color: colors.error }]}>
+              {loggingOut ? 'Logging out...' : 'Logout'}
+            </Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -561,6 +587,9 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  menuItemDisabled: {
+    opacity: 0.5,
   },
   menuItemText: {
     flex: 1,
