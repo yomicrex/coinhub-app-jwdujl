@@ -86,9 +86,16 @@ export default function ProfileScreen() {
           text: 'Logout',
           style: 'destructive',
           onPress: async () => {
-            console.log('ProfileScreen: User confirmed logout');
-            await logout();
-            router.replace('/auth');
+            try {
+              console.log('ProfileScreen: User confirmed logout, calling logout function');
+              await logout();
+              console.log('ProfileScreen: Logout successful, redirecting to auth');
+              router.replace('/auth');
+            } catch (error) {
+              console.error('ProfileScreen: Logout error:', error);
+              // Even if logout fails, redirect to auth
+              router.replace('/auth');
+            }
           },
         },
       ]
@@ -103,6 +110,11 @@ export default function ProfileScreen() {
   const handleSettings = () => {
     console.log('ProfileScreen: User tapped Settings');
     router.push('/settings');
+  };
+
+  const handleEditProfile = () => {
+    console.log('ProfileScreen: User tapped Edit Profile button');
+    router.push('/edit-profile');
   };
 
   if (!user) {
@@ -177,14 +189,7 @@ export default function ProfileScreen() {
           <View style={styles.buttonRow}>
             <TouchableOpacity
               style={styles.editButton}
-              onPress={() => {
-                console.log('ProfileScreen: User tapped edit profile button');
-                Alert.alert(
-                  'Edit Profile',
-                  'Profile editing coming soon!',
-                  [{ text: 'OK' }]
-                );
-              }}
+              onPress={handleEditProfile}
             >
               <Text style={styles.editButtonText}>Edit Profile</Text>
             </TouchableOpacity>

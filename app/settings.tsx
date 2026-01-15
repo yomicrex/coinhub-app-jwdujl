@@ -33,9 +33,16 @@ export default function SettingsScreen() {
           text: 'Logout',
           style: 'destructive',
           onPress: async () => {
-            console.log('Settings: User confirmed logout');
-            await logout();
-            router.replace('/auth');
+            try {
+              console.log('Settings: User confirmed logout, calling logout function');
+              await logout();
+              console.log('Settings: Logout successful, redirecting to auth');
+              router.replace('/auth');
+            } catch (error) {
+              console.error('Settings: Logout error:', error);
+              // Even if logout fails, redirect to auth
+              router.replace('/auth');
+            }
           },
         },
       ]
@@ -87,11 +94,7 @@ export default function SettingsScreen() {
               style={styles.menuItem}
               onPress={() => {
                 console.log('Settings: User tapped edit profile');
-                Alert.alert(
-                  'Edit Profile',
-                  'Profile editing will be available soon!',
-                  [{ text: 'OK' }]
-                );
+                router.push('/edit-profile');
               }}
             >
               <IconSymbol

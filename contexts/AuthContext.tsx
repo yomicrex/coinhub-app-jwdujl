@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { Platform } from "react-native";
-import { authClient, storeWebBearerToken } from "@/lib/auth";
+import { authClient, storeWebBearerToken, clearAuthTokens } from "@/lib/auth";
 
 interface User {
   id: string;
@@ -265,12 +265,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     try {
-      console.log("AuthProvider: Signing out");
+      console.log("AuthProvider: Signing out user");
+      
+      // Call Better Auth signOut
       await authClient.signOut();
+      
+      // Clear all auth tokens
+      clearAuthTokens();
+      
+      // Clear user state
       setUser(null);
-      console.log("AuthProvider: Sign out successful");
+      
+      console.log("AuthProvider: Sign out successful, user cleared");
     } catch (error) {
       console.error("AuthProvider: Sign out failed:", error);
+      
+      // Even if signOut fails, clear local state
+      clearAuthTokens();
+      setUser(null);
+      
       throw error;
     }
   };
