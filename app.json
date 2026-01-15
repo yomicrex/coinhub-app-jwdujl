@@ -41,7 +41,8 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {}
+      "router": {},
+      "backendUrl": "https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev"
     }
   },
   "scheme": "CoinHub"

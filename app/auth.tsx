@@ -45,12 +45,12 @@ export default function AuthScreen() {
     setLoading(true);
     try {
       if (isLogin) {
-        console.log('AuthScreen: Attempting login');
+        console.log('AuthScreen: Attempting login for:', email);
         await login(email, password);
         console.log('AuthScreen: Login successful, navigating to feed');
         router.replace('/(tabs)');
       } else {
-        console.log('AuthScreen: Attempting registration');
+        console.log('AuthScreen: Attempting registration for:', username);
         await register(email, password, username, displayName, inviteCode);
         console.log('AuthScreen: Registration successful, navigating to feed');
         router.replace('/(tabs)');
@@ -152,6 +152,9 @@ export default function AuthScreen() {
                     autoCapitalize="characters"
                     placeholderTextColor={colors.textSecondary}
                   />
+                  <Text style={styles.helperText}>
+                    Beta invite code: BETA2026
+                  </Text>
                 </View>
               )}
 
@@ -231,6 +234,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
     marginBottom: 8,
+  },
+  helperText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 4,
+    fontStyle: 'italic',
   },
   input: {
     backgroundColor: colors.backgroundAlt,
