@@ -18,6 +18,7 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import * as ImagePicker from 'expo-image-picker';
 import Constants from 'expo-constants';
+import { authClient } from '@/lib/auth';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 
@@ -149,26 +150,29 @@ export default function AddCoinScreen() {
 
       console.log('AddCoin: Creating coin with data:', coinData);
 
-      const createResponse = await fetch(`${API_URL}/api/coins`, {
+      // Use authClient.$fetch for authenticated requests
+      const createdCoin = await authClient.$fetch('/coins', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
         body: JSON.stringify(coinData),
       });
 
-      if (!createResponse.ok) {
-        const errorText = await createResponse.text();
-        console.error('AddCoin: Coin creation failed:', createResponse.status, errorText);
-        throw new Error('Failed to create coin');
+      if (!createdCoin || createdCoin.error) {
+        console.error('AddCoin: Coin creation failed:', createdCoin?.error);
+        throw new Error(createdCoin?.error?.message || 'Failed to create coin');
       }
 
-      const createdCoin = await createResponse.json();
-      console.log('AddCoin: Coin created successfully:', createdCoin.id);
+      console.log('AddCoin: Coin created successfully:', createdCoin.data?.id);
+      const coinId = createdCoin.data?.id;
+
+      if (!coinId) {
+        throw new Error('No coin ID returned from server');
+      }
 
       // Step 2: Upload images to the created coin
-      console.log('AddCoin: Uploading', images.length, 'images to coin:', createdCoin.id);
+      console.log('AddCoin: Uploading', images.length, 'images to coin:', coinId);
       
       for (let i = 0; i < images.length; i++) {
         const imageUri = images[i];
@@ -192,8 +196,8 @@ export default function AddCoinScreen() {
           } as any);
         }
 
-        // Upload image to the coin
-        const uploadResponse = await fetch(`${API_URL}/api/coins/${createdCoin.id}/images`, {
+        // Upload image using regular fetch (FormData doesn't work well with authClient.$fetch)
+        const uploadResponse = await fetch(`${API_URL}/api/coins/${coinId}/images`, {
           method: 'POST',
           body: formData,
           credentials: 'include',
@@ -225,11 +229,11 @@ export default function AddCoinScreen() {
           },
         ]
       );
-    } catch (error) {
+    } catch (error: any) {
       console.error('AddCoin: Error creating coin:', error);
       Alert.alert(
         'Error',
-        'Failed to add coin. Please try again.',
+        error.message || 'Failed to add coin. Please try again.',
         [{ text: 'OK' }]
       );
     } finally {

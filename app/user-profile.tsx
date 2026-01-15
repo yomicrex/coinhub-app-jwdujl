@@ -17,6 +17,7 @@ import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import Constants from 'expo-constants';
+import { authClient } from '@/lib/auth';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 
@@ -157,31 +158,45 @@ export default function UserProfileScreen() {
     setFollowLoading(true);
 
     try {
-      const method = isFollowing ? 'DELETE' : 'POST';
-      const response = await fetch(`${API_URL}/api/users/${userId}/follow`, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({}),
-      });
+      const endpoint = `/users/${userId}/follow`;
+      let response;
 
-      console.log('UserProfileScreen: Follow toggle response status:', response.status);
+      if (isFollowing) {
+        // Unfollow - use DELETE
+        console.log('UserProfileScreen: Sending DELETE request to unfollow');
+        response = await authClient.$fetch(endpoint, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({}),
+        });
+      } else {
+        // Follow - use POST
+        console.log('UserProfileScreen: Sending POST request to follow');
+        response = await authClient.$fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({}),
+        });
+      }
 
-      if (response.ok) {
+      console.log('UserProfileScreen: Follow toggle response:', response);
+
+      if (!response || response.error) {
+        console.error('UserProfileScreen: Follow toggle failed:', response?.error);
+        Alert.alert('Error', response?.error?.message || 'Failed to update follow status');
+      } else {
         const newFollowStatus = !isFollowing;
         setIsFollowing(newFollowStatus);
         setFollowerCount(prev => newFollowStatus ? prev + 1 : prev - 1);
         console.log('UserProfileScreen: Follow status updated to:', newFollowStatus);
-      } else {
-        const errorText = await response.text();
-        console.error('UserProfileScreen: Follow toggle failed:', response.status, errorText);
-        Alert.alert('Error', 'Failed to update follow status');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('UserProfileScreen: Error toggling follow:', error);
-      Alert.alert('Error', 'Failed to update follow status');
+      Alert.alert('Error', error.message || 'Failed to update follow status');
     } finally {
       setFollowLoading(false);
     }
