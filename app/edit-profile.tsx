@@ -106,48 +106,70 @@ export default function EditProfileScreen() {
       const formData = new FormData();
       
       if (Platform.OS === 'web') {
+        // Web: fetch the blob
+        console.log('EditProfile: Web platform - fetching blob from URI');
         const imageResponse = await fetch(uri);
         const blob = await imageResponse.blob();
         formData.append('avatar', blob, 'avatar.jpg');
+        console.log('EditProfile: Web - Added blob to formData');
       } else {
-        // Get file extension
-        const uriParts = uri.split('.');
-        const fileType = uriParts[uriParts.length - 1];
+        // Native: use the URI directly
+        const fileExtension = uri.split('.').pop() || 'jpg';
+        const fileName = `avatar.${fileExtension}`;
         
         formData.append('avatar', {
-          uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
-          name: `avatar.${fileType}`,
-          type: `image/${fileType}`,
+          uri: uri,
+          name: fileName,
+          type: `image/${fileExtension}`,
         } as any);
+        console.log('EditProfile: Native - Added file to formData, name:', fileName);
       }
 
-      console.log('EditProfile: Sending avatar upload request to /api/profiles/me/avatar');
+      console.log('EditProfile: Sending avatar upload request to', `${API_URL}/api/profiles/me/avatar`);
       
-      const data = await authClient.$fetch(`${API_URL}/api/profiles/me/avatar`, {
+      // Use fetch with credentials instead of authClient.$fetch for FormData
+      const response = await fetch(`${API_URL}/api/profiles/me/avatar`, {
         method: 'POST',
+        credentials: 'include',
         body: formData,
       });
 
-      console.log('EditProfile: Avatar uploaded successfully:', data);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('EditProfile: Upload failed with status', response.status, ':', errorText);
+        throw new Error(`Upload failed: ${response.status} ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('EditProfile: Avatar uploaded successfully, response:', data);
       
       // Handle both camelCase and snake_case response formats
-      const newAvatarUrl = data.avatarUrl || data.avatar_url || data.url;
+      const newAvatarUrl = data?.data?.avatarUrl || data?.data?.avatar_url || data?.avatarUrl || data?.avatar_url || data?.url;
       console.log('EditProfile: New avatar URL:', newAvatarUrl);
-      setAvatarUri(newAvatarUrl);
       
-      Alert.alert(
-        'Success',
-        'Profile picture updated successfully!',
-        [{ text: 'OK' }]
-      );
-      
-      // Refresh user data
-      await fetchUser();
-    } catch (error) {
+      if (newAvatarUrl) {
+        setAvatarUri(newAvatarUrl);
+        Alert.alert(
+          'Success',
+          'Profile picture updated successfully!',
+          [{ text: 'OK' }]
+        );
+        
+        // Refresh user data
+        await fetchUser();
+      } else {
+        console.error('EditProfile: No avatar URL in response:', data);
+        throw new Error('No avatar URL returned from server');
+      }
+    } catch (error: any) {
       console.error('EditProfile: Error uploading avatar:', error);
+      console.error('EditProfile: Error details:', {
+        message: error.message,
+        stack: error.stack,
+      });
       Alert.alert(
         'Upload Error',
-        'An error occurred while uploading your profile picture. Please try again.',
+        `Failed to upload profile picture: ${error.message || 'Unknown error'}. Please try again.`,
         [{ text: 'OK' }]
       );
     } finally {
@@ -199,11 +221,15 @@ export default function EditProfileScreen() {
           },
         ]
       );
-    } catch (error) {
+    } catch (error: any) {
       console.error('EditProfile: Error saving profile:', error);
+      console.error('EditProfile: Error details:', {
+        message: error.message,
+        stack: error.stack,
+      });
       Alert.alert(
         'Save Error',
-        'An error occurred while saving your profile. Please try again.',
+        `Failed to save profile: ${error.message || 'Unknown error'}. Please try again.`,
         [{ text: 'OK' }]
       );
     } finally {

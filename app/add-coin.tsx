@@ -30,6 +30,7 @@ export default function AddCoinScreen() {
   // Form fields
   const [title, setTitle] = useState('');
   const [country, setCountry] = useState('');
+  const [year, setYear] = useState(new Date().getFullYear().toString());
   const [unit, setUnit] = useState('');
   const [organization, setOrganization] = useState('');
   const [agency, setAgency] = useState('');
@@ -126,11 +127,11 @@ export default function AddCoinScreen() {
     try {
       console.log('AddCoin: Creating coin without images first...');
 
-      // Step 1: Create coin without images - using camelCase field names
+      // Step 1: Create coin without images
       const coinData = {
         title: title.trim(),
         country: country.trim(),
-        year: new Date().getFullYear(), // Default to current year since year field was removed
+        year: parseInt(year) || new Date().getFullYear(),
         unit: unit.trim() || undefined,
         organization: organization.trim() || undefined,
         agency: agency.trim() || undefined,
@@ -156,8 +157,8 @@ export default function AddCoinScreen() {
 
       console.log('AddCoin: Coin creation response:', response);
 
-      // Extract coin ID from response - the response structure is { data: { id, ... }, error: null }
-      const coinId = response?.data?.id;
+      // Extract coin ID from response
+      const coinId = response?.data?.id || response?.id;
 
       if (!coinId) {
         console.error('AddCoin: No coin ID in response:', response);
@@ -170,9 +171,11 @@ export default function AddCoinScreen() {
       console.log('AddCoin: Uploading', images.length, 'images to coin:', coinId);
       
       let uploadedCount = 0;
+      const uploadErrors: string[] = [];
+      
       for (let i = 0; i < images.length; i++) {
         const imageUri = images[i];
-        console.log(`AddCoin: Uploading image ${i + 1}/${images.length}`);
+        console.log(`AddCoin: Uploading image ${i + 1}/${images.length}, URI:`, imageUri);
         
         try {
           // Create form data
@@ -184,47 +187,102 @@ export default function AddCoinScreen() {
             const imageResponse = await fetch(imageUri);
             const blob = await imageResponse.blob();
             formData.append('image', blob, `coin-image-${i}.jpg`);
+            console.log(`AddCoin: Web - Added blob to formData for image ${i + 1}`);
           } else {
             // Native: use the URI directly
+            const fileExtension = imageUri.split('.').pop() || 'jpg';
+            const fileName = `coin-image-${i}.${fileExtension}`;
+            
             formData.append('image', {
               uri: imageUri,
-              type: 'image/jpeg',
-              name: `coin-image-${i}.jpg`,
+              type: `image/${fileExtension}`,
+              name: fileName,
             } as any);
+            console.log(`AddCoin: Native - Added file to formData for image ${i + 1}, name: ${fileName}`);
           }
 
-          // Upload image using authClient.$fetch
-          const uploadResponse = await authClient.$fetch(`${API_URL}/api/coins/${coinId}/images`, {
+          console.log(`AddCoin: Sending upload request to ${API_URL}/api/coins/${coinId}/images`);
+
+          // Upload image using fetch with credentials
+          const uploadResponse = await fetch(`${API_URL}/api/coins/${coinId}/images`, {
             method: 'POST',
+            credentials: 'include',
             body: formData,
           });
 
-          console.log(`AddCoin: Image ${i + 1} uploaded successfully:`, uploadResponse);
+          if (!uploadResponse.ok) {
+            const errorText = await uploadResponse.text();
+            console.error(`AddCoin: Upload failed with status ${uploadResponse.status}:`, errorText);
+            throw new Error(`Upload failed: ${uploadResponse.status} ${errorText}`);
+          }
+
+          const uploadData = await uploadResponse.json();
+          console.log(`AddCoin: Image ${i + 1} uploaded successfully:`, uploadData);
           uploadedCount++;
         } catch (imageError: any) {
           console.error(`AddCoin: Error uploading image ${i + 1}:`, imageError);
-          console.warn(`AddCoin: Failed to upload image ${i + 1}, continuing...`);
-          // Continue with other images
+          console.error(`AddCoin: Error details:`, {
+            message: imageError.message,
+            stack: imageError.stack,
+          });
+          uploadErrors.push(`Image ${i + 1}: ${imageError.message || 'Upload failed'}`);
         }
       }
 
-      console.log('AddCoin: Uploaded', uploadedCount, 'out of', images.length, 'images');
+      console.log('AddCoin: Upload complete. Uploaded', uploadedCount, 'out of', images.length, 'images');
 
-      Alert.alert(
-        'Success!',
-        `Your coin has been added to your collection${uploadedCount < images.length ? ` (${uploadedCount}/${images.length} images uploaded)` : ''}.`,
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              console.log('AddCoin: Navigating back to profile');
-              router.push('/(tabs)/profile');
+      if (uploadedCount === 0) {
+        // All uploads failed
+        Alert.alert(
+          'Upload Failed',
+          `Coin created but images failed to upload:\n${uploadErrors.join('\n')}\n\nYou can edit the coin later to add images.`,
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                console.log('AddCoin: Navigating back to profile after failed uploads');
+                router.push('/(tabs)/profile');
+              },
             },
-          },
-        ]
-      );
+          ]
+        );
+      } else if (uploadedCount < images.length) {
+        // Some uploads failed
+        Alert.alert(
+          'Partial Success',
+          `Your coin has been added with ${uploadedCount} out of ${images.length} images.\n\nFailed uploads:\n${uploadErrors.join('\n')}`,
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                console.log('AddCoin: Navigating back to profile after partial success');
+                router.push('/(tabs)/profile');
+              },
+            },
+          ]
+        );
+      } else {
+        // All uploads succeeded
+        Alert.alert(
+          'Success!',
+          'Your coin has been added to your collection with all images.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                console.log('AddCoin: Navigating back to profile after success');
+                router.push('/(tabs)/profile');
+              },
+            },
+          ]
+        );
+      }
     } catch (error: any) {
       console.error('AddCoin: Error creating coin:', error);
+      console.error('AddCoin: Error details:', {
+        message: error.message,
+        stack: error.stack,
+      });
       Alert.alert(
         'Error',
         error.message || 'Failed to add coin. Please try again.',
@@ -319,6 +377,16 @@ export default function AddCoinScreen() {
               onChangeText={setCountry}
               placeholder="e.g., United States"
               placeholderTextColor={colors.textSecondary}
+            />
+
+            <Text style={styles.label}>Year</Text>
+            <TextInput
+              style={styles.input}
+              value={year}
+              onChangeText={setYear}
+              placeholder="e.g., 2024"
+              placeholderTextColor={colors.textSecondary}
+              keyboardType="numeric"
             />
           </View>
 
