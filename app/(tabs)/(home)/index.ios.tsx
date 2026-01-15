@@ -117,6 +117,15 @@ export default function FeedScreen() {
     router.push('/add-coin');
   };
 
+  const handleUserPress = (userId: string, username: string) => {
+    console.log('FeedScreen: User tapped on profile:', username);
+    if (userId === user?.id) {
+      router.push('/(tabs)/profile');
+    } else {
+      router.push(`/user-profile?userId=${userId}`);
+    }
+  };
+
   const renderCoinCard = ({ item }: { item: Coin }) => {
     const mainImage = item.images.sort((a, b) => a.order_index - b.order_index)[0];
     
@@ -152,7 +161,10 @@ export default function FeedScreen() {
             {item.year} • {item.country}
           </Text>
 
-          <View style={styles.userInfo}>
+          <TouchableOpacity
+            style={styles.userInfo}
+            onPress={() => handleUserPress(item.user.id, item.user.username)}
+          >
             <View style={styles.userAvatar}>
               {item.user.avatar_url ? (
                 <Image source={{ uri: item.user.avatar_url }} style={styles.avatarImage} />
@@ -166,7 +178,7 @@ export default function FeedScreen() {
               )}
             </View>
             <Text style={styles.username}>{item.user.displayName}</Text>
-          </View>
+          </TouchableOpacity>
 
           <View style={styles.actions}>
             <TouchableOpacity
@@ -299,10 +311,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
     elevation: 3,
   },
   coinImage: {

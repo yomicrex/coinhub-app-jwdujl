@@ -99,7 +99,6 @@ export default function FeedScreen() {
       if (response.ok) {
         const data = await response.json();
         console.log('FeedScreen: Like toggled, new count:', data.like_count);
-        // Update local state
         setCoins(prevCoins =>
           prevCoins.map(coin =>
             coin.id === coinId ? { ...coin, like_count: data.like_count } : coin
@@ -117,6 +116,15 @@ export default function FeedScreen() {
   const handleAddCoin = () => {
     console.log('FeedScreen: User tapped add coin button');
     router.push('/add-coin');
+  };
+
+  const handleUserPress = (userId: string, username: string) => {
+    console.log('FeedScreen: User tapped on profile:', username);
+    if (userId === user?.id) {
+      router.push('/(tabs)/profile');
+    } else {
+      router.push(`/user-profile?userId=${userId}`);
+    }
   };
 
   const renderCoinCard = ({ item }: { item: Coin }) => {
@@ -154,7 +162,10 @@ export default function FeedScreen() {
             {item.year} • {item.country}
           </Text>
 
-          <View style={styles.userInfo}>
+          <TouchableOpacity
+            style={styles.userInfo}
+            onPress={() => handleUserPress(item.user.id, item.user.username)}
+          >
             <View style={styles.userAvatar}>
               {item.user.avatar_url ? (
                 <Image source={{ uri: item.user.avatar_url }} style={styles.avatarImage} />
@@ -168,7 +179,7 @@ export default function FeedScreen() {
               )}
             </View>
             <Text style={styles.username}>{item.user.displayName}</Text>
-          </View>
+          </TouchableOpacity>
 
           <View style={styles.actions}>
             <TouchableOpacity

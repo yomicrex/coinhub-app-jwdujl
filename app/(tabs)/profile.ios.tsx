@@ -35,6 +35,8 @@ export default function ProfileScreen() {
   const [coins, setCoins] = useState<UserCoin[]>([]);
   const [loading, setLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [followerCount, setFollowerCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
   const router = useRouter();
 
   useEffect(() => {
@@ -44,6 +46,7 @@ export default function ProfileScreen() {
       router.replace('/auth');
     } else {
       fetchUserCoins();
+      fetchFollowCounts();
     }
   }, [user]);
 
@@ -69,7 +72,6 @@ export default function ProfileScreen() {
         const errorText = await response.text();
         console.error('ProfileScreen: Failed to fetch coins, status:', response.status, 'error:', errorText);
         
-        // If unauthorized, user might not have completed profile
         if (response.status === 401) {
           console.log('ProfileScreen: Unauthorized - user may need to complete profile');
         }
@@ -78,6 +80,41 @@ export default function ProfileScreen() {
       console.error('ProfileScreen: Error fetching coins:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchFollowCounts = async () => {
+    if (!user) {
+      console.log('ProfileScreen: No user, skipping follow counts fetch');
+      return;
+    }
+
+    try {
+      console.log('ProfileScreen: Fetching follow counts for user ID:', user.id);
+      
+      // Fetch followers
+      const followersResponse = await fetch(`${API_URL}/api/users/${user.id}/followers?limit=1`, {
+        credentials: 'include',
+      });
+      
+      if (followersResponse.ok) {
+        const followersData = await followersResponse.json();
+        console.log('ProfileScreen: Followers count:', followersData.total);
+        setFollowerCount(followersData.total || 0);
+      }
+
+      // Fetch following
+      const followingResponse = await fetch(`${API_URL}/api/users/${user.id}/following?limit=1`, {
+        credentials: 'include',
+      });
+      
+      if (followingResponse.ok) {
+        const followingData = await followingResponse.json();
+        console.log('ProfileScreen: Following count:', followingData.total);
+        setFollowingCount(followingData.total || 0);
+      }
+    } catch (error) {
+      console.error('ProfileScreen: Error fetching follow counts:', error);
     }
   };
 
@@ -99,7 +136,6 @@ export default function ProfileScreen() {
       router.replace('/auth');
     } catch (error) {
       console.error('ProfileScreen: Logout error:', error);
-      // Even if logout fails, redirect to auth
       router.replace('/auth');
     } finally {
       setLoggingOut(false);
@@ -119,6 +155,16 @@ export default function ProfileScreen() {
   const handleEditProfile = () => {
     console.log('ProfileScreen: User tapped Edit Profile button');
     router.push('/edit-profile');
+  };
+
+  const handleViewFollowers = () => {
+    console.log('ProfileScreen: User tapped Followers');
+    router.push(`/user-list?userId=${user?.id}&type=followers`);
+  };
+
+  const handleViewFollowing = () => {
+    console.log('ProfileScreen: User tapped Following');
+    router.push(`/user-list?userId=${user?.id}&type=following`);
   };
 
   if (!user) {
@@ -175,19 +221,15 @@ export default function ProfileScreen() {
               <Text style={styles.statLabel}>Coins</Text>
             </View>
             <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>
-                {coins.reduce((sum, coin) => sum + coin.like_count, 0)}
-              </Text>
-              <Text style={styles.statLabel}>Likes</Text>
-            </View>
+            <TouchableOpacity style={styles.statItem} onPress={handleViewFollowers}>
+              <Text style={styles.statValue}>{followerCount}</Text>
+              <Text style={styles.statLabel}>Followers</Text>
+            </TouchableOpacity>
             <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>
-                {coins.filter(c => c.trade_status === 'open_to_trade').length}
-              </Text>
-              <Text style={styles.statLabel}>For Trade</Text>
-            </View>
+            <TouchableOpacity style={styles.statItem} onPress={handleViewFollowing}>
+              <Text style={styles.statValue}>{followingCount}</Text>
+              <Text style={styles.statLabel}>Following</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.buttonRow}>
