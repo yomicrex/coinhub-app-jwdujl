@@ -38,8 +38,10 @@ export default function AuthScreen() {
   // Check if user needs to complete profile
   useEffect(() => {
     const checkProfile = async () => {
+      console.log("AuthScreen: Checking user state, user:", user);
+      
       if (user) {
-        console.log("AuthScreen: User detected, checking profile:", user);
+        console.log("AuthScreen: User detected, username:", user.username);
         
         // If user already has username, they're good to go
         if (user.username) {
@@ -48,9 +50,13 @@ export default function AuthScreen() {
           return;
         }
         
-        // Otherwise, they need to complete their profile
+        // User is authenticated but doesn't have a username - needs to complete profile
         console.log("AuthScreen: Profile incomplete, showing profile completion");
         setMode("complete-profile");
+      } else {
+        // No user - show sign in page
+        console.log("AuthScreen: No user, showing sign in page");
+        setMode("signin");
       }
     };
 
@@ -173,8 +179,8 @@ export default function AuthScreen() {
     }
   };
 
-  // Profile completion screen (Profile Setup Page)
-  if (mode === "complete-profile") {
+  // Profile completion screen (only shown when user is authenticated but has no username)
+  if (mode === "complete-profile" && user) {
     return (
       <KeyboardAvoidingView
         style={styles.container}
@@ -241,7 +247,7 @@ export default function AuthScreen() {
     );
   }
 
-  // Sign in / Sign up screen
+  // Sign in / Sign up screen (shown when no user is authenticated)
   return (
     <KeyboardAvoidingView
       style={styles.container}
