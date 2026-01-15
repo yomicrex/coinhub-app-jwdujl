@@ -119,7 +119,7 @@ export default function AuthScreen() {
     
     try {
       // Use authClient's fetch method to ensure credentials are included
-      const response = await authClient.$fetch("/api/auth/complete-profile", {
+      const response = await authClient.$fetch("/complete-profile", {
         method: "POST",
         body: JSON.stringify({
           username,
