@@ -66,16 +66,37 @@ export default function UserProfileScreen() {
   const fetchUserProfile = async () => {
     try {
       console.log('UserProfileScreen: Fetching profile for user:', userId);
-      const response = await fetch(`${API_URL}/api/profiles/${userId}`, {
+      // Fetch user coins first to get user info
+      const coinsResponse = await fetch(`${API_URL}/api/users/${userId}/coins?limit=1`, {
         credentials: 'include',
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log('UserProfileScreen: Profile data:', data);
-        setProfile(data.profile);
+      if (coinsResponse.ok) {
+        const coinsData = await coinsResponse.json();
+        console.log('UserProfileScreen: Coins data:', coinsData);
+        
+        // Extract user profile from coins response
+        if (coinsData.coins && coinsData.coins.length > 0 && coinsData.coins[0].user) {
+          const userProfile = coinsData.coins[0].user;
+          setProfile({
+            id: userProfile.id,
+            username: userProfile.username,
+            displayName: userProfile.displayName || userProfile.display_name,
+            avatar_url: userProfile.avatar_url || userProfile.avatarUrl,
+            bio: userProfile.bio,
+            location: userProfile.location,
+          });
+          console.log('UserProfileScreen: Profile extracted from coins:', userProfile);
+        } else {
+          // If no coins, create a minimal profile
+          setProfile({
+            id: userId,
+            username: 'user',
+            displayName: 'User',
+          });
+        }
       } else {
-        console.error('UserProfileScreen: Failed to fetch profile, status:', response.status);
+        console.error('UserProfileScreen: Failed to fetch profile, status:', coinsResponse.status);
         Alert.alert('Error', 'Failed to load user profile');
       }
     } catch (error) {
@@ -158,42 +179,39 @@ export default function UserProfileScreen() {
     setFollowLoading(true);
 
     try {
-      const endpoint = `/users/${userId}/follow`;
-      let response;
+      const endpoint = `${API_URL}/api/users/${userId}/follow`;
 
       if (isFollowing) {
         // Unfollow - use DELETE
         console.log('UserProfileScreen: Sending DELETE request to unfollow');
-        response = await authClient.$fetch(endpoint, {
+        const response = await authClient.$fetch(endpoint, {
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({}),
         });
+        
+        console.log('UserProfileScreen: Unfollow response:', response);
+        setIsFollowing(false);
+        setFollowerCount(prev => Math.max(0, prev - 1));
       } else {
         // Follow - use POST
         console.log('UserProfileScreen: Sending POST request to follow');
-        response = await authClient.$fetch(endpoint, {
+        const response = await authClient.$fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({}),
         });
+        
+        console.log('UserProfileScreen: Follow response:', response);
+        setIsFollowing(true);
+        setFollowerCount(prev => prev + 1);
       }
-
-      console.log('UserProfileScreen: Follow toggle response:', response);
-
-      if (!response || response.error) {
-        console.error('UserProfileScreen: Follow toggle failed:', response?.error);
-        Alert.alert('Error', response?.error?.message || 'Failed to update follow status');
-      } else {
-        const newFollowStatus = !isFollowing;
-        setIsFollowing(newFollowStatus);
-        setFollowerCount(prev => newFollowStatus ? prev + 1 : prev - 1);
-        console.log('UserProfileScreen: Follow status updated to:', newFollowStatus);
-      }
+      
+      console.log('UserProfileScreen: Follow status updated successfully');
     } catch (error: any) {
       console.error('UserProfileScreen: Error toggling follow:', error);
       Alert.alert('Error', error.message || 'Failed to update follow status');

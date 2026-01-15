@@ -65,8 +65,12 @@ export default function ProfileScreen() {
       }
 
       const data = await response.json();
-      console.log('ProfileScreen: Fetched', data.length, 'coins');
-      setCoins(data);
+      console.log('ProfileScreen: Response data:', data);
+      
+      // Handle both response formats: { coins: [...] } or [...]
+      const coinsArray = data.coins || data;
+      console.log('ProfileScreen: Fetched', coinsArray.length, 'coins');
+      setCoins(coinsArray);
     } catch (error) {
       console.error('ProfileScreen: Error fetching coins:', error);
       Alert.alert('Error', 'Failed to load your coins. Please try again.');
@@ -87,8 +91,14 @@ export default function ProfileScreen() {
       if (followersRes.ok && followingRes.ok) {
         const followers = await followersRes.json();
         const following = await followingRes.json();
-        setFollowerCount(followers.length);
-        setFollowingCount(following.length);
+        
+        // Handle both response formats: { followers: [...], total: N } or [...]
+        const followersCount = followers.total !== undefined ? followers.total : (followers.followers?.length || followers.length || 0);
+        const followingCount = following.total !== undefined ? following.total : (following.following?.length || following.length || 0);
+        
+        console.log('ProfileScreen: Followers count:', followersCount, 'Following count:', followingCount);
+        setFollowerCount(followersCount);
+        setFollowingCount(followingCount);
       }
     } catch (error) {
       console.error('ProfileScreen: Error fetching follow counts:', error);

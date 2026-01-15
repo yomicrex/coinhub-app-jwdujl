@@ -19,6 +19,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import * as ImagePicker from 'expo-image-picker';
 import Constants from 'expo-constants';
+import { authClient } from '@/lib/auth';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 
@@ -104,53 +105,44 @@ export default function EditProfileScreen() {
       // Create form data
       const formData = new FormData();
       
-      // Get file extension
-      const uriParts = uri.split('.');
-      const fileType = uriParts[uriParts.length - 1];
-      
-      formData.append('avatar', {
-        uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
-        name: `avatar.${fileType}`,
-        type: `image/${fileType}`,
-      } as any);
+      if (Platform.OS === 'web') {
+        const imageResponse = await fetch(uri);
+        const blob = await imageResponse.blob();
+        formData.append('avatar', blob, 'avatar.jpg');
+      } else {
+        // Get file extension
+        const uriParts = uri.split('.');
+        const fileType = uriParts[uriParts.length - 1];
+        
+        formData.append('avatar', {
+          uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
+          name: `avatar.${fileType}`,
+          type: `image/${fileType}`,
+        } as any);
+      }
 
       console.log('EditProfile: Sending avatar upload request to /api/profiles/me/avatar');
       
-      const response = await fetch(`${API_URL}/api/profiles/me/avatar`, {
+      const data = await authClient.$fetch(`${API_URL}/api/profiles/me/avatar`, {
         method: 'POST',
         body: formData,
-        credentials: 'include',
-        headers: {
-          'Accept': 'application/json',
-        },
       });
 
-      console.log('EditProfile: Avatar upload response status:', response.status);
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('EditProfile: Avatar uploaded successfully:', data);
-        
-        setAvatarUri(data.avatar_url || data.avatarUrl);
-        
-        Alert.alert(
-          'Success',
-          'Profile picture updated successfully!',
-          [{ text: 'OK' }]
-        );
-        
-        // Refresh user data
-        await fetchUser();
-      } else {
-        const errorText = await response.text();
-        console.error('EditProfile: Avatar upload failed, status:', response.status, 'error:', errorText);
-        
-        Alert.alert(
-          'Upload Failed',
-          'Failed to upload profile picture. Please try again.',
-          [{ text: 'OK' }]
-        );
-      }
+      console.log('EditProfile: Avatar uploaded successfully:', data);
+      
+      // Handle both camelCase and snake_case response formats
+      const newAvatarUrl = data.avatarUrl || data.avatar_url || data.url;
+      console.log('EditProfile: New avatar URL:', newAvatarUrl);
+      setAvatarUri(newAvatarUrl);
+      
+      Alert.alert(
+        'Success',
+        'Profile picture updated successfully!',
+        [{ text: 'OK' }]
+      );
+      
+      // Refresh user data
+      await fetchUser();
     } catch (error) {
       console.error('EditProfile: Error uploading avatar:', error);
       Alert.alert(
@@ -179,49 +171,34 @@ export default function EditProfileScreen() {
       setLoading(true);
       console.log('EditProfile: Saving profile changes');
 
-      const response = await fetch(`${API_URL}/api/profiles/me`, {
+      const data = await authClient.$fetch(`${API_URL}/api/profiles/me`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
         body: JSON.stringify({
-          display_name: displayName.trim(),
-          bio: bio.trim(),
-          location: location.trim(),
+          displayName: displayName.trim(),
+          bio: bio.trim() || undefined,
+          location: location.trim() || undefined,
         }),
       });
 
-      console.log('EditProfile: Save profile response status:', response.status);
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('EditProfile: Profile saved successfully:', data);
-        
-        Alert.alert(
-          'Success',
-          'Profile updated successfully!',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                // Refresh user data and go back
-                fetchUser();
-                router.back();
-              },
+      console.log('EditProfile: Profile saved successfully:', data);
+      
+      Alert.alert(
+        'Success',
+        'Profile updated successfully!',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Refresh user data and go back
+              fetchUser();
+              router.back();
             },
-          ]
-        );
-      } else {
-        const errorText = await response.text();
-        console.error('EditProfile: Save profile failed, status:', response.status, 'error:', errorText);
-        
-        Alert.alert(
-          'Save Failed',
-          'Failed to update profile. Please try again.',
-          [{ text: 'OK' }]
-        );
-      }
+          },
+        ]
+      );
     } catch (error) {
       console.error('EditProfile: Error saving profile:', error);
       Alert.alert(

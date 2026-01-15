@@ -93,14 +93,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (session?.data?.user) {
         console.log("AuthProvider: User found in session:", session.data.user);
         
-        // Fetch the full profile from /me to get CoinHub profile data
+        // Fetch the full profile from /api/auth/me to get CoinHub profile data
         try {
-          const response = await authClient.$fetch("/me");
+          const response = await authClient.$fetch("/api/auth/me");
           console.log("AuthProvider: Profile response:", response);
           
           if (response && !response.error) {
-            // FIX: Access profile from response.data.profile, not response.profile
-            const profileData = response.data?.profile;
+            // Access profile from response - the /api/auth/me endpoint returns the profile directly
+            const profileData = response.profile || response.data?.profile || response;
             console.log("AuthProvider: Profile data:", profileData);
             
             // Check if user has completed their CoinHub profile

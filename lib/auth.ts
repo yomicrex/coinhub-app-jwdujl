@@ -5,7 +5,9 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 
-const API_URL = "https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev";
+// Read backend URL from app.json configuration
+const API_URL = Constants.expoConfig?.extra?.backendUrl || "https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev";
+console.log("Auth: Using backend URL:", API_URL);
 
 export const BEARER_TOKEN_KEY = "coinhub_bearer_token";
 export const SESSION_TOKEN_KEY = "coinhub_session_token";

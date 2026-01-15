@@ -18,6 +18,7 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import * as ImagePicker from 'expo-image-picker';
 import Constants from 'expo-constants';
+import { authClient } from '@/lib/auth';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 
@@ -61,40 +62,30 @@ export default function EditCoinScreen() {
     setLoadingCoin(true);
     
     try {
-      const response = await fetch(`${API_URL}/api/coins/${coinId}`, {
+      const response = await authClient.$fetch(`${API_URL}/api/coins/${coinId}`, {
         method: 'GET',
-        credentials: 'include',
       });
 
-      console.log('EditCoin: Response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('EditCoin: Failed to fetch coin:', response.status, errorText);
-        throw new Error('Failed to fetch coin data');
-      }
-
-      const coin = await response.json();
-      console.log('EditCoin: Coin data loaded:', coin);
+      console.log('EditCoin: Coin data loaded:', response);
 
       // Populate form fields
-      setTitle(coin.title || '');
-      setCountry(coin.country || '');
-      setYear(coin.year?.toString() || '');
-      setUnit(coin.unit || '');
-      setOrganization(coin.organization || '');
-      setAgency(coin.agency || '');
-      setDeployment(coin.deployment || '');
-      setCoinNumber(coin.coinNumber || coin.coin_number || '');
-      setMintMark(coin.mintMark || coin.mint_mark || '');
-      setCondition(coin.condition || '');
-      setDescription(coin.description || '');
-      setVisibility(coin.visibility || 'public');
-      setTradeStatus(coin.tradeStatus || coin.trade_status || 'not_for_trade');
+      setTitle(response.title || '');
+      setCountry(response.country || '');
+      setYear(response.year?.toString() || '');
+      setUnit(response.unit || '');
+      setOrganization(response.organization || '');
+      setAgency(response.agency || '');
+      setDeployment(response.deployment || '');
+      setCoinNumber(response.coinNumber || response.coin_number || '');
+      setMintMark(response.mintMark || response.mint_mark || '');
+      setCondition(response.condition || '');
+      setDescription(response.description || '');
+      setVisibility(response.visibility || 'public');
+      setTradeStatus(response.tradeStatus || response.trade_status || 'not_for_trade');
       
       // Set existing images - handle both camelCase and snake_case
-      if (coin.images && coin.images.length > 0) {
-        setImages(coin.images.map((img: any, index: number) => ({
+      if (response.images && response.images.length > 0) {
+        setImages(response.images.map((img: any, index: number) => ({
           id: img.id,
           url: img.url,
           orderIndex: img.orderIndex ?? img.order_index ?? index,
@@ -190,16 +181,11 @@ export default function EditCoinScreen() {
     // If it's an existing image (has an ID), delete it from the server
     if (imageToRemove.id && !imageToRemove.isNew) {
       try {
-        const response = await fetch(`${API_URL}/api/coins/${coinId}/images/${imageToRemove.id}`, {
+        await authClient.$fetch(`${API_URL}/api/coins/${coinId}/images/${imageToRemove.id}`, {
           method: 'DELETE',
-          credentials: 'include',
         });
         
-        if (!response.ok) {
-          console.error('EditCoin: Failed to delete image from server');
-        } else {
-          console.log('EditCoin: Image deleted from server');
-        }
+        console.log('EditCoin: Image deleted from server');
       } catch (error) {
         console.error('EditCoin: Error deleting image:', error);
       }
@@ -254,24 +240,14 @@ export default function EditCoinScreen() {
 
       console.log('EditCoin: Updating coin with data:', coinData);
 
-      const response = await fetch(`${API_URL}/api/coins/${coinId}`, {
+      const updatedCoin = await authClient.$fetch(`${API_URL}/api/coins/${coinId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
         body: JSON.stringify(coinData),
       });
 
-      console.log('EditCoin: Response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('EditCoin: Coin update failed:', response.status, errorText);
-        throw new Error(`Failed to update coin: ${response.status} ${errorText}`);
-      }
-
-      const updatedCoin = await response.json();
       console.log('EditCoin: Coin updated successfully:', updatedCoin);
 
       // Step 2: Upload new images
@@ -298,20 +274,13 @@ export default function EditCoinScreen() {
             } as any);
           }
 
-          const uploadResponse = await fetch(`${API_URL}/api/coins/${coinId}/images`, {
+          const uploadResponse = await authClient.$fetch(`${API_URL}/api/coins/${coinId}/images`, {
             method: 'POST',
-            credentials: 'include',
             body: formData,
           });
 
-          if (!uploadResponse.ok) {
-            const errorText = await uploadResponse.text();
-            console.error('EditCoin: Image upload failed:', uploadResponse.status, errorText);
-          } else {
-            const uploadData = await uploadResponse.json();
-            console.log(`EditCoin: Image ${i + 1} uploaded successfully:`, uploadData.id);
-            uploadedCount++;
-          }
+          console.log(`EditCoin: Image ${i + 1} uploaded successfully:`, uploadResponse.id);
+          uploadedCount++;
         } catch (imageError) {
           console.error(`EditCoin: Error uploading image ${i + 1}:`, imageError);
         }
@@ -358,18 +327,9 @@ export default function EditCoinScreen() {
             setLoading(true);
             
             try {
-              const response = await fetch(`${API_URL}/api/coins/${coinId}`, {
+              await authClient.$fetch(`${API_URL}/api/coins/${coinId}`, {
                 method: 'DELETE',
-                credentials: 'include',
               });
-
-              console.log('EditCoin: Delete response status:', response.status);
-
-              if (!response.ok) {
-                const errorText = await response.text();
-                console.error('EditCoin: Delete failed:', response.status, errorText);
-                throw new Error('Failed to delete coin');
-              }
 
               console.log('EditCoin: Coin deleted successfully');
               Alert.alert('Deleted', 'Your coin has been deleted.', [
