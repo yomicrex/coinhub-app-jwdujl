@@ -8,6 +8,7 @@ import { registerCoinsRoutes } from './routes/coins.js';
 import { registerCoinImagesRoutes } from './routes/coin-images.js';
 import { registerLikesRoutes } from './routes/likes.js';
 import { registerCommentsRoutes } from './routes/comments.js';
+import { registerFeedRoutes } from './routes/feed.js';
 import { seedDatabase } from './db/seed.js';
 
 const schema = { ...appSchema, ...authSchema };
@@ -50,6 +51,7 @@ try {
   registerCoinImagesRoutes(app);
   registerLikesRoutes(app);
   registerCommentsRoutes(app);
+  registerFeedRoutes(app);
   app.logger.info('All CoinHub routes registered');
 } catch (error) {
   app.logger.error({ err: error }, 'Failed to register routes');
