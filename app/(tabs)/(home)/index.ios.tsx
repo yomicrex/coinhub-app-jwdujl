@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -17,7 +18,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import Constants from 'expo-constants';
 
-const API_URL = Constants.expoConfig?.extra?.backendUrl || 'http://localhost:3000';
+const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 
 interface Coin {
   id: string;
@@ -41,7 +42,7 @@ export default function FeedScreen() {
   const [coins, setCoins] = useState<Coin[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const { user, token } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -57,14 +58,19 @@ export default function FeedScreen() {
   const fetchCoins = async () => {
     try {
       console.log('FeedScreen: Fetching coins from /api/coins/feed');
-      const response = await fetch(`${API_URL}/api/coins/feed?limit=20&offset=0`);
+      const response = await fetch(`${API_URL}/api/coins/feed?limit=20&offset=0`, {
+        credentials: 'include',
+      });
+      
+      console.log('FeedScreen: Feed response status:', response.status);
       
       if (response.ok) {
         const data = await response.json();
         console.log('FeedScreen: Fetched', data.coins?.length || 0, 'coins');
         setCoins(data.coins || []);
       } else {
-        console.error('FeedScreen: Failed to fetch coins, status:', response.status);
+        const errorText = await response.text();
+        console.error('FeedScreen: Failed to fetch coins, status:', response.status, 'error:', errorText);
       }
     } catch (error) {
       console.error('FeedScreen: Error fetching coins:', error);
@@ -81,18 +87,18 @@ export default function FeedScreen() {
   };
 
   const handleLike = async (coinId: string) => {
-    if (!token) return;
-    
     console.log('FeedScreen: User tapped like on coin:', coinId);
     try {
       const response = await fetch(`${API_URL}/api/coins/${coinId}/like`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({}),
       });
+
+      console.log('FeedScreen: Like response status:', response.status);
 
       if (response.ok) {
         const data = await response.json();
@@ -103,10 +109,22 @@ export default function FeedScreen() {
             coin.id === coinId ? { ...coin, like_count: data.like_count } : coin
           )
         );
+      } else {
+        const errorText = await response.text();
+        console.error('FeedScreen: Like failed:', response.status, errorText);
       }
     } catch (error) {
       console.error('FeedScreen: Error liking coin:', error);
     }
+  };
+
+  const handleAddCoin = () => {
+    console.log('FeedScreen: User tapped add coin button');
+    Alert.alert(
+      'Add Coin',
+      'Coin creation feature coming soon!',
+      [{ text: 'OK' }]
+    );
   };
 
   const renderCoinCard = ({ item }: { item: Coin }) => {
@@ -117,7 +135,11 @@ export default function FeedScreen() {
         style={styles.card}
         onPress={() => {
           console.log('FeedScreen: User tapped on coin:', item.title);
-          // TODO: Navigate to coin detail screen
+          Alert.alert(
+            item.title,
+            `${item.year} • ${item.country}\n\nBy ${item.user.displayName}\n\n${item.like_count} likes • ${item.comment_count} comments`,
+            [{ text: 'OK' }]
+          );
         }}
       >
         {mainImage && (
@@ -190,6 +212,7 @@ export default function FeedScreen() {
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading feed...</Text>
         </View>
       </SafeAreaView>
     );
@@ -199,12 +222,7 @@ export default function FeedScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>CoinHub</Text>
-        <TouchableOpacity
-          onPress={() => {
-            console.log('FeedScreen: User tapped add coin button');
-            // TODO: Navigate to add coin screen
-          }}
-        >
+        <TouchableOpacity onPress={handleAddCoin}>
           <IconSymbol
             ios_icon_name="plus.circle.fill"
             android_material_icon_name="add-circle"
@@ -238,6 +256,12 @@ export default function FeedScreen() {
             <Text style={styles.emptySubtext}>
               Be the first to share your collection!
             </Text>
+            <TouchableOpacity
+              style={styles.emptyButton}
+              onPress={handleAddCoin}
+            >
+              <Text style={styles.emptyButtonText}>Add Your First Coin</Text>
+            </TouchableOpacity>
           </View>
         }
       />
@@ -269,8 +293,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
   listContent: {
     padding: 16,
+    paddingBottom: 100,
   },
   card: {
     backgroundColor: colors.card,
@@ -279,7 +309,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.border,
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
     elevation: 3,
   },
   coinImage: {
@@ -368,5 +401,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     marginTop: 8,
+    marginBottom: 20,
+  },
+  emptyButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 20,
+  },
+  emptyButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

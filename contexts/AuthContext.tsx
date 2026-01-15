@@ -8,6 +8,11 @@ interface User {
   email: string;
   name?: string;
   image?: string;
+  username?: string;
+  displayName?: string;
+  avatar_url?: string;
+  bio?: string;
+  location?: string;
 }
 
 interface AuthContextType {
@@ -20,6 +25,7 @@ interface AuthContextType {
   signInWithGitHub: () => Promise<void>;
   signOut: () => Promise<void>;
   fetchUser: () => Promise<void>;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -84,8 +90,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log("AuthProvider: Session data:", session);
       
       if (session?.data?.user) {
-        console.log("AuthProvider: User found:", session.data.user);
-        setUser(session.data.user as User);
+        console.log("AuthProvider: User found in session:", session.data.user);
+        
+        // Fetch the full profile from /api/auth/me to get CoinHub profile data
+        try {
+          const response = await fetch(`${authClient.options.baseURL}/api/auth/me`, {
+            credentials: "include",
+          });
+          
+          if (response.ok) {
+            const profileData = await response.json();
+            console.log("AuthProvider: Profile data fetched:", profileData);
+            
+            // Merge Better Auth user with CoinHub profile
+            const mergedUser = {
+              ...session.data.user,
+              ...profileData.profile,
+            };
+            console.log("AuthProvider: Merged user data:", mergedUser);
+            setUser(mergedUser as User);
+          } else {
+            console.log("AuthProvider: Profile not found, using session user only");
+            setUser(session.data.user as User);
+          }
+        } catch (error) {
+          console.error("AuthProvider: Error fetching profile:", error);
+          setUser(session.data.user as User);
+        }
       } else {
         console.log("AuthProvider: No user session found");
         setUser(null);
@@ -215,6 +246,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const logout = signOut;
+
   return (
     <AuthContext.Provider
       value={{
@@ -226,6 +259,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signInWithApple,
         signInWithGitHub,
         signOut,
+        logout,
         fetchUser,
       }}
     >

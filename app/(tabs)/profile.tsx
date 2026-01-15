@@ -9,6 +9,7 @@ import {
   Image,
   Alert,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -17,7 +18,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import Constants from 'expo-constants';
 
-const API_URL = Constants.expoConfig?.extra?.backendUrl || 'http://localhost:3000';
+const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 
 interface UserCoin {
   id: string;
@@ -37,7 +38,7 @@ export default function ProfileScreen() {
   const router = useRouter();
 
   useEffect(() => {
-    console.log('ProfileScreen: Component mounted, user:', user?.username);
+    console.log('ProfileScreen: Component mounted, user:', user);
     if (!user) {
       console.log('ProfileScreen: No user found, redirecting to auth');
       router.replace('/auth');
@@ -47,18 +48,31 @@ export default function ProfileScreen() {
   }, [user]);
 
   const fetchUserCoins = async () => {
-    if (!user) return;
+    if (!user) {
+      console.log('ProfileScreen: No user, skipping coin fetch');
+      return;
+    }
     
     try {
-      console.log('ProfileScreen: Fetching user coins from /api/users/' + user.id + '/coins');
-      const response = await fetch(`${API_URL}/api/users/${user.id}/coins?limit=20&offset=0`);
+      console.log('ProfileScreen: Fetching user coins for user ID:', user.id);
+      const response = await fetch(`${API_URL}/api/users/${user.id}/coins?limit=20&offset=0`, {
+        credentials: 'include',
+      });
+      
+      console.log('ProfileScreen: Fetch coins response status:', response.status);
       
       if (response.ok) {
         const data = await response.json();
-        console.log('ProfileScreen: Fetched', data.coins?.length || 0, 'coins');
+        console.log('ProfileScreen: Fetched coins data:', data);
         setCoins(data.coins || []);
       } else {
-        console.error('ProfileScreen: Failed to fetch coins, status:', response.status);
+        const errorText = await response.text();
+        console.error('ProfileScreen: Failed to fetch coins, status:', response.status, 'error:', errorText);
+        
+        // If unauthorized, user might not have completed profile
+        if (response.status === 401) {
+          console.log('ProfileScreen: Unauthorized - user may need to complete profile');
+        }
       }
     } catch (error) {
       console.error('ProfileScreen: Error fetching coins:', error);
@@ -87,8 +101,31 @@ export default function ProfileScreen() {
     );
   };
 
+  const handleAddCoin = () => {
+    console.log('ProfileScreen: User tapped Add Coin button');
+    Alert.alert(
+      'Add Coin',
+      'Coin creation feature coming soon!',
+      [{ text: 'OK' }]
+    );
+  };
+
+  const handleSettings = () => {
+    console.log('ProfileScreen: User tapped Settings');
+    Alert.alert(
+      'Settings',
+      'Settings screen coming soon!',
+      [{ text: 'OK' }]
+    );
+  };
+
   if (!user) {
-    return null;
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Loading profile...</Text>
+      </View>
+    );
   }
 
   return (
@@ -96,8 +133,8 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <View style={styles.avatarContainer}>
-            {user.avatar_url ? (
-              <Image source={{ uri: user.avatar_url }} style={styles.avatar} />
+            {user.avatar_url || user.image ? (
+              <Image source={{ uri: user.avatar_url || user.image }} style={styles.avatar} />
             ) : (
               <View style={styles.avatarPlaceholder}>
                 <IconSymbol
@@ -110,8 +147,12 @@ export default function ProfileScreen() {
             )}
           </View>
 
-          <Text style={styles.displayName}>{user.displayName}</Text>
-          <Text style={styles.username}>@{user.username}</Text>
+          <Text style={styles.displayName}>
+            {user.displayName || user.name || user.email?.split('@')[0] || 'User'}
+          </Text>
+          {user.username && (
+            <Text style={styles.username}>@{user.username}</Text>
+          )}
 
           {user.bio && <Text style={styles.bio}>{user.bio}</Text>}
           {user.location && (
@@ -147,21 +188,45 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          <TouchableOpacity
-            style={styles.editButton}
-            onPress={() => {
-              console.log('ProfileScreen: User tapped edit profile button');
-              // TODO: Navigate to edit profile screen
-            }}
-          >
-            <Text style={styles.editButtonText}>Edit Profile</Text>
-          </TouchableOpacity>
+          <View style={styles.buttonRow}>
+            <TouchableOpacity
+              style={styles.editButton}
+              onPress={() => {
+                console.log('ProfileScreen: User tapped edit profile button');
+                Alert.alert(
+                  'Edit Profile',
+                  'Profile editing coming soon!',
+                  [{ text: 'OK' }]
+                );
+              }}
+            >
+              <Text style={styles.editButtonText}>Edit Profile</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.addCoinButton}
+              onPress={handleAddCoin}
+            >
+              <IconSymbol
+                ios_icon_name="plus"
+                android_material_icon_name="add"
+                size={20}
+                color="#FFFFFF"
+              />
+              <Text style={styles.addCoinButtonText}>Add Coin</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>My Collection</Text>
           
-          {coins.length === 0 ? (
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={styles.loadingText}>Loading coins...</Text>
+            </View>
+          ) : coins.length === 0 ? (
             <View style={styles.emptyContainer}>
               <IconSymbol
                 ios_icon_name="circle.fill"
@@ -171,16 +236,26 @@ export default function ProfileScreen() {
               />
               <Text style={styles.emptyText}>No coins yet</Text>
               <Text style={styles.emptySubtext}>Start building your collection!</Text>
+              <TouchableOpacity
+                style={styles.emptyButton}
+                onPress={handleAddCoin}
+              >
+                <Text style={styles.emptyButtonText}>Add Your First Coin</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.coinsGrid}>
-              {coins.map((coin, index) => (
+              {coins.map((coin) => (
                 <TouchableOpacity
                   key={coin.id}
                   style={styles.coinCard}
                   onPress={() => {
                     console.log('ProfileScreen: User tapped on coin:', coin.title);
-                    // TODO: Navigate to coin detail
+                    Alert.alert(
+                      coin.title,
+                      `${coin.year} • ${coin.country}\n\n${coin.like_count} likes • ${coin.comment_count} comments`,
+                      [{ text: 'OK' }]
+                    );
                   }}
                 >
                   {coin.images[0] && (
@@ -205,10 +280,7 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <TouchableOpacity
             style={styles.menuItem}
-            onPress={() => {
-              console.log('ProfileScreen: User tapped Settings');
-              // TODO: Navigate to settings screen
-            }}
+            onPress={handleSettings}
           >
             <IconSymbol
               ios_icon_name="gear"
@@ -290,6 +362,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     paddingTop: Platform.OS === 'android' ? 48 : 0,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
   scrollContent: {
     paddingBottom: 100,
   },
@@ -368,13 +451,37 @@ const styles = StyleSheet.create({
     height: 30,
     backgroundColor: colors.border,
   },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+    paddingHorizontal: 20,
+  },
   editButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 32,
+    flex: 1,
+    backgroundColor: colors.backgroundAlt,
     paddingVertical: 10,
     borderRadius: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   editButtonText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  addCoinButton: {
+    flex: 1,
+    backgroundColor: colors.primary,
+    paddingVertical: 10,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  addCoinButtonText: {
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
@@ -402,6 +509,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     marginTop: 4,
+    marginBottom: 20,
+  },
+  emptyButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 20,
+  },
+  emptyButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   coinsGrid: {
     flexDirection: 'row',
