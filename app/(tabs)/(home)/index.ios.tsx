@@ -1,5 +1,4 @@
 
-import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,13 +10,14 @@ import {
   ActivityIndicator,
   Dimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { colors } from '@/styles/commonStyles';
-import { useAuth } from '@/contexts/AuthContext';
-import { IconSymbol } from '@/components/IconSymbol';
+import React, { useState, useEffect } from 'react';
 import { authClient } from '@/lib/auth';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '@/contexts/AuthContext';
 import Constants from 'expo-constants';
+import { IconSymbol } from '@/components/IconSymbol';
+import { colors } from '@/styles/commonStyles';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 const { width } = Dimensions.get('window');
@@ -162,8 +162,7 @@ export default function FeedScreen() {
 
   const handleCoinPress = (coinId: string) => {
     console.log('FeedScreen: User tapped on coin:', coinId);
-    // Navigate to coin detail view (to be implemented)
-    // For now, just log
+    router.push(`/coin-detail?coinId=${coinId}`);
   };
 
   const renderCoinCard = ({ item }: { item: Coin }) => {
@@ -276,7 +275,10 @@ export default function FeedScreen() {
               />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionButton}>
+            <TouchableOpacity 
+              style={styles.actionButton}
+              onPress={() => handleCoinPress(item.id)}
+            >
               <IconSymbol
                 ios_icon_name="message.fill"
                 android_material_icon_name="chat-bubble"
@@ -304,15 +306,17 @@ export default function FeedScreen() {
             </Text>
           )}
           
-          <View style={styles.captionContainer}>
-            <Text style={styles.captionUsername}>{item.user.displayName}</Text>
-            <Text style={styles.captionText}>
-              {' '}{item.title} • {item.year} • {item.country}
-            </Text>
-          </View>
+          <TouchableOpacity onPress={() => handleCoinPress(item.id)}>
+            <View style={styles.captionContainer}>
+              <Text style={styles.captionUsername}>{item.user.displayName}</Text>
+              <Text style={styles.captionText}>
+                {' '}{item.title} • {item.year} • {item.country}
+              </Text>
+            </View>
+          </TouchableOpacity>
 
           {commentCount > 0 && (
-            <TouchableOpacity>
+            <TouchableOpacity onPress={() => handleCoinPress(item.id)}>
               <Text style={styles.viewCommentsText}>
                 View all {commentCount} {commentCount === 1 ? 'comment' : 'comments'}
               </Text>
@@ -404,7 +408,6 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
     color: colors.text,
-    fontFamily: 'System',
   },
   addButton: {
     padding: 4,
@@ -493,10 +496,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
+    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.2)',
     elevation: 4,
   },
   tradeBadgeText: {

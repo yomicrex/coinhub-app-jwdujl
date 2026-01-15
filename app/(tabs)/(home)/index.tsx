@@ -163,8 +163,7 @@ export default function FeedScreen() {
 
   const handleCoinPress = (coinId: string) => {
     console.log('FeedScreen: User tapped on coin:', coinId);
-    // Navigate to coin detail view (to be implemented)
-    // For now, just log
+    router.push(`/coin-detail?coinId=${coinId}`);
   };
 
   const renderCoinCard = ({ item }: { item: Coin }) => {
@@ -277,7 +276,10 @@ export default function FeedScreen() {
               />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionButton}>
+            <TouchableOpacity 
+              style={styles.actionButton}
+              onPress={() => handleCoinPress(item.id)}
+            >
               <IconSymbol
                 ios_icon_name="message.fill"
                 android_material_icon_name="chat-bubble"
@@ -305,15 +307,17 @@ export default function FeedScreen() {
             </Text>
           )}
           
-          <View style={styles.captionContainer}>
-            <Text style={styles.captionUsername}>{item.user.displayName}</Text>
-            <Text style={styles.captionText}>
-              {' '}{item.title} • {item.year} • {item.country}
-            </Text>
-          </View>
+          <TouchableOpacity onPress={() => handleCoinPress(item.id)}>
+            <View style={styles.captionContainer}>
+              <Text style={styles.captionUsername}>{item.user.displayName}</Text>
+              <Text style={styles.captionText}>
+                {' '}{item.title} • {item.year} • {item.country}
+              </Text>
+            </View>
+          </TouchableOpacity>
 
           {commentCount > 0 && (
-            <TouchableOpacity>
+            <TouchableOpacity onPress={() => handleCoinPress(item.id)}>
               <Text style={styles.viewCommentsText}>
                 View all {commentCount} {commentCount === 1 ? 'comment' : 'comments'}
               </Text>
