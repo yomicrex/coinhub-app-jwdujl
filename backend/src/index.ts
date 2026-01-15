@@ -15,22 +15,49 @@ export const app = await createApplication(schema);
 
 export type App = typeof app;
 
-app.withAuth();
+// Initialize authentication system
+// Better Auth automatically enables email/password provider
+try {
+  app.logger.info('Initializing authentication system');
+  app.withAuth();
+  app.logger.info('Authentication initialized successfully');
+} catch (error) {
+  app.logger.error({ err: error }, 'Failed to initialize authentication');
+  throw error;
+}
 
 // Register all routes AFTER app is created
-registerAuthRoutes(app);
-registerInviteCodesRoutes(app);
-registerProfileRoutes(app);
-registerCoinsRoutes(app);
-registerLikesRoutes(app);
-registerCommentsRoutes(app);
+try {
+  app.logger.info('Registering authentication routes');
+  registerAuthRoutes(app);
+  app.logger.info('Authentication routes registered');
+
+  app.logger.info('Registering CoinHub routes');
+  registerInviteCodesRoutes(app);
+  registerProfileRoutes(app);
+  registerCoinsRoutes(app);
+  registerLikesRoutes(app);
+  registerCommentsRoutes(app);
+  app.logger.info('All CoinHub routes registered');
+} catch (error) {
+  app.logger.error({ err: error }, 'Failed to register routes');
+  throw error;
+}
 
 // Seed database with initial data
 try {
+  app.logger.info('Starting database seed');
   await seedDatabase();
+  app.logger.info('Database seeded successfully');
 } catch (error) {
   app.logger.error({ err: error }, 'Failed to seed database');
+  // Don't throw - seeding failures shouldn't prevent app startup
 }
 
-await app.run();
-app.logger.info('CoinHub application running');
+try {
+  await app.run();
+  app.logger.info('CoinHub application running');
+} catch (error) {
+  app.logger.error({ err: error }, 'Failed to start application');
+  process.exit(1);
+}

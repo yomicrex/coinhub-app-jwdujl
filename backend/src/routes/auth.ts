@@ -52,46 +52,72 @@ export function registerAuthRoutes(app: App) {
   const requireAuth = app.requireAuth();
 
   /**
+   * GET /api/auth/health
+   * Health check endpoint to verify authentication system is running
+   */
+  app.fastify.get('/api/auth/health', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.info('Auth health check requested');
+    try {
+      // Test database connection by checking if auth user table exists
+      const testUser = await app.db.query.user.findMany({ limit: 1 });
+      app.logger.info({ userCount: testUser.length }, 'Auth health check passed');
+      return { status: 'healthy', timestamp: new Date().toISOString() };
+    } catch (error) {
+      app.logger.error({ err: error }, 'Auth health check failed - database connectivity issue');
+      return reply.status(503).send({
+        status: 'unhealthy',
+        error: 'Database connectivity issue',
+        timestamp: new Date().toISOString(),
+      });
+    }
+  });
+
+  /**
    * POST /api/auth/validate-invite
    * Validate an invite code before registration
    */
   app.fastify.post('/api/auth/validate-invite', async (request: FastifyRequest, reply: FastifyReply) => {
-    app.logger.info({ body: request.body }, 'Validating invite code');
+    app.logger.info({ code: (request.body as any)?.inviteCode }, 'Validating invite code');
 
     try {
       const body = ValidateInviteSchema.parse(request.body);
 
       // Validate invite code exists
-      const inviteCode = await app.db.query.inviteCodes.findFirst({
-        where: eq(schema.inviteCodes.code, body.inviteCode),
-      });
+      try {
+        const inviteCode = await app.db.query.inviteCodes.findFirst({
+          where: eq(schema.inviteCodes.code, body.inviteCode),
+        });
 
-      if (!inviteCode) {
-        app.logger.warn({ code: body.inviteCode }, 'Invalid invite code');
-        return reply.status(400).send({ error: 'Invalid invite code' });
+        if (!inviteCode) {
+          app.logger.warn({ code: body.inviteCode }, 'Invalid invite code');
+          return reply.status(400).send({ error: 'Invalid invite code' });
+        }
+
+        // Check if code has expired
+        if (inviteCode.expiresAt && new Date(inviteCode.expiresAt) < new Date()) {
+          app.logger.warn({ code: body.inviteCode }, 'Invite code expired');
+          return reply.status(400).send({ error: 'Invite code has expired' });
+        }
+
+        // Check usage limit
+        if (inviteCode.usageLimit && inviteCode.usageCount >= inviteCode.usageLimit) {
+          app.logger.warn({ code: body.inviteCode, limit: inviteCode.usageLimit, count: inviteCode.usageCount }, 'Invite code usage limit reached');
+          return reply.status(400).send({ error: 'Invite code usage limit reached' });
+        }
+
+        app.logger.info({ code: body.inviteCode }, 'Invite code validated successfully');
+        return { valid: true, message: 'Invite code is valid' };
+      } catch (dbError) {
+        app.logger.error({ err: dbError, code: body.inviteCode }, 'Database error during invite validation');
+        return reply.status(503).send({ error: 'Database error', message: 'Unable to validate invite code' });
       }
-
-      // Check if code has expired
-      if (inviteCode.expiresAt && new Date(inviteCode.expiresAt) < new Date()) {
-        app.logger.warn({ code: body.inviteCode }, 'Invite code expired');
-        return reply.status(400).send({ error: 'Invite code has expired' });
-      }
-
-      // Check usage limit
-      if (inviteCode.usageLimit && inviteCode.usageCount >= inviteCode.usageLimit) {
-        app.logger.warn({ code: body.inviteCode }, 'Invite code usage limit reached');
-        return reply.status(400).send({ error: 'Invite code usage limit reached' });
-      }
-
-      app.logger.info({ code: body.inviteCode }, 'Invite code validated successfully');
-      return { valid: true, message: 'Invite code is valid' };
     } catch (error) {
       if (error instanceof z.ZodError) {
         app.logger.warn({ error: error.issues }, 'Validation error');
         return reply.status(400).send({ error: 'Validation failed', details: error.issues });
       }
       app.logger.error({ err: error }, 'Invite validation error');
-      throw error;
+      return reply.status(500).send({ error: 'Internal server error' });
     }
   });
 
@@ -159,100 +185,126 @@ export function registerAuthRoutes(app: App) {
       // Validate and process invite code if provided
       let inviteCodeUsed = null;
       if (body.inviteCode) {
-        const inviteCode = await app.db.query.inviteCodes.findFirst({
-          where: eq(schema.inviteCodes.code, body.inviteCode.toUpperCase()),
-        });
+        try {
+          const inviteCode = await app.db.query.inviteCodes.findFirst({
+            where: eq(schema.inviteCodes.code, body.inviteCode.toUpperCase()),
+          });
 
-        if (!inviteCode) {
-          app.logger.warn({ code: body.inviteCode }, 'Invalid invite code');
-          return reply.status(400).send({ error: 'Invalid invite code' });
+          if (!inviteCode) {
+            app.logger.warn({ code: body.inviteCode }, 'Invalid invite code');
+            return reply.status(400).send({ error: 'Invalid invite code' });
+          }
+
+          if (!inviteCode.isActive) {
+            app.logger.warn({ code: body.inviteCode }, 'Invite code is not active');
+            return reply.status(400).send({ error: 'Invite code is not active' });
+          }
+
+          if (inviteCode.expiresAt && new Date(inviteCode.expiresAt) < new Date()) {
+            app.logger.warn({ code: body.inviteCode }, 'Invite code has expired');
+            return reply.status(400).send({ error: 'Invite code has expired' });
+          }
+
+          if (
+            inviteCode.usageLimit !== null &&
+            inviteCode.usageCount >= inviteCode.usageLimit
+          ) {
+            app.logger.warn({ code: body.inviteCode, limit: inviteCode.usageLimit, count: inviteCode.usageCount }, 'Invite code usage limit reached');
+            return reply.status(400).send({ error: 'Invite code usage limit reached' });
+          }
+
+          // Increment invite code usage
+          try {
+            await app.db
+              .update(schema.inviteCodes)
+              .set({ usageCount: inviteCode.usageCount + 1 })
+              .where(eq(schema.inviteCodes.id, inviteCode.id));
+
+            inviteCodeUsed = body.inviteCode.toUpperCase();
+            app.logger.info({ code: body.inviteCode, newCount: inviteCode.usageCount + 1 }, 'Invite code used');
+          } catch (updateError) {
+            app.logger.error({ err: updateError, codeId: inviteCode.id }, 'Failed to increment invite code usage');
+            return reply.status(503).send({ error: 'Database error', message: 'Failed to process invite code' });
+          }
+        } catch (dbError) {
+          app.logger.error({ err: dbError, code: body.inviteCode }, 'Database error during invite code processing');
+          return reply.status(503).send({ error: 'Database error', message: 'Unable to validate invite code' });
         }
-
-        if (!inviteCode.isActive) {
-          app.logger.warn({ code: body.inviteCode }, 'Invite code is not active');
-          return reply.status(400).send({ error: 'Invite code is not active' });
-        }
-
-        if (inviteCode.expiresAt && new Date(inviteCode.expiresAt) < new Date()) {
-          app.logger.warn({ code: body.inviteCode }, 'Invite code has expired');
-          return reply.status(400).send({ error: 'Invite code has expired' });
-        }
-
-        if (
-          inviteCode.usageLimit !== null &&
-          inviteCode.usageCount >= inviteCode.usageLimit
-        ) {
-          app.logger.warn({ code: body.inviteCode }, 'Invite code usage limit reached');
-          return reply.status(400).send({ error: 'Invite code usage limit reached' });
-        }
-
-        // Increment invite code usage
-        await app.db
-          .update(schema.inviteCodes)
-          .set({ usageCount: inviteCode.usageCount + 1 })
-          .where(eq(schema.inviteCodes.id, inviteCode.id));
-
-        inviteCodeUsed = body.inviteCode.toUpperCase();
-        app.logger.info({ code: body.inviteCode, newCount: inviteCode.usageCount + 1 }, 'Invite code used');
       }
 
       // Create or update user profile
-      const existingProfile = await app.db.query.users.findFirst({
-        where: eq(schema.users.id, session.user.id),
-      });
-
       let profile;
-
-      if (existingProfile) {
-        // Update existing profile
-        const updates: any = {
-          username: body.username,
-          displayName: body.displayName,
-          bio: body.bio || null,
-          location: body.location || null,
-          avatarUrl: body.avatarUrl || null,
-        };
-
-        if (inviteCodeUsed && !existingProfile.inviteCodeUsed) {
-          updates.inviteCodeUsed = inviteCodeUsed;
-        }
-
-        await app.db
-          .update(schema.users)
-          .set(updates)
-          .where(eq(schema.users.id, session.user.id));
-
-        profile = await app.db.query.users.findFirst({
+      try {
+        const existingProfile = await app.db.query.users.findFirst({
           where: eq(schema.users.id, session.user.id),
         });
-      } else {
-        // Create new profile - fetch email from Better Auth user table
-        let email = '';
-        try {
-          const authUser = await app.db.query.user.findFirst({
-            where: eq(authSchema.user.id, session.user.id),
-          });
-          email = authUser?.email || '';
-          app.logger.debug({ userId: session.user.id, email }, 'Fetched auth user email');
-        } catch (err) {
-          app.logger.warn({ userId: session.user.id, err }, 'Failed to fetch auth user email');
-          email = session.user.email || '';
+
+        if (existingProfile) {
+          // Update existing profile
+          try {
+            const updates: any = {
+              username: body.username,
+              displayName: body.displayName,
+              bio: body.bio || null,
+              location: body.location || null,
+              avatarUrl: body.avatarUrl || null,
+            };
+
+            if (inviteCodeUsed && !existingProfile.inviteCodeUsed) {
+              updates.inviteCodeUsed = inviteCodeUsed;
+            }
+
+            await app.db
+              .update(schema.users)
+              .set(updates)
+              .where(eq(schema.users.id, session.user.id));
+
+            profile = await app.db.query.users.findFirst({
+              where: eq(schema.users.id, session.user.id),
+            });
+            app.logger.info({ userId: session.user.id }, 'User profile updated');
+          } catch (updateError) {
+            app.logger.error({ err: updateError, userId: session.user.id }, 'Failed to update user profile');
+            return reply.status(503).send({ error: 'Database error', message: 'Failed to update profile' });
+          }
+        } else {
+          // Create new profile - fetch email from Better Auth user table
+          let email = '';
+          try {
+            const authUser = await app.db.query.user.findFirst({
+              where: eq(authSchema.user.id, session.user.id),
+            });
+            email = authUser?.email || '';
+            app.logger.debug({ userId: session.user.id, email }, 'Fetched auth user email');
+          } catch (err) {
+            app.logger.warn({ userId: session.user.id, err }, 'Failed to fetch auth user email, using fallback');
+            email = session.user.email || '';
+          }
+
+          try {
+            await app.db.insert(schema.users).values({
+              id: session.user.id,
+              email: email,
+              username: body.username,
+              displayName: body.displayName,
+              bio: body.bio || null,
+              location: body.location || null,
+              avatarUrl: body.avatarUrl || null,
+              inviteCodeUsed: inviteCodeUsed,
+            });
+
+            profile = await app.db.query.users.findFirst({
+              where: eq(schema.users.id, session.user.id),
+            });
+            app.logger.info({ userId: session.user.id, email, username: body.username }, 'User profile created');
+          } catch (createError) {
+            app.logger.error({ err: createError, userId: session.user.id, username: body.username }, 'Failed to create user profile');
+            return reply.status(503).send({ error: 'Database error', message: 'Failed to create profile' });
+          }
         }
-
-        await app.db.insert(schema.users).values({
-          id: session.user.id,
-          email: email,
-          username: body.username,
-          displayName: body.displayName,
-          bio: body.bio || null,
-          location: body.location || null,
-          avatarUrl: body.avatarUrl || null,
-          inviteCodeUsed: inviteCodeUsed,
-        });
-
-        profile = await app.db.query.users.findFirst({
-          where: eq(schema.users.id, session.user.id),
-        });
+      } catch (profileError) {
+        app.logger.error({ err: profileError, userId: session.user.id }, 'Unexpected error during profile creation/update');
+        return reply.status(503).send({ error: 'Database error', message: 'Failed to complete profile' });
       }
 
       app.logger.info(
