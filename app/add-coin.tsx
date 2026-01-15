@@ -128,10 +128,48 @@ export default function AddCoinScreen() {
     setLoading(true);
 
     try {
-      console.log('AddCoin: Uploading images...');
+      console.log('AddCoin: Creating coin without images first...');
+
+      // Step 1: Create coin without images
+      const coinData = {
+        title: title.trim(),
+        country: country.trim(),
+        year: parseInt(year),
+        unit: unit.trim() || undefined,
+        organization: organization.trim() || undefined,
+        agency: agency.trim() || undefined,
+        deployment: deployment.trim() || undefined,
+        coinNumber: coinNumber.trim() || undefined,
+        mintMark: mintMark.trim() || undefined,
+        condition: condition.trim() || undefined,
+        description: description.trim() || undefined,
+        visibility,
+        tradeStatus,
+      };
+
+      console.log('AddCoin: Creating coin with data:', coinData);
+
+      const createResponse = await fetch(`${API_URL}/api/coins`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(coinData),
+      });
+
+      if (!createResponse.ok) {
+        const errorText = await createResponse.text();
+        console.error('AddCoin: Coin creation failed:', createResponse.status, errorText);
+        throw new Error('Failed to create coin');
+      }
+
+      const createdCoin = await createResponse.json();
+      console.log('AddCoin: Coin created successfully:', createdCoin.id);
+
+      // Step 2: Upload images to the created coin
+      console.log('AddCoin: Uploading', images.length, 'images to coin:', createdCoin.id);
       
-      // Upload images first
-      const imageUrls: string[] = [];
       for (let i = 0; i < images.length; i++) {
         const imageUri = images[i];
         console.log(`AddCoin: Uploading image ${i + 1}/${images.length}`);
@@ -144,18 +182,18 @@ export default function AddCoinScreen() {
           // Web: fetch the blob
           const response = await fetch(imageUri);
           const blob = await response.blob();
-          formData.append('image', blob, 'coin-image.jpg');
+          formData.append('image', blob, `coin-image-${i}.jpg`);
         } else {
           // Native: use the URI directly
           formData.append('image', {
             uri: imageUri,
             type: 'image/jpeg',
-            name: 'coin-image.jpg',
+            name: `coin-image-${i}.jpg`,
           } as any);
         }
 
-        // Upload image
-        const uploadResponse = await fetch(`${API_URL}/api/images`, {
+        // Upload image to the coin
+        const uploadResponse = await fetch(`${API_URL}/api/coins/${createdCoin.id}/images`, {
           method: 'POST',
           body: formData,
           credentials: 'include',
@@ -164,56 +202,15 @@ export default function AddCoinScreen() {
         if (!uploadResponse.ok) {
           const errorText = await uploadResponse.text();
           console.error('AddCoin: Image upload failed:', uploadResponse.status, errorText);
-          throw new Error('Failed to upload image');
+          // Continue with other images even if one fails
+          console.warn(`AddCoin: Failed to upload image ${i + 1}, continuing...`);
+        } else {
+          const uploadData = await uploadResponse.json();
+          console.log(`AddCoin: Image ${i + 1} uploaded successfully:`, uploadData.id);
         }
-
-        const uploadData = await uploadResponse.json();
-        console.log('AddCoin: Image uploaded:', uploadData.url);
-        imageUrls.push(uploadData.url);
       }
 
-      console.log('AddCoin: All images uploaded, creating coin...');
-
-      // Create coin
-      const coinData = {
-        title: title.trim(),
-        country: country.trim(),
-        year: parseInt(year),
-        unit: unit.trim() || undefined,
-        organization: organization.trim() || undefined,
-        agency: agency.trim() || undefined,
-        deployment: deployment.trim() || undefined,
-        coin_number: coinNumber.trim() || undefined,
-        mint_mark: mintMark.trim() || undefined,
-        condition: condition.trim() || undefined,
-        description: description.trim() || undefined,
-        visibility,
-        trade_status: tradeStatus,
-        images: imageUrls.map((url, index) => ({
-          url,
-          order_index: index,
-        })),
-      };
-
-      console.log('AddCoin: Creating coin with data:', coinData);
-
-      const response = await fetch(`${API_URL}/api/coins`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify(coinData),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('AddCoin: Coin creation failed:', response.status, errorText);
-        throw new Error('Failed to create coin');
-      }
-
-      const result = await response.json();
-      console.log('AddCoin: Coin created successfully:', result);
+      console.log('AddCoin: All images uploaded, coin creation complete');
 
       Alert.alert(
         'Success!',
