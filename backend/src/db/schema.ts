@@ -177,12 +177,37 @@ export const comments = pgTable(
   ]
 );
 
+/**
+ * Follows Table
+ * Tracks user-to-user follow relationships
+ */
+export const follows = pgTable(
+  'follows',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    followerId: text('follower_id').notNull().references(() => users.id, {
+      onDelete: 'cascade',
+    }),
+    followingId: text('following_id').notNull().references(() => users.id, {
+      onDelete: 'cascade',
+    }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_follower_following').on(table.followerId, table.followingId),
+    index('idx_follows_follower').on(table.followerId),
+    index('idx_follows_following').on(table.followingId),
+  ]
+);
+
 // ===== RELATIONS =====
 
 export const usersRelations = relations(users, ({ many }) => ({
   coins: many(coins),
   likes: many(likes),
   comments: many(comments),
+  followers: many(follows, { relationName: 'followers' }),
+  following: many(follows, { relationName: 'following' }),
 }));
 
 export const coinsRelations = relations(coins, ({ one, many }) => ({
@@ -221,5 +246,18 @@ export const commentsRelations = relations(comments, ({ one }) => ({
   coin: one(coins, {
     fields: [comments.coinId],
     references: [coins.id],
+  }),
+}));
+
+export const followsRelations = relations(follows, ({ one }) => ({
+  follower: one(users, {
+    fields: [follows.followerId],
+    references: [users.id],
+    relationName: 'followers',
+  }),
+  following: one(users, {
+    fields: [follows.followingId],
+    references: [users.id],
+    relationName: 'following',
   }),
 }));
