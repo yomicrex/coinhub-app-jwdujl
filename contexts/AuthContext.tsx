@@ -274,8 +274,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Call Better Auth signOut to invalidate the session on the server
       try {
         console.log("AuthProvider: Calling Better Auth signOut");
-        await authClient.signOut();
-        console.log("AuthProvider: Better Auth signOut successful");
+        const result = await authClient.signOut();
+        console.log("AuthProvider: Better Auth signOut result:", result);
       } catch (signOutError) {
         console.error("AuthProvider: Better Auth signOut failed (continuing anyway):", signOutError);
         // Continue even if signOut fails - we still want to clear local state

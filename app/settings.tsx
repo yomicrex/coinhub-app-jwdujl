@@ -24,7 +24,7 @@ export default function SettingsScreen() {
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     console.log('Settings: User tapped logout');
     
     if (loggingOut) {
@@ -32,38 +32,21 @@ export default function SettingsScreen() {
       return;
     }
     
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { 
-          text: 'Cancel', 
-          style: 'cancel',
-          onPress: () => console.log('Settings: User cancelled logout')
-        },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              console.log('Settings: User confirmed logout, starting logout process');
-              setLoggingOut(true);
-              
-              await logout();
-              
-              console.log('Settings: Logout successful, redirecting to auth');
-              router.replace('/auth');
-            } catch (error) {
-              console.error('Settings: Logout error:', error);
-              // Even if logout fails, redirect to auth
-              router.replace('/auth');
-            } finally {
-              setLoggingOut(false);
-            }
-          },
-        },
-      ]
-    );
+    try {
+      console.log('Settings: Starting logout process immediately');
+      setLoggingOut(true);
+      
+      await logout();
+      
+      console.log('Settings: Logout successful, redirecting to auth');
+      router.replace('/auth');
+    } catch (error) {
+      console.error('Settings: Logout error:', error);
+      // Even if logout fails, redirect to auth
+      router.replace('/auth');
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
   const handleDeleteAccount = () => {
@@ -321,7 +304,7 @@ export default function SettingsScreen() {
             <Text style={[styles.sectionTitle, { color: colors.error }]}>Danger Zone</Text>
             
             <TouchableOpacity 
-              style={[styles.menuItem, loggingOut && styles.menuItemDisabled]} 
+              style={[styles.menuItem, styles.logoutItem, loggingOut && styles.menuItemDisabled]} 
               onPress={handleLogout}
               disabled={loggingOut}
             >
@@ -378,6 +361,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  logoutItem: {
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },

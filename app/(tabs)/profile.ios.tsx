@@ -81,7 +81,7 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     console.log('ProfileScreen: User tapped logout button');
     
     if (loggingOut) {
@@ -89,38 +89,21 @@ export default function ProfileScreen() {
       return;
     }
     
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { 
-          text: 'Cancel', 
-          style: 'cancel',
-          onPress: () => console.log('ProfileScreen: User cancelled logout')
-        },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              console.log('ProfileScreen: User confirmed logout, starting logout process');
-              setLoggingOut(true);
-              
-              await logout();
-              
-              console.log('ProfileScreen: Logout successful, redirecting to auth');
-              router.replace('/auth');
-            } catch (error) {
-              console.error('ProfileScreen: Logout error:', error);
-              // Even if logout fails, redirect to auth
-              router.replace('/auth');
-            } finally {
-              setLoggingOut(false);
-            }
-          },
-        },
-      ]
-    );
+    try {
+      console.log('ProfileScreen: Starting logout process immediately');
+      setLoggingOut(true);
+      
+      await logout();
+      
+      console.log('ProfileScreen: Logout successful, redirecting to auth');
+      router.replace('/auth');
+    } catch (error) {
+      console.error('ProfileScreen: Logout error:', error);
+      // Even if logout fails, redirect to auth
+      router.replace('/auth');
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
   const handleAddCoin = () => {
@@ -354,7 +337,7 @@ export default function ProfileScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.menuItem, loggingOut && styles.menuItemDisabled]} 
+            style={[styles.menuItem, styles.logoutItem, loggingOut && styles.menuItemDisabled]} 
             onPress={handleLogout}
             disabled={loggingOut}
           >
@@ -585,6 +568,9 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  logoutItem: {
+    borderBottomWidth: 0,
   },
   menuItemDisabled: {
     opacity: 0.5,
