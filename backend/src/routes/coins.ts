@@ -151,6 +151,37 @@ export function registerCoinsRoutes(app: App) {
 
       app.logger.info({ coinId: id }, 'Coin fetched successfully');
 
+      // Generate signed URLs for images
+      const imagesWithUrls = await Promise.all(
+        coin.images.map(async (img) => {
+          try {
+            const { url } = await app.storage.getSignedUrl(img.url);
+            return {
+              url,
+              orderIndex: img.orderIndex,
+            };
+          } catch (urlError) {
+            app.logger.warn({ err: urlError, imageId: img.id }, 'Failed to generate signed URL');
+            return {
+              url: null,
+              orderIndex: img.orderIndex,
+            };
+          }
+        })
+      );
+
+      // Generate signed URL for user avatar if it exists
+      let userAvatarUrl = coin.user.avatarUrl;
+      if (userAvatarUrl) {
+        try {
+          const { url } = await app.storage.getSignedUrl(userAvatarUrl);
+          userAvatarUrl = url;
+        } catch (urlError) {
+          app.logger.warn({ err: urlError, userId: coin.user.id }, 'Failed to generate avatar signed URL');
+          userAvatarUrl = null;
+        }
+      }
+
       return {
         id: coin.id,
         title: coin.title,
@@ -170,12 +201,9 @@ export function registerCoinsRoutes(app: App) {
           id: coin.user.id,
           username: coin.user.username,
           displayName: coin.user.displayName,
-          avatarUrl: coin.user.avatarUrl,
+          avatarUrl: userAvatarUrl,
         },
-        images: coin.images.map((img) => ({
-          url: img.url,
-          orderIndex: img.orderIndex,
-        })),
+        images: imagesWithUrls,
         likeCount: coin.likes.length,
         commentCount: coin.comments.length,
         createdAt: coin.createdAt,
@@ -389,21 +417,53 @@ export function registerCoinsRoutes(app: App) {
         });
         const total = allCoins.length;
 
-        const result = coins.map((coin) => ({
-          id: coin.id,
-          title: coin.title,
-          country: coin.country,
-          year: coin.year,
-          user: coin.user,
-          images: coin.images.map((img) => ({
-            url: img.url,
-            orderIndex: img.orderIndex,
-          })),
-          likeCount: coin.likes.length,
-          commentCount: coin.comments.length,
-          tradeStatus: coin.tradeStatus,
-          createdAt: coin.createdAt,
-        }));
+        // Generate signed URLs for images in all coins
+        const result = await Promise.all(
+          coins.map(async (coin) => {
+            const imagesWithUrls = await Promise.all(
+              coin.images.map(async (img) => {
+                try {
+                  const { url } = await app.storage.getSignedUrl(img.url);
+                  return {
+                    url,
+                    orderIndex: img.orderIndex,
+                  };
+                } catch (urlError) {
+                  app.logger.warn({ err: urlError, imageId: img.id }, 'Failed to generate signed URL');
+                  return {
+                    url: null,
+                    orderIndex: img.orderIndex,
+                  };
+                }
+              })
+            );
+
+            // Generate signed URL for user avatar if it exists
+            let userAvatarUrl = coin.user.avatarUrl;
+            if (userAvatarUrl) {
+              try {
+                const { url } = await app.storage.getSignedUrl(userAvatarUrl);
+                userAvatarUrl = url;
+              } catch (urlError) {
+                app.logger.warn({ err: urlError, userId: coin.user.id }, 'Failed to generate avatar signed URL');
+                userAvatarUrl = null;
+              }
+            }
+
+            return {
+              id: coin.id,
+              title: coin.title,
+              country: coin.country,
+              year: coin.year,
+              user: { ...coin.user, avatarUrl: userAvatarUrl },
+              images: imagesWithUrls,
+              likeCount: coin.likes.length,
+              commentCount: coin.comments.length,
+              tradeStatus: coin.tradeStatus,
+              createdAt: coin.createdAt,
+            };
+          })
+        );
 
         app.logger.info({ count: result.length, total, page: pageNum, limit: limitNum }, 'Coins fetched');
         return {
@@ -454,19 +514,39 @@ export function registerCoinsRoutes(app: App) {
         orderBy: (coin) => coin.createdAt,
       });
 
-      const result = coins.map((coin) => ({
-        id: coin.id,
-        title: coin.title,
-        country: coin.country,
-        year: coin.year,
-        images: coin.images.map((img) => ({
-          url: img.url,
-          orderIndex: img.orderIndex,
-        })),
-        likeCount: coin.likes.length,
-        commentCount: coin.comments.length,
-        tradeStatus: coin.tradeStatus,
-      }));
+      // Generate signed URLs for images in all coins
+      const result = await Promise.all(
+        coins.map(async (coin) => {
+          const imagesWithUrls = await Promise.all(
+            coin.images.map(async (img) => {
+              try {
+                const { url } = await app.storage.getSignedUrl(img.url);
+                return {
+                  url,
+                  orderIndex: img.orderIndex,
+                };
+              } catch (urlError) {
+                app.logger.warn({ err: urlError, imageId: img.id }, 'Failed to generate signed URL');
+                return {
+                  url: null,
+                  orderIndex: img.orderIndex,
+                };
+              }
+            })
+          );
+
+          return {
+            id: coin.id,
+            title: coin.title,
+            country: coin.country,
+            year: coin.year,
+            images: imagesWithUrls,
+            likeCount: coin.likes.length,
+            commentCount: coin.comments.length,
+            tradeStatus: coin.tradeStatus,
+          };
+        })
+      );
 
       app.logger.info({ userId: id, count: result.length }, 'User coins fetched');
       return result;

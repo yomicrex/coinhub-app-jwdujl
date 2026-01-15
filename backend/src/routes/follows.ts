@@ -204,7 +204,22 @@ export function registerFollowRoutes(app: App) {
         return reply.status(503).send({ error: 'Database error' });
       }
 
-      const result = followers.map((f) => f.follower);
+      // Generate signed URLs for avatar images
+      const result = await Promise.all(
+        followers.map(async (f) => {
+          let avatarUrl = f.follower.avatarUrl;
+          if (avatarUrl) {
+            try {
+              const { url } = await app.storage.getSignedUrl(avatarUrl);
+              avatarUrl = url;
+            } catch (urlError) {
+              app.logger.warn({ err: urlError, userId: f.follower.id }, 'Failed to generate avatar signed URL');
+              avatarUrl = null;
+            }
+          }
+          return { ...f.follower, avatarUrl };
+        })
+      );
 
       app.logger.info({ userId, count: result.length, total: totalFollows.length }, 'Followers fetched');
       return {
@@ -284,7 +299,22 @@ export function registerFollowRoutes(app: App) {
         return reply.status(503).send({ error: 'Database error' });
       }
 
-      const result = following.map((f) => f.following);
+      // Generate signed URLs for avatar images
+      const result = await Promise.all(
+        following.map(async (f) => {
+          let avatarUrl = f.following.avatarUrl;
+          if (avatarUrl) {
+            try {
+              const { url } = await app.storage.getSignedUrl(avatarUrl);
+              avatarUrl = url;
+            } catch (urlError) {
+              app.logger.warn({ err: urlError, userId: f.following.id }, 'Failed to generate avatar signed URL');
+              avatarUrl = null;
+            }
+          }
+          return { ...f.following, avatarUrl };
+        })
+      );
 
       app.logger.info({ userId, count: result.length, total: totalFollowing.length }, 'Following fetched');
       return {
@@ -352,8 +382,25 @@ export function registerFollowRoutes(app: App) {
         return reply.status(503).send({ error: 'Database error' });
       }
 
-      app.logger.info({ userId: session.user.id, count: suggestions.length }, 'Follow suggestions fetched');
-      return { suggestions };
+      // Generate signed URLs for avatar images
+      const suggestionsWithAvatars = await Promise.all(
+        suggestions.map(async (user) => {
+          let avatarUrl = user.avatarUrl;
+          if (avatarUrl) {
+            try {
+              const { url } = await app.storage.getSignedUrl(avatarUrl);
+              avatarUrl = url;
+            } catch (urlError) {
+              app.logger.warn({ err: urlError, userId: user.id }, 'Failed to generate avatar signed URL');
+              avatarUrl = null;
+            }
+          }
+          return { ...user, avatarUrl };
+        })
+      );
+
+      app.logger.info({ userId: session.user.id, count: suggestionsWithAvatars.length }, 'Follow suggestions fetched');
+      return { suggestions: suggestionsWithAvatars };
     } catch (error) {
       app.logger.error({ err: error, userId: session.user.id }, 'Unexpected error fetching suggestions');
       return reply.status(500).send({ error: 'Failed to fetch suggestions' });

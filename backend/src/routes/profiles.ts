@@ -89,8 +89,22 @@ export function registerProfileRoutes(app: App) {
       }
 
       app.logger.info({ userId: profile.id, username }, 'User profile fetched');
+
+      // Generate signed URL for avatar if it exists
+      let avatarUrl = profile.avatarUrl;
+      if (avatarUrl) {
+        try {
+          const { url } = await app.storage.getSignedUrl(avatarUrl);
+          avatarUrl = url;
+        } catch (urlError) {
+          app.logger.warn({ err: urlError, userId: profile.id }, 'Failed to generate avatar signed URL');
+          avatarUrl = null;
+        }
+      }
+
       return {
         ...profile,
+        avatarUrl,
         followerCount,
         followingCount,
         isFollowing,
@@ -259,7 +273,20 @@ export function registerProfileRoutes(app: App) {
       }
 
       app.logger.info({ userId: session.user.id }, 'Current user profile fetched');
-      return profile;
+
+      // Generate signed URL for avatar if it exists
+      let avatarUrl = profile.avatarUrl;
+      if (avatarUrl) {
+        try {
+          const { url } = await app.storage.getSignedUrl(avatarUrl);
+          avatarUrl = url;
+        } catch (urlError) {
+          app.logger.warn({ err: urlError, userId: session.user.id }, 'Failed to generate avatar signed URL');
+          avatarUrl = null;
+        }
+      }
+
+      return { ...profile, avatarUrl };
     } catch (error) {
       app.logger.error({ err: error, userId: session.user.id }, 'Failed to fetch user profile');
       throw error;

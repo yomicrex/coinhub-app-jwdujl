@@ -94,26 +94,58 @@ export function registerFeedRoutes(app: App) {
         return reply.status(503).send({ error: 'Database error' });
       }
 
-      // Format results
-      const formattedCoins = coins.map((coin) => ({
-        id: coin.id,
-        title: coin.title,
-        country: coin.country,
-        year: coin.year,
-        condition: coin.condition,
-        description: coin.description,
-        tradeStatus: coin.tradeStatus,
-        user: coin.user,
-        images: coin.images.map((img) => ({
-          id: img.id,
-          url: img.url,
-          orderIndex: img.orderIndex,
-        })),
-        likeCount: coin.likes.length,
-        commentCount: coin.comments.length,
-        createdAt: coin.createdAt,
-        updatedAt: coin.updatedAt,
-      }));
+      // Format results with signed URLs
+      const formattedCoins = await Promise.all(
+        coins.map(async (coin) => {
+          const imagesWithUrls = await Promise.all(
+            coin.images.map(async (img) => {
+              try {
+                const { url } = await app.storage.getSignedUrl(img.url);
+                return {
+                  id: img.id,
+                  url,
+                  orderIndex: img.orderIndex,
+                };
+              } catch (urlError) {
+                app.logger.warn({ err: urlError, imageId: img.id }, 'Failed to generate signed URL');
+                return {
+                  id: img.id,
+                  url: null,
+                  orderIndex: img.orderIndex,
+                };
+              }
+            })
+          );
+
+          // Generate signed URL for user avatar if it exists
+          let userAvatarUrl = coin.user.avatarUrl;
+          if (userAvatarUrl) {
+            try {
+              const { url } = await app.storage.getSignedUrl(userAvatarUrl);
+              userAvatarUrl = url;
+            } catch (urlError) {
+              app.logger.warn({ err: urlError, userId: coin.user.id }, 'Failed to generate avatar signed URL');
+              userAvatarUrl = null;
+            }
+          }
+
+          return {
+            id: coin.id,
+            title: coin.title,
+            country: coin.country,
+            year: coin.year,
+            condition: coin.condition,
+            description: coin.description,
+            tradeStatus: coin.tradeStatus,
+            user: { ...coin.user, avatarUrl: userAvatarUrl },
+            images: imagesWithUrls,
+            likeCount: coin.likes.length,
+            commentCount: coin.comments.length,
+            createdAt: coin.createdAt,
+            updatedAt: coin.updatedAt,
+          };
+        })
+      );
 
       app.logger.info(
         { count: formattedCoins.length, total, limit, offset },
@@ -201,26 +233,58 @@ export function registerFeedRoutes(app: App) {
       const total = recentCoins.length;
       const paginatedCoins = recentCoins.slice(offset, offset + limit);
 
-      // Format results
-      const formattedCoins = paginatedCoins.map((coin) => ({
-        id: coin.id,
-        title: coin.title,
-        country: coin.country,
-        year: coin.year,
-        condition: coin.condition,
-        description: coin.description,
-        tradeStatus: coin.tradeStatus,
-        user: coin.user,
-        images: coin.images.map((img) => ({
-          id: img.id,
-          url: img.url,
-          orderIndex: img.orderIndex,
-        })),
-        likeCount: coin.likes.length,
-        commentCount: coin.comments.length,
-        createdAt: coin.createdAt,
-        updatedAt: coin.updatedAt,
-      }));
+      // Format results with signed URLs
+      const formattedCoins = await Promise.all(
+        paginatedCoins.map(async (coin) => {
+          const imagesWithUrls = await Promise.all(
+            coin.images.map(async (img) => {
+              try {
+                const { url } = await app.storage.getSignedUrl(img.url);
+                return {
+                  id: img.id,
+                  url,
+                  orderIndex: img.orderIndex,
+                };
+              } catch (urlError) {
+                app.logger.warn({ err: urlError, imageId: img.id }, 'Failed to generate signed URL');
+                return {
+                  id: img.id,
+                  url: null,
+                  orderIndex: img.orderIndex,
+                };
+              }
+            })
+          );
+
+          // Generate signed URL for user avatar if it exists
+          let userAvatarUrl = coin.user.avatarUrl;
+          if (userAvatarUrl) {
+            try {
+              const { url } = await app.storage.getSignedUrl(userAvatarUrl);
+              userAvatarUrl = url;
+            } catch (urlError) {
+              app.logger.warn({ err: urlError, userId: coin.user.id }, 'Failed to generate avatar signed URL');
+              userAvatarUrl = null;
+            }
+          }
+
+          return {
+            id: coin.id,
+            title: coin.title,
+            country: coin.country,
+            year: coin.year,
+            condition: coin.condition,
+            description: coin.description,
+            tradeStatus: coin.tradeStatus,
+            user: { ...coin.user, avatarUrl: userAvatarUrl },
+            images: imagesWithUrls,
+            likeCount: coin.likes.length,
+            commentCount: coin.comments.length,
+            createdAt: coin.createdAt,
+            updatedAt: coin.updatedAt,
+          };
+        })
+      );
 
       app.logger.info(
         { count: formattedCoins.length, total, limit, offset },
