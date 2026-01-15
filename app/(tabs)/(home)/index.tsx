@@ -48,13 +48,8 @@ export default function FeedScreen() {
 
   useEffect(() => {
     console.log('FeedScreen: Component mounted, user:', user?.username);
-    if (!user) {
-      console.log('FeedScreen: No user found, redirecting to auth');
-      router.replace('/auth');
-    } else {
-      fetchCoins();
-    }
-  }, [user]);
+    fetchCoins();
+  }, []);
 
   const fetchCoins = async () => {
     try {
@@ -121,11 +116,7 @@ export default function FeedScreen() {
 
   const handleAddCoin = () => {
     console.log('FeedScreen: User tapped add coin button');
-    Alert.alert(
-      'Add Coin',
-      'Coin creation feature coming soon!',
-      [{ text: 'OK' }]
-    );
+    router.push('/add-coin');
   };
 
   const renderCoinCard = ({ item }: { item: Coin }) => {

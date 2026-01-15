@@ -103,20 +103,12 @@ export default function ProfileScreen() {
 
   const handleAddCoin = () => {
     console.log('ProfileScreen: User tapped Add Coin button');
-    Alert.alert(
-      'Add Coin',
-      'Coin creation feature coming soon!',
-      [{ text: 'OK' }]
-    );
+    router.push('/add-coin');
   };
 
   const handleSettings = () => {
     console.log('ProfileScreen: User tapped Settings');
-    Alert.alert(
-      'Settings',
-      'Settings screen coming soon!',
-      [{ text: 'OK' }]
-    );
+    router.push('/settings');
   };
 
   if (!user) {

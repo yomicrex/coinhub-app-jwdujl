@@ -47,13 +47,8 @@ export default function FeedScreen() {
 
   useEffect(() => {
     console.log('FeedScreen: Component mounted, user:', user?.username);
-    if (!user) {
-      console.log('FeedScreen: No user found, redirecting to auth');
-      router.replace('/auth');
-    } else {
-      fetchCoins();
-    }
-  }, [user]);
+    fetchCoins();
+  }, []);
 
   const fetchCoins = async () => {
     try {
@@ -103,7 +98,6 @@ export default function FeedScreen() {
       if (response.ok) {
         const data = await response.json();
         console.log('FeedScreen: Like toggled, new count:', data.like_count);
-        // Update local state
         setCoins(prevCoins =>
           prevCoins.map(coin =>
             coin.id === coinId ? { ...coin, like_count: data.like_count } : coin
@@ -120,11 +114,7 @@ export default function FeedScreen() {
 
   const handleAddCoin = () => {
     console.log('FeedScreen: User tapped add coin button');
-    Alert.alert(
-      'Add Coin',
-      'Coin creation feature coming soon!',
-      [{ text: 'OK' }]
-    );
+    router.push('/add-coin');
   };
 
   const renderCoinCard = ({ item }: { item: Coin }) => {

@@ -67,11 +67,6 @@ export default function ProfileScreen() {
       } else {
         const errorText = await response.text();
         console.error('ProfileScreen: Failed to fetch coins, status:', response.status, 'error:', errorText);
-        
-        // If unauthorized, user might not have completed profile
-        if (response.status === 401) {
-          console.log('ProfileScreen: Unauthorized - user may need to complete profile');
-        }
       }
     } catch (error) {
       console.error('ProfileScreen: Error fetching coins:', error);
@@ -102,20 +97,12 @@ export default function ProfileScreen() {
 
   const handleAddCoin = () => {
     console.log('ProfileScreen: User tapped Add Coin button');
-    Alert.alert(
-      'Add Coin',
-      'Coin creation feature coming soon!',
-      [{ text: 'OK' }]
-    );
+    router.push('/add-coin');
   };
 
   const handleSettings = () => {
     console.log('ProfileScreen: User tapped Settings');
-    Alert.alert(
-      'Settings',
-      'Settings screen coming soon!',
-      [{ text: 'OK' }]
-    );
+    router.push('/settings');
   };
 
   if (!user) {
