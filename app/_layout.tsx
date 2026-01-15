@@ -1,3 +1,4 @@
+
 import "react-native-reanimated";
 import React, { useEffect } from "react";
 import { useFonts } from "expo-font";
@@ -22,7 +23,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 SplashScreen.preventAutoHideAsync();
 
 export const unstable_settings = {
-  initialRouteName: "(tabs)", // Ensure any route can link back to `/`
+  initialRouteName: "index", // Start at index which handles routing
 };
 
 export default function RootLayout() {
@@ -88,7 +89,10 @@ export default function RootLayout() {
             <WidgetProvider>
               <GestureHandlerRootView>
               <Stack>
-                {/* Auth screen */}
+                {/* Root index - handles routing based on auth state */}
+                <Stack.Screen name="index" options={{ headerShown: false }} />
+                
+                {/* Auth screen (Sign In / Sign Up / Profile Setup) */}
                 <Stack.Screen name="auth" options={{ headerShown: false }} />
                 
                 {/* Main app with tabs */}

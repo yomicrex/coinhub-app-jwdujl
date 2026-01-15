@@ -33,7 +33,6 @@ export default function AuthScreen() {
   const [displayName, setDisplayName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [loading, setLoading] = useState(false);
-  const [needsProfile, setNeedsProfile] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   // Check if user needs to complete profile
@@ -51,7 +50,6 @@ export default function AuthScreen() {
         
         // Otherwise, they need to complete their profile
         console.log("AuthScreen: Profile incomplete, showing profile completion");
-        setNeedsProfile(true);
         setMode("complete-profile");
       }
     };
@@ -175,7 +173,7 @@ export default function AuthScreen() {
     }
   };
 
-  // Profile completion screen
+  // Profile completion screen (Profile Setup Page)
   if (mode === "complete-profile") {
     return (
       <KeyboardAvoidingView
@@ -186,7 +184,7 @@ export default function AuthScreen() {
           <View style={styles.content}>
             <Text style={styles.title}>Complete Your Profile</Text>
             <Text style={styles.subtitle}>
-              Welcome to CoinHub! Please complete your profile to continue.
+              Welcome to CoinHub! Please set up your profile to continue.
             </Text>
 
             {errorMessage ? (
