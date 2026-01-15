@@ -145,8 +145,8 @@ export default function AddCoinScreen() {
 
       console.log('AddCoin: Creating coin with data:', coinData);
 
-      // Use authClient.$fetch for authenticated requests (not authClient.fetch)
-      const createdCoin = await authClient.$fetch(`${API_URL}/api/coins`, {
+      // Use authClient.$fetch for authenticated requests
+      const response = await authClient.$fetch(`${API_URL}/api/coins`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -154,13 +154,17 @@ export default function AddCoinScreen() {
         body: JSON.stringify(coinData),
       });
 
-      console.log('AddCoin: Coin created successfully:', createdCoin);
+      console.log('AddCoin: Coin creation response:', response);
 
-      const coinId = createdCoin.id;
+      // Extract coin ID from response - the response structure is { data: { id, ... }, error: null }
+      const coinId = response?.data?.id;
 
       if (!coinId) {
+        console.error('AddCoin: No coin ID in response:', response);
         throw new Error('No coin ID returned from server');
       }
+
+      console.log('AddCoin: Coin created successfully with ID:', coinId);
 
       // Step 2: Upload images to the created coin
       console.log('AddCoin: Uploading', images.length, 'images to coin:', coinId);
@@ -189,13 +193,13 @@ export default function AddCoinScreen() {
             } as any);
           }
 
-          // Upload image using authClient.$fetch (not authClient.fetch)
-          const uploadData = await authClient.$fetch(`${API_URL}/api/coins/${coinId}/images`, {
+          // Upload image using authClient.$fetch
+          const uploadResponse = await authClient.$fetch(`${API_URL}/api/coins/${coinId}/images`, {
             method: 'POST',
             body: formData,
           });
 
-          console.log(`AddCoin: Image ${i + 1} uploaded successfully:`, uploadData.id);
+          console.log(`AddCoin: Image ${i + 1} uploaded successfully:`, uploadResponse);
           uploadedCount++;
         } catch (imageError: any) {
           console.error(`AddCoin: Error uploading image ${i + 1}:`, imageError);
@@ -214,7 +218,7 @@ export default function AddCoinScreen() {
             text: 'OK',
             onPress: () => {
               console.log('AddCoin: Navigating back to profile');
-              router.back();
+              router.push('/(tabs)/profile');
             },
           },
         ]
