@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
-  Alert,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -19,6 +19,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import Constants from 'expo-constants';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
+const { width } = Dimensions.get('window');
 
 interface Coin {
   id: string;
@@ -30,12 +31,17 @@ interface Coin {
     username: string;
     displayName: string;
     avatar_url?: string;
+    avatarUrl?: string;
   };
-  images: Array<{ url: string; order_index: number }>;
-  like_count: number;
-  comment_count: number;
-  trade_status: string;
-  created_at: string;
+  images: Array<{ url: string; order_index?: number; orderIndex?: number }>;
+  like_count?: number;
+  likeCount?: number;
+  comment_count?: number;
+  commentCount?: number;
+  trade_status?: string;
+  tradeStatus?: string;
+  created_at?: string;
+  createdAt?: string;
 }
 
 export default function FeedScreen() {
@@ -104,10 +110,11 @@ export default function FeedScreen() {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('FeedScreen: Like toggled, new count:', data.like_count);
+        const newLikeCount = data.like_count ?? data.likeCount ?? 0;
+        console.log('FeedScreen: Like toggled, new count:', newLikeCount);
         setCoins(prevCoins =>
           prevCoins.map(coin =>
-            coin.id === coinId ? { ...coin, like_count: data.like_count } : coin
+            coin.id === coinId ? { ...coin, like_count: newLikeCount, likeCount: newLikeCount } : coin
           )
         );
       } else {
@@ -133,17 +140,27 @@ export default function FeedScreen() {
     }
   };
 
+  const handleCoinPress = (coinId: string) => {
+    console.log('FeedScreen: User tapped on coin:', coinId);
+    // Navigate to coin detail view (to be implemented)
+    // For now, just log
+  };
+
   const renderCoinCard = ({ item }: { item: Coin }) => {
     console.log('FeedScreen: Rendering coin:', item.title, 'with', item.images?.length || 0, 'images');
     
     // Handle both order_index and orderIndex
     const sortedImages = item.images?.sort((a, b) => {
-      const aIndex = (a as any).order_index ?? a.order_index ?? 0;
-      const bIndex = (b as any).order_index ?? b.order_index ?? 0;
+      const aIndex = a.order_index ?? a.orderIndex ?? 0;
+      const bIndex = b.order_index ?? b.orderIndex ?? 0;
       return aIndex - bIndex;
     }) || [];
     
     const mainImage = sortedImages[0];
+    const likeCount = item.like_count ?? item.likeCount ?? 0;
+    const commentCount = item.comment_count ?? item.commentCount ?? 0;
+    const tradeStatus = item.trade_status ?? item.tradeStatus ?? 'not_for_trade';
+    const avatarUrl = item.user.avatar_url ?? item.user.avatarUrl;
     
     if (mainImage) {
       console.log('FeedScreen: Main image URL for', item.title, ':', mainImage.url);
@@ -152,73 +169,74 @@ export default function FeedScreen() {
     }
     
     return (
-      <TouchableOpacity
-        style={styles.card}
-        onPress={() => {
-          console.log('FeedScreen: User tapped on coin:', item.title);
-          Alert.alert(
-            item.title,
-            `${item.year} • ${item.country}\n\nBy ${item.user.displayName}\n\n${item.like_count} likes • ${item.comment_count} comments`,
-            [{ text: 'OK' }]
-          );
-        }}
-      >
-        {mainImage ? (
-          <Image
-            source={{ uri: mainImage.url }}
-            style={styles.coinImage}
-            resizeMode="cover"
-            onError={(error) => {
-              console.error('FeedScreen: Image failed to load:', mainImage.url, error.nativeEvent.error);
-            }}
-            onLoad={() => {
-              console.log('FeedScreen: Image loaded successfully:', mainImage.url);
-            }}
-          />
-        ) : (
-          <View style={styles.coinImagePlaceholder}>
-            <IconSymbol
-              ios_icon_name="photo"
-              android_material_icon_name="image"
-              size={48}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.noImageText}>No image</Text>
+      <View style={styles.card}>
+        {/* Header with user info */}
+        <TouchableOpacity
+          style={styles.cardHeader}
+          onPress={() => handleUserPress(item.user.id, item.user.username)}
+        >
+          <View style={styles.userAvatar}>
+            {avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+            ) : (
+              <View style={styles.avatarPlaceholder}>
+                <IconSymbol
+                  ios_icon_name="person.fill"
+                  android_material_icon_name="person"
+                  size={20}
+                  color={colors.textSecondary}
+                />
+              </View>
+            )}
           </View>
-        )}
+          <View style={styles.userInfo}>
+            <Text style={styles.displayName}>{item.user.displayName}</Text>
+            <Text style={styles.username}>@{item.user.username}</Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* Coin Image */}
+        <TouchableOpacity onPress={() => handleCoinPress(item.id)} activeOpacity={0.95}>
+          {mainImage && mainImage.url ? (
+            <Image
+              source={{ uri: mainImage.url }}
+              style={styles.coinImage}
+              resizeMode="cover"
+              onError={(error) => {
+                console.error('FeedScreen: Image failed to load:', mainImage.url, error.nativeEvent.error);
+              }}
+              onLoad={() => {
+                console.log('FeedScreen: Image loaded successfully:', mainImage.url);
+              }}
+            />
+          ) : (
+            <View style={styles.coinImagePlaceholder}>
+              <IconSymbol
+                ios_icon_name="photo"
+                android_material_icon_name="image"
+                size={64}
+                color={colors.textSecondary}
+              />
+              <Text style={styles.noImageText}>No image available</Text>
+            </View>
+          )}
+        </TouchableOpacity>
         
-        {item.trade_status === 'open_to_trade' && (
+        {tradeStatus === 'open_to_trade' && (
           <View style={styles.tradeBadge}>
+            <IconSymbol
+              ios_icon_name="arrow.2.squarepath"
+              android_material_icon_name="swap-horiz"
+              size={14}
+              color="#FFFFFF"
+            />
             <Text style={styles.tradeBadgeText}>Open to Trade</Text>
           </View>
         )}
 
-        <View style={styles.cardContent}>
-          <Text style={styles.coinTitle}>{item.title}</Text>
-          <Text style={styles.coinInfo}>
-            {item.year} • {item.country}
-          </Text>
-
-          <TouchableOpacity
-            style={styles.userInfo}
-            onPress={() => handleUserPress(item.user.id, item.user.username)}
-          >
-            <View style={styles.userAvatar}>
-              {item.user.avatar_url ? (
-                <Image source={{ uri: item.user.avatar_url }} style={styles.avatarImage} />
-              ) : (
-                <IconSymbol
-                  ios_icon_name="person.fill"
-                  android_material_icon_name="person"
-                  size={16}
-                  color={colors.textSecondary}
-                />
-              )}
-            </View>
-            <Text style={styles.username}>{item.user.displayName}</Text>
-          </TouchableOpacity>
-
-          <View style={styles.actions}>
+        {/* Actions */}
+        <View style={styles.cardActions}>
+          <View style={styles.actionButtons}>
             <TouchableOpacity
               style={styles.actionButton}
               onPress={() => handleLike(item.id)}
@@ -226,24 +244,55 @@ export default function FeedScreen() {
               <IconSymbol
                 ios_icon_name="heart.fill"
                 android_material_icon_name="favorite"
-                size={20}
+                size={26}
                 color={colors.primary}
               />
-              <Text style={styles.actionText}>{item.like_count}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.actionButton}>
               <IconSymbol
                 ios_icon_name="message.fill"
-                android_material_icon_name="chat"
-                size={20}
-                color={colors.textSecondary}
+                android_material_icon_name="chat-bubble"
+                size={26}
+                color={colors.text}
               />
-              <Text style={styles.actionText}>{item.comment_count}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionButton}>
+              <IconSymbol
+                ios_icon_name="paperplane.fill"
+                android_material_icon_name="send"
+                size={26}
+                color={colors.text}
+              />
             </TouchableOpacity>
           </View>
         </View>
-      </TouchableOpacity>
+
+        {/* Likes and Caption */}
+        <View style={styles.cardContent}>
+          {likeCount > 0 && (
+            <Text style={styles.likesText}>
+              {likeCount} {likeCount === 1 ? 'like' : 'likes'}
+            </Text>
+          )}
+          
+          <View style={styles.captionContainer}>
+            <Text style={styles.captionUsername}>{item.user.displayName}</Text>
+            <Text style={styles.captionText}>
+              {' '}{item.title} • {item.year} • {item.country}
+            </Text>
+          </View>
+
+          {commentCount > 0 && (
+            <TouchableOpacity>
+              <Text style={styles.viewCommentsText}>
+                View all {commentCount} {commentCount === 1 ? 'comment' : 'comments'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
     );
   };
 
@@ -262,12 +311,12 @@ export default function FeedScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>CoinHub</Text>
-        <TouchableOpacity onPress={handleAddCoin}>
+        <TouchableOpacity onPress={handleAddCoin} style={styles.addButton}>
           <IconSymbol
-            ios_icon_name="plus.circle.fill"
-            android_material_icon_name="add-circle"
+            ios_icon_name="plus.app"
+            android_material_icon_name="add-box"
             size={28}
-            color={colors.primary}
+            color={colors.text}
           />
         </TouchableOpacity>
       </View>
@@ -287,9 +336,9 @@ export default function FeedScreen() {
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <IconSymbol
-              ios_icon_name="circle.fill"
-              android_material_icon_name="circle"
-              size={60}
+              ios_icon_name="photo.on.rectangle"
+              android_material_icon_name="photo-library"
+              size={80}
               color={colors.border}
             />
             <Text style={styles.emptyText}>No coins yet</Text>
@@ -318,15 +367,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    backgroundColor: colors.background,
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: colors.primary,
+    color: colors.text,
+    fontFamily: 'System',
+  },
+  addButton: {
+    padding: 4,
   },
   loadingContainer: {
     flex: 1,
@@ -339,128 +393,157 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   listContent: {
-    padding: 16,
     paddingBottom: 100,
   },
   card: {
-    backgroundColor: colors.card,
-    borderRadius: 12,
+    backgroundColor: colors.background,
     marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  userAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: 12,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.border,
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
-    elevation: 3,
+  },
+  avatarImage: {
+    width: 36,
+    height: 36,
+  },
+  avatarPlaceholder: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.backgroundAlt,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  userInfo: {
+    flex: 1,
+  },
+  displayName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  username: {
+    fontSize: 12,
+    color: colors.textSecondary,
   },
   coinImage: {
-    width: '100%',
-    height: 250,
+    width: width,
+    height: width,
     backgroundColor: colors.backgroundAlt,
   },
   coinImagePlaceholder: {
-    width: '100%',
-    height: 250,
+    width: width,
+    height: width,
     backgroundColor: colors.backgroundAlt,
     justifyContent: 'center',
     alignItems: 'center',
   },
   noImageText: {
-    marginTop: 8,
-    fontSize: 14,
+    marginTop: 12,
+    fontSize: 16,
     color: colors.textSecondary,
   },
   tradeBadge: {
     position: 'absolute',
-    top: 12,
-    right: 12,
-    backgroundColor: colors.tradeBadge,
+    top: 60,
+    right: 16,
+    backgroundColor: colors.primary,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 16,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
   tradeBadgeText: {
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '600',
   },
-  cardContent: {
-    padding: 16,
+  cardActions: {
+    paddingHorizontal: 12,
+    paddingTop: 8,
   },
-  coinTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  actionButton: {
+    padding: 4,
+  },
+  cardContent: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
+  likesText: {
+    fontSize: 14,
+    fontWeight: '600',
     color: colors.text,
     marginBottom: 4,
   },
-  coinInfo: {
+  captionContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  captionUsername: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  captionText: {
+    fontSize: 14,
+    color: colors.text,
+  },
+  viewCommentsText: {
     fontSize: 14,
     color: colors.textSecondary,
-    marginBottom: 12,
-  },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  userAvatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.backgroundAlt,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 8,
-    overflow: 'hidden',
-  },
-  avatarImage: {
-    width: 24,
-    height: 24,
-  },
-  username: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    fontWeight: '500',
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: 20,
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  actionText: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    fontWeight: '500',
+    marginTop: 4,
   },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
+    paddingVertical: 80,
+    paddingHorizontal: 40,
   },
   emptyText: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '600',
     color: colors.text,
-    marginTop: 16,
+    marginTop: 20,
   },
   emptySubtext: {
-    fontSize: 14,
+    fontSize: 16,
     color: colors.textSecondary,
     marginTop: 8,
-    marginBottom: 20,
+    marginBottom: 24,
+    textAlign: 'center',
   },
   emptyButton: {
     backgroundColor: colors.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 20,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 24,
   },
   emptyButtonText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
   },
 });

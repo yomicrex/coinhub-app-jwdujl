@@ -9,6 +9,7 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -18,6 +19,8 @@ import { IconSymbol } from '@/components/IconSymbol';
 import Constants from 'expo-constants';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
+const { width } = Dimensions.get('window');
+const imageSize = (width - 6) / 3; // 3 columns with 2px gaps
 
 interface UserCoin {
   id: string;
@@ -25,9 +28,12 @@ interface UserCoin {
   country: string;
   year: number;
   images: Array<{ url: string }>;
-  like_count: number;
-  comment_count: number;
-  trade_status: string;
+  like_count?: number;
+  likeCount?: number;
+  comment_count?: number;
+  commentCount?: number;
+  trade_status?: string;
+  tradeStatus?: string;
 }
 
 export default function ProfileScreen() {
@@ -64,8 +70,12 @@ export default function ProfileScreen() {
       }
 
       const data = await response.json();
-      console.log('ProfileScreen: Fetched', data.length, 'coins');
-      setCoins(data);
+      console.log('ProfileScreen: Response data:', data);
+      
+      // Handle both response formats: { coins: [...] } or [...]
+      const coinsArray = data.coins || data;
+      console.log('ProfileScreen: Fetched', coinsArray.length, 'coins');
+      setCoins(coinsArray);
     } catch (error) {
       console.error('ProfileScreen: Error fetching coins:', error);
       Alert.alert('Error', 'Failed to load your coins. Please try again.');
@@ -86,8 +96,14 @@ export default function ProfileScreen() {
       if (followersRes.ok && followingRes.ok) {
         const followers = await followersRes.json();
         const following = await followingRes.json();
-        setFollowerCount(followers.length);
-        setFollowingCount(following.length);
+        
+        // Handle both response formats: { followers: [...], total: N } or [...]
+        const followersCount = followers.total !== undefined ? followers.total : (followers.followers?.length || followers.length || 0);
+        const followingCount = following.total !== undefined ? following.total : (following.following?.length || following.length || 0);
+        
+        console.log('ProfileScreen: Followers count:', followersCount, 'Following count:', followingCount);
+        setFollowerCount(followersCount);
+        setFollowingCount(followingCount);
       }
     } catch (error) {
       console.error('ProfileScreen: Error fetching follow counts:', error);
@@ -161,63 +177,75 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Profile</Text>
-          <TouchableOpacity onPress={handleSettings} style={styles.settingsButton}>
-            <IconSymbol
-              ios_icon_name="gearshape"
-              android_material_icon_name="settings"
-              size={24}
-              color={colors.text}
-            />
-          </TouchableOpacity>
+          <Text style={styles.headerTitle}>{user.username}</Text>
+          <View style={styles.headerButtons}>
+            <TouchableOpacity onPress={handleAddCoin} style={styles.headerButton}>
+              <IconSymbol
+                ios_icon_name="plus.app"
+                android_material_icon_name="add-box"
+                size={24}
+                color={colors.text}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleSettings} style={styles.headerButton}>
+              <IconSymbol
+                ios_icon_name="line.3.horizontal"
+                android_material_icon_name="menu"
+                size={24}
+                color={colors.text}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Profile Info */}
         <View style={styles.profileSection}>
-          <View style={styles.avatarContainer}>
-            {user.avatar_url ? (
-              <Image source={{ uri: user.avatar_url }} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <IconSymbol
-                  ios_icon_name="person.circle"
-                  android_material_icon_name="account-circle"
-                  size={80}
-                  color={colors.textSecondary}
-                />
+          <View style={styles.profileHeader}>
+            <View style={styles.avatarContainer}>
+              {user.avatar_url ? (
+                <Image source={{ uri: user.avatar_url }} style={styles.avatar} />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <IconSymbol
+                    ios_icon_name="person.circle"
+                    android_material_icon_name="account-circle"
+                    size={80}
+                    color={colors.textSecondary}
+                  />
+                </View>
+              )}
+            </View>
+
+            <View style={styles.statsContainer}>
+              <View style={styles.statItem}>
+                <Text style={styles.statNumber}>{coins.length}</Text>
+                <Text style={styles.statLabel}>Coins</Text>
               </View>
-            )}
+              <TouchableOpacity style={styles.statItem} onPress={handleViewFollowers}>
+                <Text style={styles.statNumber}>{followerCount}</Text>
+                <Text style={styles.statLabel}>Followers</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.statItem} onPress={handleViewFollowing}>
+                <Text style={styles.statNumber}>{followingCount}</Text>
+                <Text style={styles.statLabel}>Following</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
-          <Text style={styles.displayName}>{user.displayName || user.username}</Text>
-          <Text style={styles.username}>@{user.username}</Text>
-          {user.bio && <Text style={styles.bio}>{user.bio}</Text>}
-          {user.location && (
-            <View style={styles.locationRow}>
-              <IconSymbol
-                ios_icon_name="location"
-                android_material_icon_name="location-on"
-                size={16}
-                color={colors.textSecondary}
-              />
-              <Text style={styles.location}>{user.location}</Text>
-            </View>
-          )}
-
-          {/* Follow Stats */}
-          <View style={styles.statsRow}>
-            <TouchableOpacity style={styles.statItem} onPress={handleViewFollowers}>
-              <Text style={styles.statNumber}>{followerCount}</Text>
-              <Text style={styles.statLabel}>Followers</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.statItem} onPress={handleViewFollowing}>
-              <Text style={styles.statNumber}>{followingCount}</Text>
-              <Text style={styles.statLabel}>Following</Text>
-            </TouchableOpacity>
-            <View style={styles.statItem}>
-              <Text style={styles.statNumber}>{coins.length}</Text>
-              <Text style={styles.statLabel}>Coins</Text>
-            </View>
+          <View style={styles.profileInfo}>
+            <Text style={styles.displayName}>{user.displayName || user.username}</Text>
+            {user.bio && <Text style={styles.bio}>{user.bio}</Text>}
+            {user.location && (
+              <View style={styles.locationRow}>
+                <IconSymbol
+                  ios_icon_name="location"
+                  android_material_icon_name="location-on"
+                  size={14}
+                  color={colors.textSecondary}
+                />
+                <Text style={styles.location}>{user.location}</Text>
+              </View>
+            )}
           </View>
 
           {/* Edit Profile Button */}
@@ -226,20 +254,8 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Coins Section */}
+        {/* Coins Grid */}
         <View style={styles.coinsSection}>
-          <View style={styles.coinsSectionHeader}>
-            <Text style={styles.sectionTitle}>My Collection</Text>
-            <TouchableOpacity onPress={handleAddCoin} style={styles.addButton}>
-              <IconSymbol
-                ios_icon_name="plus.circle.fill"
-                android_material_icon_name="add-circle"
-                size={28}
-                color={colors.primary}
-              />
-            </TouchableOpacity>
-          </View>
-
           {loading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={colors.primary} />
@@ -250,7 +266,7 @@ export default function ProfileScreen() {
               <IconSymbol
                 ios_icon_name="photo.on.rectangle"
                 android_material_icon_name="photo-library"
-                size={64}
+                size={80}
                 color={colors.textSecondary}
               />
               <Text style={styles.emptyStateText}>No coins yet</Text>
@@ -263,73 +279,59 @@ export default function ProfileScreen() {
             </View>
           ) : (
             <View style={styles.coinsGrid}>
-              {coins.map((coin) => (
-                <TouchableOpacity
-                  key={coin.id}
-                  style={styles.coinCard}
-                  onPress={() => handleEditCoin(coin.id)}
-                >
-                  {coin.images && coin.images.length > 0 ? (
-                    <Image source={{ uri: coin.images[0].url }} style={styles.coinImage} />
-                  ) : (
-                    <View style={styles.coinImagePlaceholder}>
-                      <IconSymbol
-                        ios_icon_name="photo"
-                        android_material_icon_name="image"
-                        size={32}
-                        color={colors.textSecondary}
-                      />
-                    </View>
-                  )}
-                  <View style={styles.coinInfo}>
-                    <Text style={styles.coinTitle} numberOfLines={1}>
-                      {coin.title}
-                    </Text>
-                    <Text style={styles.coinDetails} numberOfLines={1}>
-                      {coin.country} • {coin.year}
-                    </Text>
-                    <View style={styles.coinStats}>
-                      <View style={styles.coinStat}>
+              {coins.map((coin) => {
+                const likeCount = coin.like_count ?? coin.likeCount ?? 0;
+                const commentCount = coin.comment_count ?? coin.commentCount ?? 0;
+                
+                return (
+                  <TouchableOpacity
+                    key={coin.id}
+                    style={styles.gridItem}
+                    onPress={() => handleEditCoin(coin.id)}
+                  >
+                    {coin.images && coin.images.length > 0 && coin.images[0].url ? (
+                      <Image source={{ uri: coin.images[0].url }} style={styles.gridImage} />
+                    ) : (
+                      <View style={styles.gridImagePlaceholder}>
                         <IconSymbol
-                          ios_icon_name="heart"
-                          android_material_icon_name="favorite"
-                          size={14}
+                          ios_icon_name="photo"
+                          android_material_icon_name="image"
+                          size={32}
                           color={colors.textSecondary}
                         />
-                        <Text style={styles.coinStatText}>{coin.like_count || 0}</Text>
-                      </View>
-                      <View style={styles.coinStat}>
-                        <IconSymbol
-                          ios_icon_name="message"
-                          android_material_icon_name="chat"
-                          size={14}
-                          color={colors.textSecondary}
-                        />
-                        <Text style={styles.coinStatText}>{coin.comment_count || 0}</Text>
-                      </View>
-                    </View>
-                    {coin.trade_status === 'open_to_trade' && (
-                      <View style={styles.tradeBadge}>
-                        <Text style={styles.tradeBadgeText}>Open to Trade</Text>
                       </View>
                     )}
-                  </View>
-                  <TouchableOpacity
-                    style={styles.editIconButton}
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      handleEditCoin(coin.id);
-                    }}
-                  >
-                    <IconSymbol
-                      ios_icon_name="pencil.circle.fill"
-                      android_material_icon_name="edit"
-                      size={24}
-                      color={colors.primary}
-                    />
+                    {(likeCount > 0 || commentCount > 0) && (
+                      <View style={styles.gridOverlay}>
+                        <View style={styles.gridStats}>
+                          {likeCount > 0 && (
+                            <View style={styles.gridStat}>
+                              <IconSymbol
+                                ios_icon_name="heart.fill"
+                                android_material_icon_name="favorite"
+                                size={18}
+                                color="#FFFFFF"
+                              />
+                              <Text style={styles.gridStatText}>{likeCount}</Text>
+                            </View>
+                          )}
+                          {commentCount > 0 && (
+                            <View style={styles.gridStat}>
+                              <IconSymbol
+                                ios_icon_name="message.fill"
+                                android_material_icon_name="chat-bubble"
+                                size={18}
+                                color="#FFFFFF"
+                              />
+                              <Text style={styles.gridStatText}>{commentCount}</Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                    )}
                   </TouchableOpacity>
-                </TouchableOpacity>
-              ))}
+                );
+              })}
             </View>
           )}
         </View>
@@ -350,94 +352,98 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '600',
     color: colors.text,
   },
-  settingsButton: {
-    padding: 8,
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  headerButton: {
+    padding: 4,
   },
   profileSection: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  avatarContainer: {
+  profileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 16,
   },
+  avatarContainer: {
+    marginRight: 24,
+  },
   avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 86,
+    height: 86,
+    borderRadius: 43,
   },
   avatarPlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: colors.card,
+    width: 86,
+    height: 86,
+    borderRadius: 43,
+    backgroundColor: colors.backgroundAlt,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  displayName: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  username: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    marginBottom: 12,
-  },
-  bio: {
-    fontSize: 14,
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  location: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginLeft: 4,
-  },
-  statsRow: {
+  statsContainer: {
+    flex: 1,
     flexDirection: 'row',
     justifyContent: 'space-around',
-    width: '100%',
-    marginBottom: 16,
   },
   statItem: {
     alignItems: 'center',
   },
   statNumber: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '600',
     color: colors.text,
   },
   statLabel: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  profileInfo: {
+    marginBottom: 12,
+  },
+  displayName: {
     fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  bio: {
+    fontSize: 14,
+    color: colors.text,
+    marginBottom: 4,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  location: {
+    fontSize: 13,
     color: colors.textSecondary,
   },
   editButton: {
-    backgroundColor: colors.card,
-    paddingVertical: 10,
-    paddingHorizontal: 32,
+    backgroundColor: colors.backgroundAlt,
+    paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.border,
+    alignItems: 'center',
   },
   editButtonText: {
     fontSize: 14,
@@ -445,27 +451,13 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   coinsSection: {
-    padding: 20,
-  },
-  coinsSectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text,
-  },
-  addButton: {
-    padding: 4,
+    flex: 1,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 40,
+    paddingVertical: 60,
   },
   loadingText: {
     marginTop: 12,
@@ -474,7 +466,8 @@ const styles = StyleSheet.create({
   },
   emptyState: {
     alignItems: 'center',
-    paddingVertical: 40,
+    paddingVertical: 60,
+    paddingHorizontal: 40,
   },
   emptyStateText: {
     fontSize: 18,
@@ -492,8 +485,8 @@ const styles = StyleSheet.create({
   addFirstButton: {
     backgroundColor: colors.primary,
     paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
+    paddingHorizontal: 32,
+    borderRadius: 24,
   },
   addFirstButtonText: {
     color: '#FFFFFF',
@@ -503,72 +496,47 @@ const styles = StyleSheet.create({
   coinsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginHorizontal: -8,
+    gap: 2,
   },
-  coinCard: {
-    width: '50%',
-    padding: 8,
+  gridItem: {
+    width: imageSize,
+    height: imageSize,
+    position: 'relative',
   },
-  coinImage: {
+  gridImage: {
     width: '100%',
-    aspectRatio: 1,
-    borderRadius: 12,
-    backgroundColor: colors.card,
+    height: '100%',
+    backgroundColor: colors.backgroundAlt,
   },
-  coinImagePlaceholder: {
+  gridImagePlaceholder: {
     width: '100%',
-    aspectRatio: 1,
-    borderRadius: 12,
-    backgroundColor: colors.card,
+    height: '100%',
+    backgroundColor: colors.backgroundAlt,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  coinInfo: {
-    marginTop: 8,
+  gridOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  coinTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 2,
-  },
-  coinDetails: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginBottom: 4,
-  },
-  coinStats: {
+  gridStats: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 16,
   },
-  coinStat: {
+  gridStat: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
   },
-  coinStatText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-  },
-  tradeBadge: {
-    backgroundColor: colors.primary,
-    paddingVertical: 2,
-    paddingHorizontal: 8,
-    borderRadius: 4,
-    marginTop: 4,
-    alignSelf: 'flex-start',
-  },
-  tradeBadgeText: {
-    fontSize: 10,
+  gridStatText: {
+    fontSize: 14,
     fontWeight: '600',
     color: '#FFFFFF',
-  },
-  editIconButton: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderRadius: 12,
-    padding: 4,
   },
 });
