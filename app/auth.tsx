@@ -15,6 +15,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "expo-router";
 import Constants from "expo-constants";
+import { authClient } from "@/lib/auth";
 
 type Mode = "signin" | "signup" | "complete-profile";
 
@@ -40,36 +41,18 @@ export default function AuthScreen() {
     const checkProfile = async () => {
       if (user) {
         console.log("AuthScreen: User detected, checking profile:", user);
-        try {
-          const response = await fetch(`${API_URL}/api/auth/me`, {
-            headers: {
-              "Content-Type": "application/json",
-            },
-            credentials: "include",
-          });
-
-          console.log("AuthScreen: Profile check response status:", response.status);
-
-          if (response.ok) {
-            const data = await response.json();
-            console.log("AuthScreen: Profile data:", data);
-            
-            // If user has a profile with username, they're good to go
-            if (data.profile && data.profile.username) {
-              console.log("AuthScreen: Profile complete, redirecting to home");
-              router.replace("/(tabs)/(home)");
-            } else {
-              console.log("AuthScreen: Profile incomplete, showing profile completion");
-              setNeedsProfile(true);
-              setMode("complete-profile");
-            }
-          } else {
-            const errorData = await response.text();
-            console.error("AuthScreen: Profile check failed:", response.status, errorData);
-          }
-        } catch (error) {
-          console.error("AuthScreen: Error checking profile:", error);
+        
+        // If user already has username, they're good to go
+        if (user.username) {
+          console.log("AuthScreen: Profile complete, redirecting to home");
+          router.replace("/(tabs)/(home)");
+          return;
         }
+        
+        // Otherwise, they need to complete their profile
+        console.log("AuthScreen: Profile incomplete, showing profile completion");
+        setNeedsProfile(true);
+        setMode("complete-profile");
       }
     };
 
@@ -103,14 +86,12 @@ export default function AuthScreen() {
       if (mode === "signin") {
         console.log("AuthScreen: Attempting sign in");
         await signInWithEmail(email, password);
-        // fetchUser will trigger the useEffect to check profile
-        await fetchUser();
       } else {
         console.log("AuthScreen: Attempting sign up");
         await signUpWithEmail(email, password, displayName || undefined);
-        // After signup, fetchUser will trigger the useEffect to check profile
-        await fetchUser();
       }
+      // fetchUser is called automatically in signInWithEmail/signUpWithEmail
+      // The useEffect will handle navigation based on profile status
     } catch (error: any) {
       console.error("AuthScreen: Authentication error:", error);
       const errorMsg = error.message || "Authentication failed. Please try again.";
@@ -137,25 +118,23 @@ export default function AuthScreen() {
     console.log("AuthScreen: Completing profile with username:", username);
     
     try {
-      const response = await fetch(`${API_URL}/api/auth/complete-profile`, {
+      // Use authClient's fetch method to ensure credentials are included
+      const response = await authClient.$fetch("/api/auth/complete-profile", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
         body: JSON.stringify({
           username,
           displayName,
           inviteCode: inviteCode.toUpperCase(),
         }),
+        headers: {
+          "Content-Type": "application/json",
+        },
       });
 
-      console.log("AuthScreen: Complete profile response status:", response.status);
-      const data = await response.json();
-      console.log("AuthScreen: Complete profile response data:", data);
+      console.log("AuthScreen: Complete profile response:", response);
 
-      if (!response.ok) {
-        throw new Error(data.error || data.message || "Failed to complete profile");
+      if (response.error) {
+        throw new Error(response.error || "Failed to complete profile");
       }
 
       Alert.alert("Success", "Profile created successfully!");
@@ -184,8 +163,8 @@ export default function AuthScreen() {
       } else if (provider === "github") {
         await signInWithGitHub();
       }
-      // fetchUser will trigger the useEffect to check profile
-      await fetchUser();
+      // fetchUser is called automatically in the social auth methods
+      // The useEffect will handle navigation based on profile status
     } catch (error: any) {
       console.error("AuthScreen: Social auth error:", error);
       const errorMsg = error.message || "Authentication failed. Please try again.";

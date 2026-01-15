@@ -94,14 +94,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         // Fetch the full profile from /api/auth/me to get CoinHub profile data
         try {
-          const response = await fetch(`${authClient.options.baseURL}/api/auth/me`, {
-            credentials: "include",
-          });
+          const profileData = await authClient.$fetch("/api/auth/me");
+          console.log("AuthProvider: Profile data fetched:", profileData);
           
-          if (response.ok) {
-            const profileData = await response.json();
-            console.log("AuthProvider: Profile data fetched:", profileData);
-            
+          if (profileData && !profileData.error) {
             // Merge Better Auth user with CoinHub profile
             const mergedUser = {
               ...session.data.user,
@@ -110,11 +106,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.log("AuthProvider: Merged user data:", mergedUser);
             setUser(mergedUser as User);
           } else {
-            console.log("AuthProvider: Profile not found, using session user only");
+            console.log("AuthProvider: Profile not found or error, using session user only");
             setUser(session.data.user as User);
           }
         } catch (error) {
           console.error("AuthProvider: Error fetching profile:", error);
+          // If profile fetch fails, still set the user from session
           setUser(session.data.user as User);
         }
       } else {
