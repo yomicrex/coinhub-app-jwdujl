@@ -203,7 +203,13 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.section}>
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => {
+              console.log('ProfileScreen: User tapped Settings');
+              // TODO: Navigate to settings screen
+            }}
+          >
             <IconSymbol
               ios_icon_name="gear"
               android_material_icon_name="settings"
@@ -211,6 +217,50 @@ export default function ProfileScreen() {
               color={colors.text}
             />
             <Text style={styles.menuItemText}>Settings</Text>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron-right"
+              size={20}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => {
+              console.log('ProfileScreen: User tapped Privacy Policy');
+              router.push('/privacy-policy');
+            }}
+          >
+            <IconSymbol
+              ios_icon_name="lock.shield"
+              android_material_icon_name="privacy-tip"
+              size={24}
+              color={colors.text}
+            />
+            <Text style={styles.menuItemText}>Privacy Policy</Text>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron-right"
+              size={20}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => {
+              console.log('ProfileScreen: User tapped Terms of Use');
+              router.push('/terms-of-use');
+            }}
+          >
+            <IconSymbol
+              ios_icon_name="doc.text"
+              android_material_icon_name="description"
+              size={24}
+              color={colors.text}
+            />
+            <Text style={styles.menuItemText}>Terms of Use</Text>
             <IconSymbol
               ios_icon_name="chevron.right"
               android_material_icon_name="chevron-right"

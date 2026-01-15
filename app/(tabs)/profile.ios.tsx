@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'expo-router';
 import {
   View,
   Text,
@@ -10,11 +11,10 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
-import { IconSymbol } from '@/components/IconSymbol';
 import Constants from 'expo-constants';
+import { IconSymbol } from '@/components/IconSymbol';
+import { colors } from '@/styles/commonStyles';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'http://localhost:3000';
 
@@ -36,9 +36,9 @@ export default function ProfileScreen() {
   const router = useRouter();
 
   useEffect(() => {
-    console.log('ProfileScreen: Component mounted, user:', user?.username);
+    console.log('ProfileScreen (iOS): Component mounted, user:', user?.username);
     if (!user) {
-      console.log('ProfileScreen: No user found, redirecting to auth');
+      console.log('ProfileScreen (iOS): No user found, redirecting to auth');
       router.replace('/auth');
     } else {
       fetchUserCoins();
@@ -49,25 +49,25 @@ export default function ProfileScreen() {
     if (!user) return;
     
     try {
-      console.log('ProfileScreen: Fetching user coins from /api/users/' + user.id + '/coins');
+      console.log('ProfileScreen (iOS): Fetching user coins from /api/users/' + user.id + '/coins');
       const response = await fetch(`${API_URL}/api/users/${user.id}/coins?limit=20&offset=0`);
       
       if (response.ok) {
         const data = await response.json();
-        console.log('ProfileScreen: Fetched', data.coins?.length || 0, 'coins');
+        console.log('ProfileScreen (iOS): Fetched', data.coins?.length || 0, 'coins');
         setCoins(data.coins || []);
       } else {
-        console.error('ProfileScreen: Failed to fetch coins, status:', response.status);
+        console.error('ProfileScreen (iOS): Failed to fetch coins, status:', response.status);
       }
     } catch (error) {
-      console.error('ProfileScreen: Error fetching coins:', error);
+      console.error('ProfileScreen (iOS): Error fetching coins:', error);
     } finally {
       setLoading(false);
     }
   };
 
   const handleLogout = () => {
-    console.log('ProfileScreen: User tapped logout button');
+    console.log('ProfileScreen (iOS): User tapped logout button');
     Alert.alert(
       'Logout',
       'Are you sure you want to logout?',
@@ -77,7 +77,7 @@ export default function ProfileScreen() {
           text: 'Logout',
           style: 'destructive',
           onPress: async () => {
-            console.log('ProfileScreen: User confirmed logout');
+            console.log('ProfileScreen (iOS): User confirmed logout');
             await logout();
             router.replace('/auth');
           },
@@ -149,7 +149,7 @@ export default function ProfileScreen() {
           <TouchableOpacity
             style={styles.editButton}
             onPress={() => {
-              console.log('ProfileScreen: User tapped edit profile button');
+              console.log('ProfileScreen (iOS): User tapped edit profile button');
               // TODO: Navigate to edit profile screen
             }}
           >
@@ -173,12 +173,12 @@ export default function ProfileScreen() {
             </View>
           ) : (
             <View style={styles.coinsGrid}>
-              {coins.map((coin) => (
+              {coins.map((coin, index) => (
                 <TouchableOpacity
                   key={coin.id}
                   style={styles.coinCard}
                   onPress={() => {
-                    console.log('ProfileScreen: User tapped on coin:', coin.title);
+                    console.log('ProfileScreen (iOS): User tapped on coin:', coin.title);
                     // TODO: Navigate to coin detail
                   }}
                 >
@@ -202,7 +202,13 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.section}>
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => {
+              console.log('ProfileScreen (iOS): User tapped Settings');
+              // TODO: Navigate to settings screen
+            }}
+          >
             <IconSymbol
               ios_icon_name="gear"
               android_material_icon_name="settings"
@@ -210,6 +216,50 @@ export default function ProfileScreen() {
               color={colors.text}
             />
             <Text style={styles.menuItemText}>Settings</Text>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron-right"
+              size={20}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => {
+              console.log('ProfileScreen (iOS): User tapped Privacy Policy');
+              router.push('/privacy-policy');
+            }}
+          >
+            <IconSymbol
+              ios_icon_name="lock.shield"
+              android_material_icon_name="privacy-tip"
+              size={24}
+              color={colors.text}
+            />
+            <Text style={styles.menuItemText}>Privacy Policy</Text>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron-right"
+              size={20}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => {
+              console.log('ProfileScreen (iOS): User tapped Terms of Use');
+              router.push('/terms-of-use');
+            }}
+          >
+            <IconSymbol
+              ios_icon_name="doc.text"
+              android_material_icon_name="description"
+              size={24}
+              color={colors.text}
+            />
+            <Text style={styles.menuItemText}>Terms of Use</Text>
             <IconSymbol
               ios_icon_name="chevron.right"
               android_material_icon_name="chevron-right"
