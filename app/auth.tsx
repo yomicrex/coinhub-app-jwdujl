@@ -33,6 +33,7 @@ export default function AuthScreen() {
   const [inviteCode, setInviteCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [needsProfile, setNeedsProfile] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   // Check if user needs to complete profile
   useEffect(() => {
@@ -47,6 +48,8 @@ export default function AuthScreen() {
             credentials: "include",
           });
 
+          console.log("AuthScreen: Profile check response status:", response.status);
+
           if (response.ok) {
             const data = await response.json();
             console.log("AuthScreen: Profile data:", data);
@@ -60,6 +63,9 @@ export default function AuthScreen() {
               setNeedsProfile(true);
               setMode("complete-profile");
             }
+          } else {
+            const errorData = await response.text();
+            console.error("AuthScreen: Profile check failed:", response.status, errorData);
           }
         } catch (error) {
           console.error("AuthScreen: Error checking profile:", error);
@@ -74,17 +80,25 @@ export default function AuthScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
+        <Text style={styles.loadingText}>Loading...</Text>
       </View>
     );
   }
 
   const handleEmailAuth = async () => {
     if (!email || !password) {
-      Alert.alert("Error", "Please enter email and password");
+      setErrorMessage("Please enter email and password");
+      return;
+    }
+
+    if (password.length < 6) {
+      setErrorMessage("Password must be at least 6 characters");
       return;
     }
 
     setLoading(true);
+    setErrorMessage("");
+    
     try {
       if (mode === "signin") {
         console.log("AuthScreen: Attempting sign in");
@@ -99,7 +113,9 @@ export default function AuthScreen() {
       }
     } catch (error: any) {
       console.error("AuthScreen: Authentication error:", error);
-      Alert.alert("Error", error.message || "Authentication failed. Please try again.");
+      const errorMsg = error.message || "Authentication failed. Please try again.";
+      setErrorMessage(errorMsg);
+      Alert.alert("Error", errorMsg);
     } finally {
       setLoading(false);
     }
@@ -107,16 +123,17 @@ export default function AuthScreen() {
 
   const handleCompleteProfile = async () => {
     if (!username || !displayName || !inviteCode) {
-      Alert.alert("Error", "Please fill in all required fields");
+      setErrorMessage("Please fill in all required fields");
       return;
     }
 
     if (username.length < 3) {
-      Alert.alert("Error", "Username must be at least 3 characters");
+      setErrorMessage("Username must be at least 3 characters");
       return;
     }
 
     setLoading(true);
+    setErrorMessage("");
     console.log("AuthScreen: Completing profile with username:", username);
     
     try {
@@ -133,11 +150,12 @@ export default function AuthScreen() {
         }),
       });
 
+      console.log("AuthScreen: Complete profile response status:", response.status);
       const data = await response.json();
-      console.log("AuthScreen: Complete profile response:", response.status, data);
+      console.log("AuthScreen: Complete profile response data:", data);
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to complete profile");
+        throw new Error(data.error || data.message || "Failed to complete profile");
       }
 
       Alert.alert("Success", "Profile created successfully!");
@@ -145,7 +163,9 @@ export default function AuthScreen() {
       router.replace("/(tabs)/(home)");
     } catch (error: any) {
       console.error("AuthScreen: Profile completion error:", error);
-      Alert.alert("Error", error.message || "Failed to complete profile. Please try again.");
+      const errorMsg = error.message || "Failed to complete profile. Please try again.";
+      setErrorMessage(errorMsg);
+      Alert.alert("Error", errorMsg);
     } finally {
       setLoading(false);
     }
@@ -153,7 +173,9 @@ export default function AuthScreen() {
 
   const handleSocialAuth = async (provider: "google" | "apple" | "github") => {
     setLoading(true);
+    setErrorMessage("");
     console.log("AuthScreen: Attempting social auth with:", provider);
+    
     try {
       if (provider === "google") {
         await signInWithGoogle();
@@ -166,7 +188,9 @@ export default function AuthScreen() {
       await fetchUser();
     } catch (error: any) {
       console.error("AuthScreen: Social auth error:", error);
-      Alert.alert("Error", error.message || "Authentication failed. Please try again.");
+      const errorMsg = error.message || "Authentication failed. Please try again.";
+      setErrorMessage(errorMsg);
+      Alert.alert("Error", errorMsg);
     } finally {
       setLoading(false);
     }
@@ -185,6 +209,12 @@ export default function AuthScreen() {
             <Text style={styles.subtitle}>
               Welcome to CoinHub! Please complete your profile to continue.
             </Text>
+
+            {errorMessage ? (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>{errorMessage}</Text>
+              </View>
+            ) : null}
 
             <TextInput
               style={styles.input}
@@ -212,9 +242,10 @@ export default function AuthScreen() {
               autoCorrect={false}
             />
 
-            <Text style={styles.helperText}>
-              CoinHub is invite-only. Use code: BETA2026
-            </Text>
+            <View style={styles.inviteCodeBox}>
+              <Text style={styles.inviteCodeLabel}>Beta Invite Code:</Text>
+              <Text style={styles.inviteCodeText}>BETA2026</Text>
+            </View>
 
             <TouchableOpacity
               style={[styles.primaryButton, loading && styles.buttonDisabled]}
@@ -250,6 +281,12 @@ export default function AuthScreen() {
               : "Create your account"}
           </Text>
 
+          {errorMessage ? (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>{errorMessage}</Text>
+            </View>
+          ) : null}
+
           <TextInput
             style={styles.input}
             placeholder="Email"
@@ -262,7 +299,7 @@ export default function AuthScreen() {
 
           <TextInput
             style={styles.input}
-            placeholder="Password"
+            placeholder="Password (min 6 characters)"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -285,7 +322,10 @@ export default function AuthScreen() {
 
           <TouchableOpacity
             style={styles.switchModeButton}
-            onPress={() => setMode(mode === "signin" ? "signup" : "signin")}
+            onPress={() => {
+              setMode(mode === "signin" ? "signup" : "signin");
+              setErrorMessage("");
+            }}
           >
             <Text style={styles.switchModeText}>
               {mode === "signin"
@@ -336,6 +376,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#fff",
   },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: "#666",
+  },
   scrollContent: {
     flexGrow: 1,
   },
@@ -357,6 +402,19 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     textAlign: "center",
   },
+  errorContainer: {
+    backgroundColor: "#fee",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#fcc",
+  },
+  errorText: {
+    color: "#c00",
+    fontSize: 14,
+    textAlign: "center",
+  },
   input: {
     height: 50,
     borderWidth: 1,
@@ -367,11 +425,25 @@ const styles = StyleSheet.create({
     fontSize: 16,
     backgroundColor: "#fff",
   },
-  helperText: {
+  inviteCodeBox: {
+    backgroundColor: "#f0f8ff",
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#007AFF",
+    alignItems: "center",
+  },
+  inviteCodeLabel: {
     fontSize: 14,
     color: "#666",
-    marginBottom: 16,
-    textAlign: "center",
+    marginBottom: 4,
+  },
+  inviteCodeText: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#007AFF",
+    letterSpacing: 2,
   },
   primaryButton: {
     height: 50,

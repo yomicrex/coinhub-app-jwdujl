@@ -101,28 +101,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithEmail = async (email: string, password: string) => {
     try {
       console.log("AuthProvider: Signing in with email:", email);
-      await authClient.signIn.email({ email, password });
+      const result = await authClient.signIn.email({ email, password });
+      console.log("AuthProvider: Sign in result:", result);
+      
+      if (result.error) {
+        console.error("AuthProvider: Sign in error from Better Auth:", result.error);
+        throw new Error(result.error.message || "Sign in failed");
+      }
+      
       console.log("AuthProvider: Sign in successful, fetching user");
       await fetchUser();
-    } catch (error) {
+    } catch (error: any) {
       console.error("AuthProvider: Email sign in failed:", error);
-      throw error;
+      // Provide more helpful error messages
+      if (error.message?.includes("fetch")) {
+        throw new Error("Cannot connect to server. Please check your internet connection.");
+      }
+      throw new Error(error.message || "Sign in failed. Please check your credentials.");
     }
   };
 
   const signUpWithEmail = async (email: string, password: string, name?: string) => {
     try {
       console.log("AuthProvider: Signing up with email:", email);
-      await authClient.signUp.email({
+      const result = await authClient.signUp.email({
         email,
         password,
-        name,
+        name: name || email.split('@')[0],
       });
+      console.log("AuthProvider: Sign up result:", result);
+      
+      if (result.error) {
+        console.error("AuthProvider: Sign up error from Better Auth:", result.error);
+        throw new Error(result.error.message || "Sign up failed");
+      }
+      
       console.log("AuthProvider: Sign up successful, fetching user");
       await fetchUser();
-    } catch (error) {
+    } catch (error: any) {
       console.error("AuthProvider: Email sign up failed:", error);
-      throw error;
+      // Provide more helpful error messages
+      if (error.message?.includes("fetch")) {
+        throw new Error("Cannot connect to server. Please check your internet connection.");
+      }
+      if (error.message?.includes("already exists") || error.message?.includes("duplicate")) {
+        throw new Error("An account with this email already exists. Please sign in instead.");
+      }
+      throw new Error(error.message || "Sign up failed. Please try again.");
     }
   };
 
@@ -141,9 +166,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await fetchUser();
       }
       console.log("AuthProvider: Social sign in successful");
-    } catch (error) {
+    } catch (error: any) {
       console.error(`AuthProvider: ${provider} sign in failed:`, error);
-      throw error;
+      throw new Error(error.message || `${provider} sign in failed`);
     }
   };
 
