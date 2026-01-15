@@ -7,7 +7,7 @@ import React from 'react';
 export default function Index() {
   const { user, loading } = useAuth();
 
-  console.log('Index: Checking auth state, loading:', loading, 'user:', user?.username);
+  console.log('Index: Checking auth state, loading:', loading, 'user:', user);
 
   if (loading) {
     return (
@@ -23,8 +23,8 @@ export default function Index() {
     return <Redirect href="/auth" />;
   }
 
-  // Authenticated but no username - needs to complete profile
-  if (!user.username) {
+  // Authenticated but profile not complete - go to auth screen for profile completion
+  if (!user.hasCompletedProfile || !user.username) {
     console.log('Index: User needs to complete profile, redirecting to /auth');
     return <Redirect href="/auth" />;
   }

@@ -13,6 +13,7 @@ interface User {
   avatar_url?: string;
   bio?: string;
   location?: string;
+  hasCompletedProfile?: boolean; // Add flag to track profile completion
 }
 
 interface AuthContextType {
@@ -94,25 +95,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         // Fetch the full profile from /me to get CoinHub profile data
         try {
-          const profileData = await authClient.$fetch("/me");
-          console.log("AuthProvider: Profile data fetched:", profileData);
+          const response = await authClient.$fetch("/me");
+          console.log("AuthProvider: Profile response:", response);
           
-          if (profileData && !profileData.error) {
-            // Merge Better Auth user with CoinHub profile
-            const mergedUser = {
-              ...session.data.user,
-              ...profileData.profile,
-            };
-            console.log("AuthProvider: Merged user data:", mergedUser);
-            setUser(mergedUser as User);
+          if (response && !response.error) {
+            const profileData = response.profile;
+            console.log("AuthProvider: Profile data:", profileData);
+            
+            // Check if user has completed their CoinHub profile
+            const hasCompletedProfile = !!(profileData && profileData.username);
+            
+            if (hasCompletedProfile) {
+              // User has completed profile - merge session user with profile
+              const mergedUser = {
+                ...session.data.user,
+                ...profileData,
+                hasCompletedProfile: true,
+              };
+              console.log("AuthProvider: Profile complete, merged user:", mergedUser);
+              setUser(mergedUser as User);
+            } else {
+              // User has NOT completed profile - set user with flag
+              const userWithFlag = {
+                ...session.data.user,
+                hasCompletedProfile: false,
+              };
+              console.log("AuthProvider: Profile incomplete, user needs to complete profile:", userWithFlag);
+              setUser(userWithFlag as User);
+            }
           } else {
-            console.log("AuthProvider: Profile not found or error, using session user only");
-            setUser(session.data.user as User);
+            console.log("AuthProvider: Profile fetch returned error or no data");
+            // Profile doesn't exist - user needs to complete profile
+            const userWithFlag = {
+              ...session.data.user,
+              hasCompletedProfile: false,
+            };
+            setUser(userWithFlag as User);
           }
         } catch (error) {
           console.error("AuthProvider: Error fetching profile:", error);
-          // If profile fetch fails, still set the user from session
-          setUser(session.data.user as User);
+          // If profile fetch fails, assume profile is incomplete
+          const userWithFlag = {
+            ...session.data.user,
+            hasCompletedProfile: false,
+          };
+          setUser(userWithFlag as User);
         }
       } else {
         console.log("AuthProvider: No user session found");

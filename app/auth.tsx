@@ -41,16 +41,16 @@ export default function AuthScreen() {
       console.log("AuthScreen: Checking user state, user:", user);
       
       if (user) {
-        console.log("AuthScreen: User detected, username:", user.username);
+        console.log("AuthScreen: User detected, hasCompletedProfile:", user.hasCompletedProfile, "username:", user.username);
         
-        // If user already has username, they're good to go
-        if (user.username) {
+        // If user has completed profile, redirect to home
+        if (user.hasCompletedProfile && user.username) {
           console.log("AuthScreen: Profile complete, redirecting to home");
           router.replace("/(tabs)/(home)");
           return;
         }
         
-        // User is authenticated but doesn't have a username - needs to complete profile
+        // User is authenticated but hasn't completed profile
         console.log("AuthScreen: Profile incomplete, showing profile completion");
         setMode("complete-profile");
       } else {
@@ -180,7 +180,7 @@ export default function AuthScreen() {
   };
 
   // Profile completion screen (only shown when user is authenticated but has no username)
-  if (mode === "complete-profile" && user) {
+  if (mode === "complete-profile" && user && !user.hasCompletedProfile) {
     return (
       <KeyboardAvoidingView
         style={styles.container}
