@@ -106,18 +106,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (result.error) {
         console.error("AuthProvider: Sign in error from Better Auth:", result.error);
-        throw new Error(result.error.message || "Sign in failed");
+        
+        // Provide more specific error messages
+        const status = result.error.status;
+        if (status === 401 || status === 400) {
+          throw new Error("Invalid email or password. Please check your credentials and try again.");
+        } else if (status === 500) {
+          throw new Error("Server error. Our team has been notified. Please try again in a few minutes.");
+        } else if (status === 404) {
+          throw new Error("Account not found. Please sign up first.");
+        } else {
+          throw new Error(result.error.message || "Sign in failed. Please try again.");
+        }
       }
       
       console.log("AuthProvider: Sign in successful, fetching user");
       await fetchUser();
     } catch (error: any) {
       console.error("AuthProvider: Email sign in failed:", error);
+      
       // Provide more helpful error messages
-      if (error.message?.includes("fetch")) {
-        throw new Error("Cannot connect to server. Please check your internet connection.");
+      if (error.message?.includes("fetch") || error.message?.includes("network")) {
+        throw new Error("Cannot connect to server. Please check your internet connection and try again.");
       }
-      throw new Error(error.message || "Sign in failed. Please check your credentials.");
+      
+      // Re-throw the error with the message we already set
+      throw error;
     }
   };
 
@@ -133,21 +147,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (result.error) {
         console.error("AuthProvider: Sign up error from Better Auth:", result.error);
-        throw new Error(result.error.message || "Sign up failed");
+        
+        // Provide more specific error messages
+        const status = result.error.status;
+        const message = result.error.message || "";
+        
+        if (status === 409 || message.includes("already exists") || message.includes("duplicate")) {
+          throw new Error("An account with this email already exists. Please sign in instead.");
+        } else if (status === 400) {
+          throw new Error("Invalid email or password format. Password must be at least 6 characters.");
+        } else if (status === 500) {
+          throw new Error("Server error. Our team has been notified. Please try again in a few minutes.");
+        } else {
+          throw new Error(message || "Sign up failed. Please try again.");
+        }
       }
       
       console.log("AuthProvider: Sign up successful, fetching user");
       await fetchUser();
     } catch (error: any) {
       console.error("AuthProvider: Email sign up failed:", error);
+      
       // Provide more helpful error messages
-      if (error.message?.includes("fetch")) {
-        throw new Error("Cannot connect to server. Please check your internet connection.");
+      if (error.message?.includes("fetch") || error.message?.includes("network")) {
+        throw new Error("Cannot connect to server. Please check your internet connection and try again.");
       }
-      if (error.message?.includes("already exists") || error.message?.includes("duplicate")) {
-        throw new Error("An account with this email already exists. Please sign in instead.");
-      }
-      throw new Error(error.message || "Sign up failed. Please try again.");
+      
+      // Re-throw the error with the message we already set
+      throw error;
     }
   };
 
@@ -168,7 +195,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log("AuthProvider: Social sign in successful");
     } catch (error: any) {
       console.error(`AuthProvider: ${provider} sign in failed:`, error);
-      throw new Error(error.message || `${provider} sign in failed`);
+      throw new Error(error.message || `${provider} sign in failed. Please try again.`);
     }
   };
 
