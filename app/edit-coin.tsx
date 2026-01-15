@@ -18,7 +18,6 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import * as ImagePicker from 'expo-image-picker';
 import Constants from 'expo-constants';
-import { authClient } from '@/lib/auth';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 
@@ -62,11 +61,16 @@ export default function EditCoinScreen() {
     setLoadingCoin(true);
     
     try {
-      const response = await authClient.fetch(`/api/coins/${coinId}`, {
+      const response = await fetch(`${API_URL}/api/coins/${coinId}`, {
         method: 'GET',
+        credentials: 'include',
       });
 
+      console.log('EditCoin: Response status:', response.status);
+
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('EditCoin: Failed to fetch coin:', response.status, errorText);
         throw new Error('Failed to fetch coin data');
       }
 
@@ -81,19 +85,19 @@ export default function EditCoinScreen() {
       setOrganization(coin.organization || '');
       setAgency(coin.agency || '');
       setDeployment(coin.deployment || '');
-      setCoinNumber(coin.coinNumber || '');
-      setMintMark(coin.mintMark || '');
+      setCoinNumber(coin.coinNumber || coin.coin_number || '');
+      setMintMark(coin.mintMark || coin.mint_mark || '');
       setCondition(coin.condition || '');
       setDescription(coin.description || '');
       setVisibility(coin.visibility || 'public');
-      setTradeStatus(coin.tradeStatus || 'not_for_trade');
+      setTradeStatus(coin.tradeStatus || coin.trade_status || 'not_for_trade');
       
-      // Set existing images
+      // Set existing images - handle both camelCase and snake_case
       if (coin.images && coin.images.length > 0) {
         setImages(coin.images.map((img: any, index: number) => ({
           id: img.id,
           url: img.url,
-          orderIndex: img.orderIndex ?? index,
+          orderIndex: img.orderIndex ?? img.order_index ?? index,
           isNew: false,
         })));
       }
@@ -186,8 +190,9 @@ export default function EditCoinScreen() {
     // If it's an existing image (has an ID), delete it from the server
     if (imageToRemove.id && !imageToRemove.isNew) {
       try {
-        const response = await authClient.fetch(`/api/coins/${coinId}/images/${imageToRemove.id}`, {
+        const response = await fetch(`${API_URL}/api/coins/${coinId}/images/${imageToRemove.id}`, {
           method: 'DELETE',
+          credentials: 'include',
         });
         
         if (!response.ok) {
@@ -249,11 +254,12 @@ export default function EditCoinScreen() {
 
       console.log('EditCoin: Updating coin with data:', coinData);
 
-      const response = await authClient.fetch(`/api/coins/${coinId}`, {
+      const response = await fetch(`${API_URL}/api/coins/${coinId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify(coinData),
       });
 
@@ -292,8 +298,9 @@ export default function EditCoinScreen() {
             } as any);
           }
 
-          const uploadResponse = await authClient.fetch(`/api/coins/${coinId}/images`, {
+          const uploadResponse = await fetch(`${API_URL}/api/coins/${coinId}/images`, {
             method: 'POST',
+            credentials: 'include',
             body: formData,
           });
 
@@ -351,11 +358,16 @@ export default function EditCoinScreen() {
             setLoading(true);
             
             try {
-              const response = await authClient.fetch(`/api/coins/${coinId}`, {
+              const response = await fetch(`${API_URL}/api/coins/${coinId}`, {
                 method: 'DELETE',
+                credentials: 'include',
               });
 
+              console.log('EditCoin: Delete response status:', response.status);
+
               if (!response.ok) {
+                const errorText = await response.text();
+                console.error('EditCoin: Delete failed:', response.status, errorText);
                 throw new Error('Failed to delete coin');
               }
 

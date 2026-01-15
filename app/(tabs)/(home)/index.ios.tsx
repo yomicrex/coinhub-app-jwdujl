@@ -62,6 +62,13 @@ export default function FeedScreen() {
       if (response.ok) {
         const data = await response.json();
         console.log('FeedScreen: Fetched', data.coins?.length || 0, 'coins');
+        
+        // Log first coin to see structure
+        if (data.coins && data.coins.length > 0) {
+          console.log('FeedScreen: First coin structure:', JSON.stringify(data.coins[0], null, 2));
+          console.log('FeedScreen: First coin images:', data.coins[0].images);
+        }
+        
         setCoins(data.coins || []);
       } else {
         const errorText = await response.text();
@@ -127,7 +134,22 @@ export default function FeedScreen() {
   };
 
   const renderCoinCard = ({ item }: { item: Coin }) => {
-    const mainImage = item.images.sort((a, b) => a.order_index - b.order_index)[0];
+    console.log('FeedScreen: Rendering coin:', item.title, 'with', item.images?.length || 0, 'images');
+    
+    // Handle both order_index and orderIndex
+    const sortedImages = item.images?.sort((a, b) => {
+      const aIndex = (a as any).order_index ?? a.order_index ?? 0;
+      const bIndex = (b as any).order_index ?? b.order_index ?? 0;
+      return aIndex - bIndex;
+    }) || [];
+    
+    const mainImage = sortedImages[0];
+    
+    if (mainImage) {
+      console.log('FeedScreen: Main image URL for', item.title, ':', mainImage.url);
+    } else {
+      console.log('FeedScreen: No images found for coin:', item.title);
+    }
     
     return (
       <TouchableOpacity
@@ -141,12 +163,28 @@ export default function FeedScreen() {
           );
         }}
       >
-        {mainImage && (
+        {mainImage ? (
           <Image
             source={{ uri: mainImage.url }}
             style={styles.coinImage}
             resizeMode="cover"
+            onError={(error) => {
+              console.error('FeedScreen: Image failed to load:', mainImage.url, error.nativeEvent.error);
+            }}
+            onLoad={() => {
+              console.log('FeedScreen: Image loaded successfully:', mainImage.url);
+            }}
           />
+        ) : (
+          <View style={styles.coinImagePlaceholder}>
+            <IconSymbol
+              ios_icon_name="photo"
+              android_material_icon_name="image"
+              size={48}
+              color={colors.textSecondary}
+            />
+            <Text style={styles.noImageText}>No image</Text>
+          </View>
         )}
         
         {item.trade_status === 'open_to_trade' && (
@@ -318,6 +356,18 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 250,
     backgroundColor: colors.backgroundAlt,
+  },
+  coinImagePlaceholder: {
+    width: '100%',
+    height: 250,
+    backgroundColor: colors.backgroundAlt,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  noImageText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: colors.textSecondary,
   },
   tradeBadge: {
     position: 'absolute',
