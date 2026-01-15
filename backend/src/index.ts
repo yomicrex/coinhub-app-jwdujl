@@ -5,6 +5,7 @@ import { registerAuthRoutes } from './routes/auth.js';
 import { registerInviteCodesRoutes } from './routes/invite-codes.js';
 import { registerProfileRoutes } from './routes/profiles.js';
 import { registerCoinsRoutes } from './routes/coins.js';
+import { registerCoinImagesRoutes } from './routes/coin-images.js';
 import { registerLikesRoutes } from './routes/likes.js';
 import { registerCommentsRoutes } from './routes/comments.js';
 import { seedDatabase } from './db/seed.js';
@@ -26,6 +27,16 @@ try {
   throw error;
 }
 
+// Initialize storage system for file uploads
+try {
+  app.logger.info('Initializing storage system');
+  app.withStorage();
+  app.logger.info('Storage system initialized successfully');
+} catch (error) {
+  app.logger.error({ err: error }, 'Failed to initialize storage');
+  throw error;
+}
+
 // Register all routes AFTER app is created
 try {
   app.logger.info('Registering authentication routes');
@@ -36,6 +47,7 @@ try {
   registerInviteCodesRoutes(app);
   registerProfileRoutes(app);
   registerCoinsRoutes(app);
+  registerCoinImagesRoutes(app);
   registerLikesRoutes(app);
   registerCommentsRoutes(app);
   app.logger.info('All CoinHub routes registered');
