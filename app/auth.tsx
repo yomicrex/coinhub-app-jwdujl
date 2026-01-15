@@ -15,7 +15,6 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "expo-router";
 import Constants from "expo-constants";
-import { authClient } from "@/lib/auth";
 
 type Mode = "signin" | "signup" | "complete-profile";
 
@@ -130,24 +129,29 @@ export default function AuthScreen() {
     console.log("AuthScreen: Completing profile with username:", username);
     
     try {
-      // Use authClient's fetch method to ensure credentials are included
-      const response = await authClient.$fetch("/complete-profile", {
+      // Use fetch directly to avoid path duplication
+      const response = await fetch(`${API_URL}/api/profiles/complete`, {
         method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           username,
           displayName,
           inviteCode: inviteCode.toUpperCase(),
         }),
-        headers: {
-          "Content-Type": "application/json",
-        },
       });
 
-      console.log("AuthScreen: Complete profile response:", response);
+      console.log("AuthScreen: Complete profile response status:", response.status);
 
-      if (response.error) {
-        throw new Error(response.error || "Failed to complete profile");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || errorData.message || "Failed to complete profile");
       }
+
+      const data = await response.json();
+      console.log("AuthScreen: Complete profile response data:", data);
 
       Alert.alert("Success", "Profile created successfully!");
       await fetchUser();

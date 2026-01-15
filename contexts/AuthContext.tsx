@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { Platform } from "react-native";
-import { authClient, storeWebBearerToken, clearAuthTokens } from "@/lib/auth";
+import { authClient, storeWebBearerToken, clearAuthTokens, API_URL } from "@/lib/auth";
 
 interface User {
   id: string;
@@ -94,13 +94,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log("AuthProvider: User found in session:", session.data.user);
         
         // Fetch the full profile from /api/auth/me to get CoinHub profile data
+        // Use fetch directly instead of authClient.$fetch to avoid path duplication
         try {
-          const response = await authClient.$fetch("/api/auth/me");
-          console.log("AuthProvider: Profile response:", response);
+          const response = await fetch(`${API_URL}/api/auth/me`, {
+            method: "GET",
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          });
           
-          if (response && !response.error) {
-            // Access profile from response - the /api/auth/me endpoint returns the profile directly
-            const profileData = response.profile || response.data?.profile || response;
+          console.log("AuthProvider: Profile fetch response status:", response.status);
+          
+          if (response.ok) {
+            const data = await response.json();
+            console.log("AuthProvider: Profile response data:", data);
+            
+            // The /api/auth/me endpoint returns the profile directly
+            const profileData = data.profile || data.data?.profile || data;
             console.log("AuthProvider: Profile data:", profileData);
             
             // Check if user has completed their CoinHub profile
@@ -129,7 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               setUser(userWithFlag as User);
             }
           } else {
-            console.log("AuthProvider: Profile fetch returned error or no data");
+            console.log("AuthProvider: Profile fetch returned non-OK status:", response.status);
             // Profile doesn't exist - user needs to complete profile
             const userWithFlag = {
               ...session.data.user,
