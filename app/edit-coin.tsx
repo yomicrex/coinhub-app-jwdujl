@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import * as ImagePicker from 'expo-image-picker';
@@ -22,10 +22,19 @@ import { authClient } from '@/lib/auth';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 
-export default function AddCoinScreen() {
+interface CoinImage {
+  id?: string;
+  url: string;
+  orderIndex: number;
+  isNew?: boolean;
+}
+
+export default function EditCoinScreen() {
   const router = useRouter();
+  const { coinId } = useLocalSearchParams<{ coinId: string }>();
   const [loading, setLoading] = useState(false);
-  const [images, setImages] = useState<string[]>([]);
+  const [loadingCoin, setLoadingCoin] = useState(true);
+  const [images, setImages] = useState<CoinImage[]>([]);
   
   // Form fields
   const [title, setTitle] = useState('');
@@ -42,10 +51,69 @@ export default function AddCoinScreen() {
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [tradeStatus, setTradeStatus] = useState<'not_for_trade' | 'open_to_trade'>('not_for_trade');
 
-  const pickImages = async () => {
-    console.log('AddCoin: User tapped pick images');
+  useEffect(() => {
+    if (coinId) {
+      fetchCoinData();
+    }
+  }, [coinId]);
+
+  const fetchCoinData = async () => {
+    console.log('EditCoin: Fetching coin data for:', coinId);
+    setLoadingCoin(true);
     
-    // Request permission
+    try {
+      const response = await authClient.fetch(`/api/coins/${coinId}`, {
+        method: 'GET',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch coin data');
+      }
+
+      const coin = await response.json();
+      console.log('EditCoin: Coin data loaded:', coin);
+
+      // Populate form fields
+      setTitle(coin.title || '');
+      setCountry(coin.country || '');
+      setYear(coin.year?.toString() || '');
+      setUnit(coin.unit || '');
+      setOrganization(coin.organization || '');
+      setAgency(coin.agency || '');
+      setDeployment(coin.deployment || '');
+      setCoinNumber(coin.coinNumber || '');
+      setMintMark(coin.mintMark || '');
+      setCondition(coin.condition || '');
+      setDescription(coin.description || '');
+      setVisibility(coin.visibility || 'public');
+      setTradeStatus(coin.tradeStatus || 'not_for_trade');
+      
+      // Set existing images
+      if (coin.images && coin.images.length > 0) {
+        setImages(coin.images.map((img: any, index: number) => ({
+          id: img.id,
+          url: img.url,
+          orderIndex: img.orderIndex ?? index,
+          isNew: false,
+        })));
+      }
+    } catch (error: any) {
+      console.error('EditCoin: Error fetching coin:', error);
+      Alert.alert('Error', 'Failed to load coin data. Please try again.');
+      router.back();
+    } finally {
+      setLoadingCoin(false);
+    }
+  };
+
+  const pickImages = async () => {
+    console.log('EditCoin: User tapped pick images');
+    
+    if (images.length >= 5) {
+      Alert.alert('Maximum Images', 'You can only have up to 5 images per coin.');
+      return;
+    }
+
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     
     if (status !== 'granted') {
@@ -57,25 +125,32 @@ export default function AddCoinScreen() {
       return;
     }
 
-    // Launch image picker
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: 'images',
       allowsMultipleSelection: true,
       quality: 0.8,
-      selectionLimit: 5,
+      selectionLimit: 5 - images.length,
     });
 
     if (!result.canceled && result.assets) {
-      console.log('AddCoin: User selected', result.assets.length, 'images');
-      const newImages = result.assets.map(asset => asset.uri);
-      setImages([...images, ...newImages].slice(0, 5)); // Max 5 images
+      console.log('EditCoin: User selected', result.assets.length, 'images');
+      const newImages: CoinImage[] = result.assets.map((asset, index) => ({
+        url: asset.uri,
+        orderIndex: images.length + index,
+        isNew: true,
+      }));
+      setImages([...images, ...newImages].slice(0, 5));
     }
   };
 
   const takePhoto = async () => {
-    console.log('AddCoin: User tapped take photo');
+    console.log('EditCoin: User tapped take photo');
     
-    // Request permission
+    if (images.length >= 5) {
+      Alert.alert('Maximum Images', 'You can only have up to 5 images per coin.');
+      return;
+    }
+
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     
     if (status !== 'granted') {
@@ -87,7 +162,6 @@ export default function AddCoinScreen() {
       return;
     }
 
-    // Launch camera
     const result = await ImagePicker.launchCameraAsync({
       quality: 0.8,
       allowsEditing: true,
@@ -95,18 +169,43 @@ export default function AddCoinScreen() {
     });
 
     if (!result.canceled && result.assets[0]) {
-      console.log('AddCoin: User took a photo');
-      setImages([...images, result.assets[0].uri].slice(0, 5)); // Max 5 images
+      console.log('EditCoin: User took a photo');
+      const newImage: CoinImage = {
+        url: result.assets[0].uri,
+        orderIndex: images.length,
+        isNew: true,
+      };
+      setImages([...images, newImage].slice(0, 5));
     }
   };
 
-  const removeImage = (index: number) => {
-    console.log('AddCoin: User removed image at index:', index);
+  const removeImage = async (index: number) => {
+    console.log('EditCoin: User removed image at index:', index);
+    const imageToRemove = images[index];
+    
+    // If it's an existing image (has an ID), delete it from the server
+    if (imageToRemove.id && !imageToRemove.isNew) {
+      try {
+        const response = await authClient.fetch(`/api/coins/${coinId}/images/${imageToRemove.id}`, {
+          method: 'DELETE',
+        });
+        
+        if (!response.ok) {
+          console.error('EditCoin: Failed to delete image from server');
+        } else {
+          console.log('EditCoin: Image deleted from server');
+        }
+      } catch (error) {
+        console.error('EditCoin: Error deleting image:', error);
+      }
+    }
+    
+    // Remove from local state
     setImages(images.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async () => {
-    console.log('AddCoin: User tapped submit button');
+    console.log('EditCoin: User tapped save button');
     
     // Validation
     if (!title.trim()) {
@@ -129,81 +228,70 @@ export default function AddCoinScreen() {
     setLoading(true);
 
     try {
-      console.log('AddCoin: Creating coin without images first...');
+      console.log('EditCoin: Updating coin data...');
 
-      // Step 1: Create coin without images
+      // Step 1: Update coin metadata
       const coinData = {
         title: title.trim(),
         country: country.trim(),
         year: parseInt(year),
-        unit: unit.trim() || undefined,
-        organization: organization.trim() || undefined,
-        agency: agency.trim() || undefined,
-        deployment: deployment.trim() || undefined,
-        coinNumber: coinNumber.trim() || undefined,
-        mintMark: mintMark.trim() || undefined,
-        condition: condition.trim() || undefined,
-        description: description.trim() || undefined,
+        unit: unit.trim() || null,
+        organization: organization.trim() || null,
+        agency: agency.trim() || null,
+        deployment: deployment.trim() || null,
+        coinNumber: coinNumber.trim() || null,
+        mintMark: mintMark.trim() || null,
+        condition: condition.trim() || null,
+        description: description.trim() || null,
         visibility,
         tradeStatus,
       };
 
-      console.log('AddCoin: Creating coin with data:', coinData);
+      console.log('EditCoin: Updating coin with data:', coinData);
 
-      // Use authClient for authenticated requests
-      const response = await authClient.fetch('/api/coins', {
-        method: 'POST',
+      const response = await authClient.fetch(`/api/coins/${coinId}`, {
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(coinData),
       });
 
-      console.log('AddCoin: Response status:', response.status);
+      console.log('EditCoin: Response status:', response.status);
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('AddCoin: Coin creation failed:', response.status, errorText);
-        throw new Error(`Failed to create coin: ${response.status} ${errorText}`);
+        console.error('EditCoin: Coin update failed:', response.status, errorText);
+        throw new Error(`Failed to update coin: ${response.status} ${errorText}`);
       }
 
-      const createdCoin = await response.json();
-      console.log('AddCoin: Coin created successfully:', createdCoin);
+      const updatedCoin = await response.json();
+      console.log('EditCoin: Coin updated successfully:', updatedCoin);
 
-      const coinId = createdCoin.id;
-
-      if (!coinId) {
-        throw new Error('No coin ID returned from server');
-      }
-
-      // Step 2: Upload images to the created coin
-      console.log('AddCoin: Uploading', images.length, 'images to coin:', coinId);
+      // Step 2: Upload new images
+      const newImages = images.filter(img => img.isNew);
+      console.log('EditCoin: Uploading', newImages.length, 'new images');
       
       let uploadedCount = 0;
-      for (let i = 0; i < images.length; i++) {
-        const imageUri = images[i];
-        console.log(`AddCoin: Uploading image ${i + 1}/${images.length}`);
+      for (let i = 0; i < newImages.length; i++) {
+        const image = newImages[i];
+        console.log(`EditCoin: Uploading new image ${i + 1}/${newImages.length}`);
         
         try {
-          // Create form data
           const formData = new FormData();
           
-          // Handle different platforms
           if (Platform.OS === 'web') {
-            // Web: fetch the blob
-            const imageResponse = await fetch(imageUri);
+            const imageResponse = await fetch(image.url);
             const blob = await imageResponse.blob();
             formData.append('image', blob, `coin-image-${i}.jpg`);
           } else {
-            // Native: use the URI directly
             formData.append('image', {
-              uri: imageUri,
+              uri: image.url,
               type: 'image/jpeg',
               name: `coin-image-${i}.jpg`,
             } as any);
           }
 
-          // Upload image using authClient.fetch
           const uploadResponse = await authClient.fetch(`/api/coins/${coinId}/images`, {
             method: 'POST',
             body: formData,
@@ -211,39 +299,37 @@ export default function AddCoinScreen() {
 
           if (!uploadResponse.ok) {
             const errorText = await uploadResponse.text();
-            console.error('AddCoin: Image upload failed:', uploadResponse.status, errorText);
-            console.warn(`AddCoin: Failed to upload image ${i + 1}, continuing...`);
+            console.error('EditCoin: Image upload failed:', uploadResponse.status, errorText);
           } else {
             const uploadData = await uploadResponse.json();
-            console.log(`AddCoin: Image ${i + 1} uploaded successfully:`, uploadData.id);
+            console.log(`EditCoin: Image ${i + 1} uploaded successfully:`, uploadData.id);
             uploadedCount++;
           }
         } catch (imageError) {
-          console.error(`AddCoin: Error uploading image ${i + 1}:`, imageError);
-          // Continue with other images
+          console.error(`EditCoin: Error uploading image ${i + 1}:`, imageError);
         }
       }
 
-      console.log('AddCoin: Uploaded', uploadedCount, 'out of', images.length, 'images');
+      console.log('EditCoin: Uploaded', uploadedCount, 'out of', newImages.length, 'new images');
 
       Alert.alert(
         'Success!',
-        `Your coin has been added to your collection${uploadedCount < images.length ? ` (${uploadedCount}/${images.length} images uploaded)` : ''}.`,
+        'Your coin has been updated.',
         [
           {
             text: 'OK',
             onPress: () => {
-              console.log('AddCoin: Navigating back to profile');
+              console.log('EditCoin: Navigating back');
               router.back();
             },
           },
         ]
       );
     } catch (error: any) {
-      console.error('AddCoin: Error creating coin:', error);
+      console.error('EditCoin: Error updating coin:', error);
       Alert.alert(
         'Error',
-        error.message || 'Failed to add coin. Please try again.',
+        error.message || 'Failed to update coin. Please try again.',
         [{ text: 'OK' }]
       );
     } finally {
@@ -251,12 +337,77 @@ export default function AddCoinScreen() {
     }
   };
 
+  const handleDelete = () => {
+    Alert.alert(
+      'Delete Coin',
+      'Are you sure you want to delete this coin? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            console.log('EditCoin: User confirmed delete');
+            setLoading(true);
+            
+            try {
+              const response = await authClient.fetch(`/api/coins/${coinId}`, {
+                method: 'DELETE',
+              });
+
+              if (!response.ok) {
+                throw new Error('Failed to delete coin');
+              }
+
+              console.log('EditCoin: Coin deleted successfully');
+              Alert.alert('Deleted', 'Your coin has been deleted.', [
+                {
+                  text: 'OK',
+                  onPress: () => router.back(),
+                },
+              ]);
+            } catch (error: any) {
+              console.error('EditCoin: Error deleting coin:', error);
+              Alert.alert('Error', 'Failed to delete coin. Please try again.');
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  if (loadingCoin) {
+    return (
+      <>
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            title: 'Edit Coin',
+            headerBackTitle: 'Back',
+            headerStyle: {
+              backgroundColor: colors.background,
+            },
+            headerTintColor: colors.text,
+          }}
+        />
+        <SafeAreaView style={styles.container} edges={['bottom']}>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingText}>Loading coin data...</Text>
+          </View>
+        </SafeAreaView>
+      </>
+    );
+  }
+
   return (
     <>
       <Stack.Screen
         options={{
           headerShown: true,
-          title: 'Add Coin',
+          title: 'Edit Coin',
           headerBackTitle: 'Back',
           headerStyle: {
             backgroundColor: colors.background,
@@ -272,9 +423,9 @@ export default function AddCoinScreen() {
             <Text style={styles.sectionSubtitle}>Add up to 5 photos of your coin</Text>
             
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesScroll}>
-              {images.map((uri, index) => (
-                <View key={`image-${index}`} style={styles.imageContainer}>
-                  <Image source={{ uri }} style={styles.image} />
+              {images.map((image, index) => (
+                <View key={`image-${index}-${image.id || 'new'}`} style={styles.imageContainer}>
+                  <Image source={{ uri: image.url }} style={styles.image} />
                   <TouchableOpacity
                     style={styles.removeButton}
                     onPress={() => removeImage(index)}
@@ -436,7 +587,7 @@ export default function AddCoinScreen() {
               <TouchableOpacity
                 style={[styles.toggleButton, visibility === 'public' && styles.toggleButtonActive]}
                 onPress={() => {
-                  console.log('AddCoin: User set visibility to public');
+                  console.log('EditCoin: User set visibility to public');
                   setVisibility('public');
                 }}
               >
@@ -447,7 +598,7 @@ export default function AddCoinScreen() {
               <TouchableOpacity
                 style={[styles.toggleButton, visibility === 'private' && styles.toggleButtonActive]}
                 onPress={() => {
-                  console.log('AddCoin: User set visibility to private');
+                  console.log('EditCoin: User set visibility to private');
                   setVisibility('private');
                 }}
               >
@@ -462,7 +613,7 @@ export default function AddCoinScreen() {
               <TouchableOpacity
                 style={[styles.toggleButton, tradeStatus === 'not_for_trade' && styles.toggleButtonActive]}
                 onPress={() => {
-                  console.log('AddCoin: User set trade status to not for trade');
+                  console.log('EditCoin: User set trade status to not for trade');
                   setTradeStatus('not_for_trade');
                 }}
               >
@@ -473,7 +624,7 @@ export default function AddCoinScreen() {
               <TouchableOpacity
                 style={[styles.toggleButton, tradeStatus === 'open_to_trade' && styles.toggleButtonActive]}
                 onPress={() => {
-                  console.log('AddCoin: User set trade status to open to trade');
+                  console.log('EditCoin: User set trade status to open to trade');
                   setTradeStatus('open_to_trade');
                 }}
               >
@@ -484,7 +635,7 @@ export default function AddCoinScreen() {
             </View>
           </View>
 
-          {/* Submit Button */}
+          {/* Action Buttons */}
           <TouchableOpacity
             style={[styles.submitButton, loading && styles.submitButtonDisabled]}
             onPress={handleSubmit}
@@ -493,8 +644,16 @@ export default function AddCoinScreen() {
             {loading ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.submitButtonText}>Add Coin to Collection</Text>
+              <Text style={styles.submitButtonText}>Save Changes</Text>
             )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.deleteButton, loading && styles.submitButtonDisabled]}
+            onPress={handleDelete}
+            disabled={loading}
+          >
+            <Text style={styles.deleteButtonText}>Delete Coin</Text>
           </TouchableOpacity>
         </ScrollView>
       </SafeAreaView>
@@ -506,6 +665,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: colors.textSecondary,
   },
   scrollContent: {
     padding: 20,
@@ -622,6 +791,18 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   submitButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  deleteButton: {
+    backgroundColor: '#FF3B30',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  deleteButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
