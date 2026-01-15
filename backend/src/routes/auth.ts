@@ -136,8 +136,20 @@ export function registerAuthRoutes(app: App) {
         where: eq(schema.users.id, session.user.id),
       });
 
+      // Generate signed URL for avatar if it exists
+      let profileWithAvatar = profile;
+      if (profile && profile.avatarUrl) {
+        try {
+          const { url } = await app.storage.getSignedUrl(profile.avatarUrl);
+          profileWithAvatar = { ...profile, avatarUrl: url };
+        } catch (urlError) {
+          app.logger.warn({ err: urlError, userId: session.user.id }, 'Failed to generate avatar signed URL');
+          profileWithAvatar = { ...profile, avatarUrl: null };
+        }
+      }
+
       app.logger.info({ userId: session.user.id }, 'Current user fetched');
-      return { user: session.user, profile };
+      return { user: session.user, profile: profileWithAvatar };
     } catch (error) {
       app.logger.error({ err: error, userId: session.user.id }, 'Failed to fetch current user');
       throw error;
