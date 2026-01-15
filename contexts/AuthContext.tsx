@@ -78,49 +78,83 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const login = async (email: string, password: string) => {
-    console.log('AuthProvider: Attempting login for:', email);
-    const response = await fetch(`${API_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, password }),
-    });
+    console.log('AuthProvider: Attempting login for:', email, 'to URL:', `${API_URL}/api/auth/login`);
+    
+    try {
+      const response = await fetch(`${API_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      console.error('AuthProvider: Login failed:', error);
-      throw new Error(error.message || 'Login failed');
+      console.log('AuthProvider: Login response status:', response.status);
+
+      if (!response.ok) {
+        let errorMessage = 'Login failed';
+        try {
+          const error = await response.json();
+          errorMessage = error.message || errorMessage;
+          console.error('AuthProvider: Login failed with error:', error);
+        } catch (e) {
+          console.error('AuthProvider: Could not parse error response');
+        }
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      console.log('AuthProvider: Login successful for user:', data.user.username);
+      await SecureStore.setItemAsync('auth_token', data.token);
+      setToken(data.token);
+      setUser(data.user);
+    } catch (error: any) {
+      console.error('AuthProvider: Login error:', error);
+      if (error.message === 'Failed to fetch' || error.message === 'Network request failed') {
+        throw new Error('Cannot connect to server. Please check your internet connection.');
+      }
+      throw error;
     }
-
-    const data = await response.json();
-    console.log('AuthProvider: Login successful for user:', data.user.username);
-    await SecureStore.setItemAsync('auth_token', data.token);
-    setToken(data.token);
-    setUser(data.user);
   };
 
   const register = async (email: string, password: string, username: string, displayName: string, inviteCode: string) => {
-    console.log('AuthProvider: Attempting registration for:', username);
-    const response = await fetch(`${API_URL}/api/auth/register`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, password, username, displayName, inviteCode }),
-    });
+    console.log('AuthProvider: Attempting registration for:', username, 'to URL:', `${API_URL}/api/auth/register`);
+    
+    try {
+      const response = await fetch(`${API_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password, username, displayName, inviteCode }),
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      console.error('AuthProvider: Registration failed:', error);
-      throw new Error(error.message || 'Registration failed');
+      console.log('AuthProvider: Registration response status:', response.status);
+
+      if (!response.ok) {
+        let errorMessage = 'Registration failed';
+        try {
+          const error = await response.json();
+          errorMessage = error.message || errorMessage;
+          console.error('AuthProvider: Registration failed with error:', error);
+        } catch (e) {
+          console.error('AuthProvider: Could not parse error response');
+        }
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      console.log('AuthProvider: Registration successful for user:', data.user.username);
+      await SecureStore.setItemAsync('auth_token', data.token);
+      setToken(data.token);
+      setUser(data.user);
+    } catch (error: any) {
+      console.error('AuthProvider: Registration error:', error);
+      if (error.message === 'Failed to fetch' || error.message === 'Network request failed') {
+        throw new Error('Cannot connect to server. Please check your internet connection.');
+      }
+      throw error;
     }
-
-    const data = await response.json();
-    console.log('AuthProvider: Registration successful for user:', data.user.username);
-    await SecureStore.setItemAsync('auth_token', data.token);
-    setToken(data.token);
-    setUser(data.user);
   };
 
   const logout = async () => {
