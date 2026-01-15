@@ -61,12 +61,12 @@ export default function ProfileScreen() {
     setLoading(true);
 
     try {
-      const data = await authClient.$fetch(`${API_URL}/api/users/${user.id}/coins`);
+      const response = await authClient.$fetch(`${API_URL}/api/users/${user.id}/coins`);
 
-      console.log('ProfileScreen: Response data:', data);
+      console.log('ProfileScreen: Response data:', response);
       
-      // Handle both response formats: { coins: [...] } or [...]
-      const coinsArray = Array.isArray(data) ? data : (data.coins || []);
+      // Handle different response formats: { data: [...] } or { coins: [...] } or [...]
+      const coinsArray = response?.data || response?.coins || (Array.isArray(response) ? response : []);
       console.log('ProfileScreen: Fetched', coinsArray.length, 'coins');
       setCoins(coinsArray);
     } catch (error) {
@@ -86,9 +86,16 @@ export default function ProfileScreen() {
         authClient.$fetch(`${API_URL}/api/users/${user.id}/following`),
       ]);
 
-      // Handle both response formats: { followers: [...], total: N } or [...]
-      const followersCount = followersData.total !== undefined ? followersData.total : (followersData.followers?.length || followersData.length || 0);
-      const followingCount = followingData.total !== undefined ? followingData.total : (followingData.following?.length || followingData.length || 0);
+      // Handle different response formats
+      const followersResponse = followersData?.data || followersData;
+      const followingResponse = followingData?.data || followingData;
+      
+      const followersCount = followersResponse?.total !== undefined 
+        ? followersResponse.total 
+        : (followersResponse?.followers?.length || followersResponse?.length || 0);
+      const followingCount = followingResponse?.total !== undefined 
+        ? followingResponse.total 
+        : (followingResponse?.following?.length || followingResponse?.length || 0);
       
       console.log('ProfileScreen: Followers count:', followersCount, 'Following count:', followingCount);
       setFollowerCount(followersCount);
@@ -191,7 +198,16 @@ export default function ProfileScreen() {
           <View style={styles.profileHeader}>
             <View style={styles.avatarContainer}>
               {user.avatar_url ? (
-                <Image source={{ uri: user.avatar_url }} style={styles.avatar} />
+                <Image 
+                  source={{ uri: user.avatar_url }} 
+                  style={styles.avatar}
+                  onError={(error) => {
+                    console.error('ProfileScreen: Avatar failed to load:', user.avatar_url, error.nativeEvent.error);
+                  }}
+                  onLoad={() => {
+                    console.log('ProfileScreen: Avatar loaded successfully:', user.avatar_url);
+                  }}
+                />
               ) : (
                 <View style={styles.avatarPlaceholder}>
                   <IconSymbol
@@ -278,7 +294,13 @@ export default function ProfileScreen() {
                     onPress={() => handleEditCoin(coin.id)}
                   >
                     {coin.images && coin.images.length > 0 && coin.images[0].url ? (
-                      <Image source={{ uri: coin.images[0].url }} style={styles.gridImage} />
+                      <Image 
+                        source={{ uri: coin.images[0].url }} 
+                        style={styles.gridImage}
+                        onError={(error) => {
+                          console.error('ProfileScreen: Coin image failed to load:', coin.images[0].url, error.nativeEvent.error);
+                        }}
+                      />
                     ) : (
                       <View style={styles.gridImagePlaceholder}>
                         <IconSymbol

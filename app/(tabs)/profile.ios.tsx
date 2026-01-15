@@ -1,5 +1,5 @@
 
-import { useRouter } from 'expo-router';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,13 +11,13 @@ import {
   ActivityIndicator,
   Dimensions,
 } from 'react-native';
-import React, { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth } from '@/contexts/AuthContext';
-import Constants from 'expo-constants';
-import { IconSymbol } from '@/components/IconSymbol';
+import { useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
+import { useAuth } from '@/contexts/AuthContext';
+import { IconSymbol } from '@/components/IconSymbol';
 import { authClient } from '@/lib/auth';
+import Constants from 'expo-constants';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 const { width } = Dimensions.get('window');
@@ -60,12 +60,12 @@ export default function ProfileScreen() {
     setLoading(true);
 
     try {
-      const data = await authClient.$fetch(`${API_URL}/api/users/${user.id}/coins`);
+      const response = await authClient.$fetch(`${API_URL}/api/users/${user.id}/coins`);
 
-      console.log('ProfileScreen: Response data:', data);
+      console.log('ProfileScreen: Response data:', response);
       
-      // Handle both response formats: { coins: [...] } or [...]
-      const coinsArray = Array.isArray(data) ? data : (data.coins || []);
+      // Handle different response formats: { data: [...] } or { coins: [...] } or [...]
+      const coinsArray = response?.data || response?.coins || (Array.isArray(response) ? response : []);
       console.log('ProfileScreen: Fetched', coinsArray.length, 'coins');
       setCoins(coinsArray);
     } catch (error) {
@@ -85,9 +85,16 @@ export default function ProfileScreen() {
         authClient.$fetch(`${API_URL}/api/users/${user.id}/following`),
       ]);
 
-      // Handle both response formats: { followers: [...], total: N } or [...]
-      const followersCount = followersData.total !== undefined ? followersData.total : (followersData.followers?.length || followersData.length || 0);
-      const followingCount = followingData.total !== undefined ? followingData.total : (followingData.following?.length || followingData.length || 0);
+      // Handle different response formats
+      const followersResponse = followersData?.data || followersData;
+      const followingResponse = followingData?.data || followingData;
+      
+      const followersCount = followersResponse?.total !== undefined 
+        ? followersResponse.total 
+        : (followersResponse?.followers?.length || followersResponse?.length || 0);
+      const followingCount = followingResponse?.total !== undefined 
+        ? followingResponse.total 
+        : (followingResponse?.following?.length || followingResponse?.length || 0);
       
       console.log('ProfileScreen: Followers count:', followersCount, 'Following count:', followingCount);
       setFollowerCount(followersCount);
@@ -190,7 +197,16 @@ export default function ProfileScreen() {
           <View style={styles.profileHeader}>
             <View style={styles.avatarContainer}>
               {user.avatar_url ? (
-                <Image source={{ uri: user.avatar_url }} style={styles.avatar} />
+                <Image 
+                  source={{ uri: user.avatar_url }} 
+                  style={styles.avatar}
+                  onError={(error) => {
+                    console.error('ProfileScreen: Avatar failed to load:', user.avatar_url, error.nativeEvent.error);
+                  }}
+                  onLoad={() => {
+                    console.log('ProfileScreen: Avatar loaded successfully:', user.avatar_url);
+                  }}
+                />
               ) : (
                 <View style={styles.avatarPlaceholder}>
                   <IconSymbol
@@ -277,7 +293,13 @@ export default function ProfileScreen() {
                     onPress={() => handleEditCoin(coin.id)}
                   >
                     {coin.images && coin.images.length > 0 && coin.images[0].url ? (
-                      <Image source={{ uri: coin.images[0].url }} style={styles.gridImage} />
+                      <Image 
+                        source={{ uri: coin.images[0].url }} 
+                        style={styles.gridImage}
+                        onError={(error) => {
+                          console.error('ProfileScreen: Coin image failed to load:', coin.images[0].url, error.nativeEvent.error);
+                        }}
+                      />
                     ) : (
                       <View style={styles.gridImagePlaceholder}>
                         <IconSymbol

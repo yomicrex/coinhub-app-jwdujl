@@ -64,15 +64,21 @@ export default function FeedScreen() {
       console.log('FeedScreen: Fetching coins from /api/coins/feed');
       const response = await authClient.$fetch(`${API_URL}/api/coins/feed?limit=20&offset=0`);
       
-      console.log('FeedScreen: Fetched', response.coins?.length || 0, 'coins');
+      console.log('FeedScreen: Raw response:', JSON.stringify(response, null, 2));
+      
+      // Handle different response formats
+      const coinsData = response?.data?.coins || response?.coins || response?.data || [];
+      
+      console.log('FeedScreen: Extracted coins data:', coinsData);
+      console.log('FeedScreen: Fetched', coinsData.length, 'coins');
       
       // Log first coin to see structure
-      if (response.coins && response.coins.length > 0) {
-        console.log('FeedScreen: First coin structure:', JSON.stringify(response.coins[0], null, 2));
-        console.log('FeedScreen: First coin images:', response.coins[0].images);
+      if (coinsData && coinsData.length > 0) {
+        console.log('FeedScreen: First coin structure:', JSON.stringify(coinsData[0], null, 2));
+        console.log('FeedScreen: First coin images:', coinsData[0].images);
       }
       
-      setCoins(response.coins || []);
+      setCoins(coinsData);
     } catch (error) {
       console.error('FeedScreen: Error fetching coins:', error);
     } finally {
@@ -116,8 +122,11 @@ export default function FeedScreen() {
       }
 
       console.log('FeedScreen: Like/unlike response:', response);
-      const newLikeCount = response.likeCount ?? response.like_count ?? 0;
-      const newLikedState = response.liked ?? false;
+      
+      // Handle different response formats
+      const responseData = response?.data || response;
+      const newLikeCount = responseData?.likeCount ?? responseData?.like_count ?? 0;
+      const newLikedState = responseData?.liked ?? responseData?.isLiked ?? false;
       
       console.log('FeedScreen: New like count:', newLikeCount, 'Liked:', newLikedState);
       
@@ -190,7 +199,13 @@ export default function FeedScreen() {
         >
           <View style={styles.userAvatar}>
             {avatarUrl ? (
-              <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+              <Image 
+                source={{ uri: avatarUrl }} 
+                style={styles.avatarImage}
+                onError={(error) => {
+                  console.error('FeedScreen: Avatar failed to load:', avatarUrl, error.nativeEvent.error);
+                }}
+              />
             ) : (
               <View style={styles.avatarPlaceholder}>
                 <IconSymbol
