@@ -13,7 +13,7 @@ interface User {
   avatar_url?: string;
   bio?: string;
   location?: string;
-  hasCompletedProfile?: boolean; // Add flag to track profile completion
+  hasCompletedProfile?: boolean;
 }
 
 interface AuthContextType {
@@ -99,7 +99,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log("AuthProvider: Profile response:", response);
           
           if (response && !response.error) {
-            const profileData = response.profile;
+            // FIX: Access profile from response.data.profile, not response.profile
+            const profileData = response.data?.profile;
             console.log("AuthProvider: Profile data:", profileData);
             
             // Check if user has completed their CoinHub profile
@@ -109,7 +110,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               // User has completed profile - merge session user with profile
               const mergedUser = {
                 ...session.data.user,
-                ...profileData,
+                username: profileData.username,
+                displayName: profileData.displayName,
+                avatar_url: profileData.avatarUrl,
+                bio: profileData.bio,
+                location: profileData.location,
                 hasCompletedProfile: true,
               };
               console.log("AuthProvider: Profile complete, merged user:", mergedUser);
