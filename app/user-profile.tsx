@@ -306,41 +306,66 @@ export default function UserProfileScreen() {
       if (isFollowing) {
         // Unfollow - use DELETE
         console.log('UserProfileScreen: Sending DELETE request to unfollow');
-        const response = await authClient.$fetch(endpoint, {
+        const response = await fetch(endpoint, {
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json',
           },
+          credentials: 'include',
           body: JSON.stringify({}),
         });
         
-        console.log('UserProfileScreen: Unfollow response:', response);
-        setIsFollowing(false);
-        setFollowerCount(prev => Math.max(0, prev - 1));
+        console.log('UserProfileScreen: Unfollow response status:', response.status);
+        
+        if (response.ok) {
+          setIsFollowing(false);
+          setFollowerCount(prev => Math.max(0, prev - 1));
+          console.log('UserProfileScreen: Successfully unfollowed');
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          console.error('UserProfileScreen: Unfollow failed:', errorData);
+          Alert.alert('Error', errorData?.error || 'Failed to unfollow user');
+        }
       } else {
         // Follow - use POST
         console.log('UserProfileScreen: Sending POST request to follow');
-        const response = await authClient.$fetch(endpoint, {
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
+          credentials: 'include',
           body: JSON.stringify({}),
         });
         
-        console.log('UserProfileScreen: Follow response:', response);
-        setIsFollowing(true);
-        setFollowerCount(prev => prev + 1);
+        console.log('UserProfileScreen: Follow response status:', response.status);
+        
+        // Handle 400 status (already following)
+        if (response.status === 400) {
+          const errorData = await response.json().catch(() => ({}));
+          if (errorData?.error?.includes('Already following')) {
+            console.log('UserProfileScreen: Already following this user, updating state');
+            setIsFollowing(true);
+            // Don't show error, just update the state
+            return;
+          }
+        }
+        
+        if (response.ok) {
+          setIsFollowing(true);
+          setFollowerCount(prev => prev + 1);
+          console.log('UserProfileScreen: Successfully followed');
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          console.error('UserProfileScreen: Follow failed:', errorData);
+          Alert.alert('Error', errorData?.error || 'Failed to follow user');
+        }
       }
       
       console.log('UserProfileScreen: Follow status updated successfully');
     } catch (error: any) {
       console.error('UserProfileScreen: Error toggling follow:', error);
-      
-      // Don't show error if it's just "already following" - the state is already correct
-      if (!error?.message?.includes('Already following')) {
-        Alert.alert('Error', error.message || 'Failed to update follow status');
-      }
+      Alert.alert('Error', 'Failed to update follow status. Please try again.');
     } finally {
       setFollowLoading(false);
     }
@@ -495,7 +520,7 @@ export default function UserProfileScreen() {
                     color={isFollowing ? colors.text : '#FFFFFF'}
                   />
                   <Text style={[styles.followButtonText, isFollowing && styles.followingButtonText]}>
-                    {isFollowing ? 'Following' : 'Follow'}
+                    {isFollowing ? 'Unfollow' : 'Follow'}
                   </Text>
                 </React.Fragment>
               )}

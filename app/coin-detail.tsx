@@ -244,48 +244,55 @@ export default function CoinDetailScreen() {
     
     try {
       console.log('CoinDetail: Initiating trade via POST /api/trades/initiate');
-      const response = await authClient.$fetch(`${API_URL}/api/trades/initiate`, {
+      const response = await fetch(`${API_URL}/api/trades/initiate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({ coinId }),
       });
 
-      console.log('CoinDetail: Trade initiation response:', response);
+      console.log('CoinDetail: Trade initiation response status:', response.status);
       
-      // Check if there's an error in the response
-      if (response?.error) {
-        const errorMessage = response.error.error || response.error.message || 'Failed to create trade request';
-        console.log('CoinDetail: Trade initiation error:', errorMessage);
-        
-        // Handle specific error cases
-        if (errorMessage.includes('already have an active trade')) {
-          Alert.alert(
-            'Active Trade Exists',
-            'You already have an active trade request for this coin. Please check your Trades tab.',
-            [
-              {
-                text: 'View Trades',
-                onPress: () => {
-                  console.log('CoinDetail: Navigating to trades tab');
-                  router.push('/(tabs)/trades');
-                },
+      // Handle 409 Conflict (active trade already exists)
+      if (response.status === 409) {
+        console.log('CoinDetail: Active trade already exists (409)');
+        Alert.alert(
+          'Active Trade Exists',
+          'You already have an active trade request for this coin. Please check your Trades tab.',
+          [
+            {
+              text: 'View Trades',
+              onPress: () => {
+                console.log('CoinDetail: Navigating to trades tab');
+                router.push('/(tabs)/trades');
               },
-              { text: 'OK' },
-            ]
-          );
-        } else {
-          Alert.alert('Error', errorMessage);
-        }
+            },
+            { text: 'OK' },
+          ]
+        );
         return;
       }
       
-      const tradeData = response?.data || response;
+      // Handle other error statuses
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData?.error || errorData?.message || 'Failed to create trade request';
+        console.error('CoinDetail: Trade initiation failed:', response.status, errorMessage);
+        Alert.alert('Error', errorMessage);
+        return;
+      }
+      
+      // Success - parse response
+      const data = await response.json();
+      console.log('CoinDetail: Trade initiation success response:', data);
+      
+      const tradeData = data?.data || data;
       const tradeId = tradeData?.trade?.id || tradeData?.id;
       
       if (!tradeId) {
-        console.error('CoinDetail: No trade ID in response:', response);
+        console.error('CoinDetail: No trade ID in response:', data);
         Alert.alert('Error', 'Failed to create trade request');
         return;
       }
@@ -303,39 +310,7 @@ export default function CoinDetailScreen() {
       ]);
     } catch (error: any) {
       console.error('CoinDetail: Error creating trade:', error);
-      
-      // Extract error message from the error object
-      let errorMessage = 'Failed to create trade request';
-      
-      if (error?.error?.error) {
-        errorMessage = error.error.error;
-      } else if (error?.message) {
-        errorMessage = error.message;
-      } else if (typeof error === 'string') {
-        errorMessage = error;
-      }
-      
-      console.log('CoinDetail: Extracted error message:', errorMessage);
-      
-      // Handle specific error cases
-      if (errorMessage.includes('already have an active trade')) {
-        Alert.alert(
-          'Active Trade Exists',
-          'You already have an active trade request for this coin. Please check your Trades tab.',
-          [
-            {
-              text: 'View Trades',
-              onPress: () => {
-                console.log('CoinDetail: Navigating to trades tab');
-                router.push('/(tabs)/trades');
-              },
-            },
-            { text: 'OK' },
-          ]
-        );
-      } else {
-        Alert.alert('Error', errorMessage);
-      }
+      Alert.alert('Error', 'Failed to create trade request. Please try again.');
     }
   };
 
