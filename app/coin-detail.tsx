@@ -236,6 +236,45 @@ export default function CoinDetailScreen() {
     router.push(`/edit-coin?coinId=${coinId}`);
   };
 
+  const handleTrade = async () => {
+    console.log('CoinDetail: User tapped Trade button');
+    
+    try {
+      const session = await authClient.getSession();
+      if (!session) {
+        console.log('CoinDetail: No session found');
+        Alert.alert('Error', 'Please log in to initiate a trade');
+        return;
+      }
+
+      const response = await fetch(`${API_URL}/api/trades/initiate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.session.token}`,
+        },
+        body: JSON.stringify({ coinId }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create trade');
+      }
+
+      const data = await response.json();
+      console.log('CoinDetail: Trade created:', data.trade.id);
+      Alert.alert('Success', 'Trade request sent!', [
+        {
+          text: 'View Trade',
+          onPress: () => router.push(`/trade-detail?id=${data.trade.id}`),
+        },
+        { text: 'OK' },
+      ]);
+    } catch (error) {
+      console.error('CoinDetail: Error creating trade:', error);
+      Alert.alert('Error', 'Failed to create trade request');
+    }
+  };
+
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
     if (viewableItems.length > 0) {
       setCurrentImageIndex(viewableItems[0].index || 0);
@@ -536,6 +575,19 @@ export default function CoinDetailScreen() {
                 </Text>
               </View>
             </View>
+
+            {/* Trade Button */}
+            {!isOwner && coin.tradeStatus === 'open_to_trade' && (
+              <TouchableOpacity style={styles.tradeButton} onPress={handleTrade}>
+                <IconSymbol
+                  ios_icon_name="arrow.left.arrow.right"
+                  android_material_icon_name="swap-horiz"
+                  size={20}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.tradeButtonText}>Propose Trade</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -741,6 +793,22 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   statusBadgeTextActive: {
+    color: '#FFFFFF',
+  },
+  tradeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginTop: 20,
+    gap: 8,
+  },
+  tradeButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
     color: '#FFFFFF',
   },
 });
