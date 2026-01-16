@@ -155,6 +155,11 @@ export default function ProfileScreen() {
     router.push(`/user-list?userId=${user?.id}&type=following&title=Following`);
   };
 
+  const handleMyTrades = () => {
+    console.log('ProfileScreen: User tapped my trades');
+    router.push('/my-trades');
+  };
+
   if (!user) {
     return (
       <SafeAreaView style={styles.container}>
@@ -173,6 +178,14 @@ export default function ProfileScreen() {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>{user.username}</Text>
           <View style={styles.headerButtons}>
+            <TouchableOpacity onPress={handleMyTrades} style={styles.headerButton}>
+              <IconSymbol
+                ios_icon_name="arrow.left.arrow.right"
+                android_material_icon_name="swap-horiz"
+                size={24}
+                color={colors.text}
+              />
+            </TouchableOpacity>
             <TouchableOpacity onPress={handleAddCoin} style={styles.headerButton}>
               <IconSymbol
                 ios_icon_name="plus.app"
