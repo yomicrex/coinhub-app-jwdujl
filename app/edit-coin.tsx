@@ -337,19 +337,34 @@ export default function EditCoinScreen() {
             
             try {
               console.log('EditCoin: About to send DELETE request...');
-              console.log('EditCoin: Using authClient.$fetch');
               
-              // Use authClient.$fetch which automatically handles authentication
-              const response = await authClient.$fetch(`${API_URL}/api/coins/${coinId}`, {
+              // Get the session to extract the token
+              const session = await authClient.getSession();
+              console.log('EditCoin: Session retrieved:', session ? 'Session exists' : 'No session');
+              
+              if (!session) {
+                throw new Error('No active session. Please log in again.');
+              }
+
+              // Use standard fetch with manual authentication
+              const response = await fetch(`${API_URL}/api/coins/${coinId}`, {
                 method: 'DELETE',
                 headers: {
                   'Content-Type': 'application/json',
+                  'Cookie': `better_auth.session_token=${session.session.token}`,
                 },
-                body: JSON.stringify({}), // Send empty body to avoid FST_ERR_CTP_EMPTY_JSON_BODY
               });
 
-              console.log('EditCoin: DELETE request completed');
-              console.log('EditCoin: Delete response:', response);
+              console.log('EditCoin: DELETE request completed with status:', response.status);
+              
+              if (!response.ok) {
+                const errorText = await response.text();
+                console.error('EditCoin: DELETE request failed:', errorText);
+                throw new Error(`Failed to delete coin: ${response.status} ${response.statusText}`);
+              }
+
+              const result = await response.json();
+              console.log('EditCoin: Delete response:', result);
               console.log('EditCoin: Coin deleted successfully');
               
               Alert.alert('Deleted', 'Your coin has been deleted.', [
@@ -367,9 +382,6 @@ export default function EditCoinScreen() {
               console.error('EditCoin: Error message:', error?.message);
               console.error('EditCoin: Error name:', error?.name);
               console.error('EditCoin: Error stack:', error?.stack);
-              console.error('EditCoin: Error status:', error?.status);
-              console.error('EditCoin: Error statusText:', error?.statusText);
-              console.error('EditCoin: Error response:', error?.response);
               console.error('EditCoin: Full error JSON:', JSON.stringify(error, null, 2));
               console.error('EditCoin: Error deleting coin - END ERROR DETAILS');
               
