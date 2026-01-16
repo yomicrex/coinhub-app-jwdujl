@@ -31,11 +31,14 @@ CoinHub uses **Better Auth** for email/password authentication with a two-step p
 
 1. **Sign-Up**: `POST /api/auth/sign-up/email` - Create account (auto-provided by Better Auth)
 2. **Profile Completion**: `POST /api/auth/complete-profile` - Set username and profile details
+3. **Password Recovery**: `POST /api/auth/request-password-reset` - Reset forgotten passwords
 
-**See**:
-- `AUTHENTICATION_DEBUG_GUIDE.md` - Complete authentication flow and debugging
-- `AUTHENTICATION_API_REFERENCE.md` - Full endpoint reference with examples
-- `AUTHENTICATION_VERIFICATION_CHECKLIST.md` - Verify setup and troubleshoot
+**Documentation**:
+- `AUTHENTICATION_DEBUG_GUIDE.md` - Complete authentication flow and session management
+- `AUTHENTICATION_API_REFERENCE.md` - Full endpoint reference with curl examples
+- `AUTHENTICATION_VERIFICATION_CHECKLIST.md` - Verify setup and troubleshoot issues
+- `AUTHENTICATION_TROUBLESHOOTING.md` - Fix common authentication problems
+- `PASSWORD_RECOVERY_GUIDE.md` - Implement and debug password recovery
 
 ## Customization
 
