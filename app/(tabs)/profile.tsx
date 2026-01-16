@@ -157,7 +157,7 @@ export default function ProfileScreen() {
   };
 
   const handleMyTrades = () => {
-    console.log('ProfileScreen: User tapped my trades, navigating to trades tab');
+    console.log('ProfileScreen: User tapped my trades');
     router.push('/(tabs)/trades');
   };
 
@@ -260,7 +260,7 @@ export default function ProfileScreen() {
                   size={14}
                   color={colors.textSecondary}
                 />
-                <Text style={styles.location}>{user.location}</Text>
+                <Text style={styles.location}> {user.location}</Text>
               </View>
             )}
           </View>
@@ -387,10 +387,10 @@ const styles = StyleSheet.create({
   },
   headerButtons: {
     flexDirection: 'row',
-    gap: 16,
   },
   headerButton: {
     padding: 4,
+    marginLeft: 16,
   },
   profileSection: {
     paddingHorizontal: 16,
@@ -454,7 +454,6 @@ const styles = StyleSheet.create({
   locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
   },
   location: {
     fontSize: 13,
@@ -550,16 +549,16 @@ const styles = StyleSheet.create({
   },
   gridStats: {
     flexDirection: 'row',
-    gap: 16,
   },
   gridStat: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    marginHorizontal: 8,
   },
   gridStatText: {
     fontSize: 14,
     fontWeight: '600',
     color: '#FFFFFF',
+    marginLeft: 4,
   },
 });

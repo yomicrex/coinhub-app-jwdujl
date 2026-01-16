@@ -166,24 +166,11 @@ export default function TradesScreen() {
   const fetchTrades = async () => {
     try {
       console.log('TradesScreen: Fetching trades from API');
-      const session = await authClient.getSession();
-      if (!session) {
-        console.log('TradesScreen: No session found');
-        return;
-      }
-
-      const response = await fetch(`${API_URL}/api/trades`, {
-        headers: {
-          Authorization: `Bearer ${session.session.token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch trades');
-      }
-
-      const data = await response.json();
-      console.log('TradesScreen: Fetched trades:', data.trades?.length || 0);
+      
+      // Use authClient.$fetch which handles authentication automatically
+      const data = await authClient.$fetch(`${API_URL}/api/trades`);
+      
+      console.log('TradesScreen: Fetched trades:', data);
       setTrades(data.trades || []);
     } catch (error) {
       console.error('TradesScreen: Error fetching trades:', error);

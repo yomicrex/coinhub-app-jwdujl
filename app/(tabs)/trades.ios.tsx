@@ -158,34 +158,21 @@ export default function TradesScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    console.log('TradesScreen (iOS): Component mounted, fetching trades');
+    console.log('TradesScreen: Component mounted, fetching trades');
     fetchTrades();
   }, []);
 
   const fetchTrades = async () => {
     try {
-      console.log('TradesScreen (iOS): Fetching trades from API');
-      const session = await authClient.getSession();
-      if (!session) {
-        console.log('TradesScreen (iOS): No session found');
-        return;
-      }
-
-      const response = await fetch(`${API_URL}/api/trades`, {
-        headers: {
-          Authorization: `Bearer ${session.session.token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch trades');
-      }
-
-      const data = await response.json();
-      console.log('TradesScreen (iOS): Fetched trades:', data.trades?.length || 0);
+      console.log('TradesScreen: Fetching trades from API');
+      
+      // Use authClient.$fetch which handles authentication automatically
+      const data = await authClient.$fetch(`${API_URL}/api/trades`);
+      
+      console.log('TradesScreen: Fetched trades:', data);
       setTrades(data.trades || []);
     } catch (error) {
-      console.error('TradesScreen (iOS): Error fetching trades:', error);
+      console.error('TradesScreen: Error fetching trades:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -193,7 +180,7 @@ export default function TradesScreen() {
   };
 
   const onRefresh = () => {
-    console.log('TradesScreen (iOS): User initiated refresh');
+    console.log('TradesScreen: User initiated refresh');
     setRefreshing(true);
     fetchTrades();
   };
@@ -220,7 +207,7 @@ export default function TradesScreen() {
   };
 
   const handleTradePress = (tradeId: string) => {
-    console.log('TradesScreen (iOS): User tapped trade:', tradeId);
+    console.log('TradesScreen: User tapped trade:', tradeId);
     router.push(`/trade-detail?id=${tradeId}`);
   };
 
