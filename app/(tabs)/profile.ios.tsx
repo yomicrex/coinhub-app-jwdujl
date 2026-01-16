@@ -156,8 +156,8 @@ export default function ProfileScreen() {
   };
 
   const handleMyTrades = () => {
-    console.log('ProfileScreen: User tapped my trades');
-    router.push('/my-trades');
+    console.log('ProfileScreen: User tapped my trades, navigating to trades tab');
+    router.push('/(tabs)/trades');
   };
 
   if (!user) {
