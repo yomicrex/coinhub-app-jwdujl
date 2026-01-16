@@ -132,8 +132,8 @@ export default function AuthScreen() {
     console.log("AuthScreen: Completing profile with username:", username);
     
     try {
-      // Use fetch directly to avoid path duplication
-      const response = await fetch(`${API_URL}/api/profiles/complete`, {
+      // Fixed: Use the correct endpoint /api/auth/complete-profile
+      const response = await fetch(`${API_URL}/api/auth/complete-profile`, {
         method: "POST",
         credentials: "include",
         headers: {

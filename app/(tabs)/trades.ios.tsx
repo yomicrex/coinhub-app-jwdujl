@@ -60,7 +60,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
     color: colors.text,
   },
@@ -158,16 +158,16 @@ export default function TradesScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    console.log('TradesScreen: Component mounted, fetching trades');
+    console.log('TradesScreen (iOS): Component mounted, fetching trades');
     fetchTrades();
   }, []);
 
   const fetchTrades = async () => {
     try {
-      console.log('TradesScreen: Fetching trades from API');
+      console.log('TradesScreen (iOS): Fetching trades from API');
       const session = await authClient.getSession();
       if (!session) {
-        console.log('TradesScreen: No session found');
+        console.log('TradesScreen (iOS): No session found');
         return;
       }
 
@@ -182,10 +182,10 @@ export default function TradesScreen() {
       }
 
       const data = await response.json();
-      console.log('TradesScreen: Fetched trades:', data.trades?.length || 0);
+      console.log('TradesScreen (iOS): Fetched trades:', data.trades?.length || 0);
       setTrades(data.trades || []);
     } catch (error) {
-      console.error('TradesScreen: Error fetching trades:', error);
+      console.error('TradesScreen (iOS): Error fetching trades:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -193,7 +193,7 @@ export default function TradesScreen() {
   };
 
   const onRefresh = () => {
-    console.log('TradesScreen: User initiated refresh');
+    console.log('TradesScreen (iOS): User initiated refresh');
     setRefreshing(true);
     fetchTrades();
   };
@@ -220,7 +220,7 @@ export default function TradesScreen() {
   };
 
   const handleTradePress = (tradeId: string) => {
-    console.log('TradesScreen: User tapped trade:', tradeId);
+    console.log('TradesScreen (iOS): User tapped trade:', tradeId);
     router.push(`/trade-detail?id=${tradeId}`);
   };
 
