@@ -19,7 +19,7 @@ import {
   Image,
 } from "react-native";
 
-type Mode = "signin" | "signup" | "complete-profile";
+type Mode = "signin" | "signup" | "complete-profile" | "forgot-password" | "reset-password";
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || "https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev";
 
@@ -35,8 +35,12 @@ export default function AuthScreen() {
   const [displayName, setDisplayName] = useState("");
   const [profileEmail, setProfileEmail] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [resetToken, setResetToken] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
   // Check if user needs to complete profile
   useEffect(() => {
@@ -118,6 +122,7 @@ export default function AuthScreen() {
 
     setLoading(true);
     setErrorMessage("");
+    setSuccessMessage("");
     
     try {
       if (mode === "signin") {
@@ -174,6 +179,7 @@ export default function AuthScreen() {
 
     setLoading(true);
     setErrorMessage("");
+    setSuccessMessage("");
     console.log("AuthScreen: Completing profile with username:", username, "displayName:", displayName, "email:", profileEmail);
     
     try {
@@ -220,9 +226,144 @@ export default function AuthScreen() {
     }
   };
 
+  const handleForgotPassword = async () => {
+    console.log("AuthScreen: handleForgotPassword called, email:", email);
+    
+    if (!email) {
+      const msg = "Please enter your email address";
+      console.log("AuthScreen: Validation error:", msg);
+      setErrorMessage(msg);
+      Alert.alert("Error", msg);
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      const msg = "Please enter a valid email address";
+      console.log("AuthScreen: Email validation error:", msg);
+      setErrorMessage(msg);
+      Alert.alert("Error", msg);
+      return;
+    }
+
+    setLoading(true);
+    setErrorMessage("");
+    setSuccessMessage("");
+    
+    try {
+      console.log("AuthScreen: Sending password reset request for email:", email);
+      const response = await fetch(`${API_URL}/api/auth/request-password-reset`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      });
+
+      console.log("AuthScreen: Forgot password response status:", response.status);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("AuthScreen: Forgot password error response:", errorData);
+        throw new Error(errorData.error || errorData.message || "Failed to send reset email");
+      }
+
+      const data = await response.json();
+      console.log("AuthScreen: Forgot password response data:", data);
+
+      const successMsg = "Password reset email sent! Please check your inbox.";
+      setSuccessMessage(successMsg);
+      Alert.alert("Success", successMsg);
+      
+      // Switch to reset password mode
+      setMode("reset-password");
+    } catch (error: any) {
+      console.error("AuthScreen: Forgot password error:", error);
+      const errorMsg = error.message || "Failed to send reset email. Please try again.";
+      setErrorMessage(errorMsg);
+      Alert.alert("Error", errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    console.log("AuthScreen: handleResetPassword called");
+    
+    if (!resetToken || !newPassword || !confirmPassword) {
+      const msg = "Please fill in all fields";
+      console.log("AuthScreen: Validation error:", msg);
+      setErrorMessage(msg);
+      Alert.alert("Error", msg);
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      const msg = "Password must be at least 6 characters";
+      console.log("AuthScreen: Password validation error:", msg);
+      setErrorMessage(msg);
+      Alert.alert("Error", msg);
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      const msg = "Passwords do not match";
+      console.log("AuthScreen: Password mismatch error:", msg);
+      setErrorMessage(msg);
+      Alert.alert("Error", msg);
+      return;
+    }
+
+    setLoading(true);
+    setErrorMessage("");
+    setSuccessMessage("");
+    
+    try {
+      console.log("AuthScreen: Resetting password with token");
+      const response = await fetch(`${API_URL}/api/auth/reset-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ 
+          token: resetToken.trim(), 
+          newPassword 
+        }),
+      });
+
+      console.log("AuthScreen: Reset password response status:", response.status);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("AuthScreen: Reset password error response:", errorData);
+        throw new Error(errorData.error || errorData.message || "Failed to reset password");
+      }
+
+      const data = await response.json();
+      console.log("AuthScreen: Reset password response data:", data);
+
+      Alert.alert("Success", "Password reset successful! You can now sign in with your new password.");
+      
+      // Clear fields and switch to sign in mode
+      setResetToken("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setMode("signin");
+    } catch (error: any) {
+      console.error("AuthScreen: Reset password error:", error);
+      const errorMsg = error.message || "Failed to reset password. Please try again.";
+      setErrorMessage(errorMsg);
+      Alert.alert("Error", errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSocialAuth = async (provider: "google" | "apple" | "github") => {
     setLoading(true);
     setErrorMessage("");
+    setSuccessMessage("");
     console.log("AuthScreen: Attempting social auth with:", provider);
     
     try {
@@ -246,6 +387,255 @@ export default function AuthScreen() {
       setLoading(false);
     }
   };
+
+  // Forgot password screen
+  if (mode === "forgot-password") {
+    return (
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.content}>
+            {/* Back button */}
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => {
+                console.log("AuthScreen: Back to sign in");
+                setMode("signin");
+                setErrorMessage("");
+                setSuccessMessage("");
+              }}
+            >
+              <IconSymbol
+                ios_icon_name="chevron.left"
+                android_material_icon_name="arrow-back"
+                size={24}
+                color={colors.text}
+              />
+              <Text style={styles.backButtonText}>Back to Sign In</Text>
+            </TouchableOpacity>
+
+            {/* Logo/Icon */}
+            <View style={styles.logoContainer}>
+              <View style={styles.logoCircle}>
+                <IconSymbol
+                  ios_icon_name="lock.fill"
+                  android_material_icon_name="lock"
+                  size={80}
+                  color={colors.primary}
+                />
+              </View>
+            </View>
+
+            <Text style={styles.title}>Forgot Password?</Text>
+            <Text style={styles.subtitle}>
+              Enter your email address and we&apos;ll send you a link to reset your password.
+            </Text>
+
+            {errorMessage ? (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>{errorMessage}</Text>
+              </View>
+            ) : null}
+
+            {successMessage ? (
+              <View style={styles.successContainer}>
+                <Text style={styles.successText}>{successMessage}</Text>
+              </View>
+            ) : null}
+
+            <View style={styles.inputContainer}>
+              <IconSymbol
+                ios_icon_name="envelope"
+                android_material_icon_name="email"
+                size={20}
+                color={colors.textSecondary}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Email Address"
+                placeholderTextColor={colors.textSecondary}
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.primaryButton, loading && styles.buttonDisabled]}
+              onPress={handleForgotPassword}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Send Reset Link</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.switchModeButton}
+              onPress={() => {
+                console.log("AuthScreen: Switching to reset password mode");
+                setMode("reset-password");
+                setErrorMessage("");
+                setSuccessMessage("");
+              }}
+            >
+              <Text style={styles.switchModeText}>
+                Already have a reset code? Enter it here
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  // Reset password screen
+  if (mode === "reset-password") {
+    return (
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.content}>
+            {/* Back button */}
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => {
+                console.log("AuthScreen: Back to sign in");
+                setMode("signin");
+                setErrorMessage("");
+                setSuccessMessage("");
+              }}
+            >
+              <IconSymbol
+                ios_icon_name="chevron.left"
+                android_material_icon_name="arrow-back"
+                size={24}
+                color={colors.text}
+              />
+              <Text style={styles.backButtonText}>Back to Sign In</Text>
+            </TouchableOpacity>
+
+            {/* Logo/Icon */}
+            <View style={styles.logoContainer}>
+              <View style={styles.logoCircle}>
+                <IconSymbol
+                  ios_icon_name="key.fill"
+                  android_material_icon_name="vpn-key"
+                  size={80}
+                  color={colors.primary}
+                />
+              </View>
+            </View>
+
+            <Text style={styles.title}>Reset Password</Text>
+            <Text style={styles.subtitle}>
+              Enter the reset code from your email and your new password.
+            </Text>
+
+            {errorMessage ? (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>{errorMessage}</Text>
+              </View>
+            ) : null}
+
+            {successMessage ? (
+              <View style={styles.successContainer}>
+                <Text style={styles.successText}>{successMessage}</Text>
+              </View>
+            ) : null}
+
+            <View style={styles.inputContainer}>
+              <IconSymbol
+                ios_icon_name="key.fill"
+                android_material_icon_name="vpn-key"
+                size={20}
+                color={colors.textSecondary}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Reset Code"
+                placeholderTextColor={colors.textSecondary}
+                value={resetToken}
+                onChangeText={setResetToken}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <IconSymbol
+                ios_icon_name="lock.fill"
+                android_material_icon_name="lock"
+                size={20}
+                color={colors.textSecondary}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="New Password (min 6 characters)"
+                placeholderTextColor={colors.textSecondary}
+                value={newPassword}
+                onChangeText={setNewPassword}
+                secureTextEntry
+                autoCapitalize="none"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <IconSymbol
+                ios_icon_name="lock.fill"
+                android_material_icon_name="lock"
+                size={20}
+                color={colors.textSecondary}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Confirm New Password"
+                placeholderTextColor={colors.textSecondary}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry
+                autoCapitalize="none"
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.primaryButton, loading && styles.buttonDisabled]}
+              onPress={handleResetPassword}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Reset Password</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.switchModeButton}
+              onPress={() => {
+                console.log("AuthScreen: Switching to forgot password mode");
+                setMode("forgot-password");
+                setErrorMessage("");
+                setSuccessMessage("");
+              }}
+            >
+              <Text style={styles.switchModeText}>
+                Need a new reset code? Request one here
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
 
   // Profile completion screen (only shown when user is authenticated but has no username)
   if (mode === "complete-profile" && user && !user.hasCompletedProfile) {
@@ -407,6 +797,12 @@ export default function AuthScreen() {
             </View>
           ) : null}
 
+          {successMessage ? (
+            <View style={styles.successContainer}>
+              <Text style={styles.successText}>{successMessage}</Text>
+            </View>
+          ) : null}
+
           {/* Important note for sign in */}
           {mode === "signin" && (
             <View style={styles.infoBox}>
@@ -487,6 +883,21 @@ export default function AuthScreen() {
             </View>
           )}
 
+          {/* Forgot password link (only show on sign in) */}
+          {mode === "signin" && (
+            <TouchableOpacity
+              style={styles.forgotPasswordButton}
+              onPress={() => {
+                console.log("AuthScreen: Switching to forgot password mode");
+                setMode("forgot-password");
+                setErrorMessage("");
+                setSuccessMessage("");
+              }}
+            >
+              <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
             style={[styles.primaryButton, loading && styles.buttonDisabled]}
             onPress={() => {
@@ -511,6 +922,7 @@ export default function AuthScreen() {
               console.log("AuthScreen: Switching mode from", mode, "to", newMode);
               setMode(newMode);
               setErrorMessage("");
+              setSuccessMessage("");
             }}
           >
             <Text style={styles.switchModeText}>
@@ -593,6 +1005,17 @@ const styles = StyleSheet.create({
     padding: 24,
     justifyContent: "center",
   },
+  backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 24,
+    gap: 8,
+  },
+  backButtonText: {
+    fontSize: 16,
+    color: colors.text,
+    fontWeight: "500",
+  },
   logoContainer: {
     alignItems: "center",
     marginBottom: 32,
@@ -617,6 +1040,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: 24,
     textAlign: "center",
+    lineHeight: 22,
   },
   errorContainer: {
     backgroundColor: "#fee",
@@ -628,6 +1052,19 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: "#c00",
+    fontSize: 14,
+    textAlign: "center",
+  },
+  successContainer: {
+    backgroundColor: "#efe",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#cfc",
+  },
+  successText: {
+    color: "#0a0",
     fontSize: 14,
     textAlign: "center",
   },
@@ -688,6 +1125,15 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: colors.primary,
     letterSpacing: 2,
+  },
+  forgotPasswordButton: {
+    alignSelf: "flex-end",
+    marginBottom: 8,
+  },
+  forgotPasswordText: {
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: "500",
   },
   primaryButton: {
     height: 50,
