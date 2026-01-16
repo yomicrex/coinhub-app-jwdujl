@@ -329,39 +329,19 @@ export default function EditCoinScreen() {
             try {
               console.log('EditCoin: Sending DELETE request to:', `${API_URL}/api/coins/${coinId}`);
               
-              // Get the session to include auth headers
-              const session = await authClient.getSession();
-              
-              if (!session) {
-                throw new Error('Not authenticated');
-              }
-
-              // Use standard fetch with proper auth headers
-              const response = await fetch(`${API_URL}/api/coins/${coinId}`, {
+              // Use authClient.$fetch which automatically handles authentication
+              const response = await authClient.$fetch(`${API_URL}/api/coins/${coinId}`, {
                 method: 'DELETE',
-                headers: {
-                  'Authorization': `Bearer ${session.session.token}`,
-                  'Content-Type': 'application/json',
-                },
               });
 
-              console.log('EditCoin: Delete response status:', response.status);
-
-              if (!response.ok) {
-                const errorText = await response.text();
-                console.error('EditCoin: Delete failed with status:', response.status, errorText);
-                throw new Error(`Failed to delete coin: ${response.status}`);
-              }
-
-              const result = await response.json();
-              console.log('EditCoin: Delete response:', result);
+              console.log('EditCoin: Delete response:', response);
               console.log('EditCoin: Coin deleted successfully');
               
               Alert.alert('Deleted', 'Your coin has been deleted.', [
                 {
                   text: 'OK',
                   onPress: () => {
-                    console.log('EditCoin: Navigating back after delete');
+                    console.log('EditCoin: Navigating to profile after delete');
                     router.replace('/(tabs)/profile');
                   },
                 },
