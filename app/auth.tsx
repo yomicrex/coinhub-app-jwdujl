@@ -68,11 +68,6 @@ export default function AuthScreen() {
       // User is authenticated but hasn't completed profile
       console.log("AuthScreen: Profile incomplete, showing profile completion");
       setMode("complete-profile");
-      
-      // Pre-fill email if available
-      if (user.email) {
-        setEmail(user.email);
-      }
     };
 
     checkProfile();
@@ -225,19 +220,6 @@ export default function AuthScreen() {
             <Text style={styles.subtitle}>
               Welcome to CoinHub! Set up your profile to start collecting.
             </Text>
-
-            {/* Show user's email */}
-            {user.email && (
-              <View style={styles.emailDisplayContainer}>
-                <IconSymbol
-                  ios_icon_name="envelope.fill"
-                  android_material_icon_name="email"
-                  size={16}
-                  color={colors.textSecondary}
-                />
-                <Text style={styles.emailDisplayText}>{user.email}</Text>
-              </View>
-            )}
 
             {errorMessage ? (
               <View style={styles.errorContainer}>
@@ -528,21 +510,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: 32,
     textAlign: "center",
-  },
-  emailDisplayContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    gap: 8,
-  },
-  emailDisplayText: {
-    fontSize: 14,
-    color: colors.text,
-    fontWeight: "500",
   },
   errorContainer: {
     backgroundColor: "#fee",
