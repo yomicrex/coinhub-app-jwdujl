@@ -68,6 +68,7 @@ export default function CoinDetailScreen() {
   const [coin, setCoin] = useState<CoinDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [initiatingTrade, setInitiatingTrade] = useState(false);
 
   useEffect(() => {
     console.log('CoinDetail: Loading coin:', coinId);
@@ -238,61 +239,90 @@ export default function CoinDetailScreen() {
   };
 
   const handleTrade = async () => {
-    if (!coin) return;
+    if (!coin || initiatingTrade) return;
     
     console.log('CoinDetail: User tapped Trade button for coin:', coinId);
+    setInitiatingTrade(true);
     
     try {
       console.log('CoinDetail: Initiating trade via POST /api/trades/initiate');
+      
+      // Use raw fetch for better control over error handling
+      // authClient.$fetch wraps errors in a way that makes it hard to access the response body
       const response = await fetch(`${API_URL}/api/trades/initiate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
+        credentials: 'include', // Include cookies for session authentication
         body: JSON.stringify({ coinId }),
       });
 
       console.log('CoinDetail: Trade initiation response status:', response.status);
       
-      // Handle 409 Conflict (active trade already exists)
+      // Parse the response body
+      const responseData = await response.json();
+      console.log('CoinDetail: Trade initiation response data:', responseData);
+      
+      // Handle 409 Conflict - active trade already exists
       if (response.status === 409) {
-        console.log('CoinDetail: Active trade already exists (409)');
-        Alert.alert(
-          'Active Trade Exists',
-          'You already have an active trade request for this coin. Please check your Trades tab.',
-          [
-            {
-              text: 'View Trades',
-              onPress: () => {
-                console.log('CoinDetail: Navigating to trades tab');
-                router.push('/(tabs)/trades');
+        console.log('CoinDetail: 409 Conflict - active trade already exists');
+        
+        const existingTradeId = responseData?.existingTradeId;
+        const message = responseData?.message || 'You already have an active trade request for this coin.';
+        
+        console.log('CoinDetail: Existing trade ID:', existingTradeId);
+        
+        if (existingTradeId) {
+          // We have the existing trade ID, navigate directly to it
+          Alert.alert(
+            'Active Trade Exists',
+            message,
+            [
+              {
+                text: 'View Trade',
+                onPress: () => {
+                  console.log('CoinDetail: Navigating to existing trade:', existingTradeId);
+                  router.push(`/trade-detail?id=${existingTradeId}`);
+                },
               },
-            },
-            { text: 'OK' },
-          ]
-        );
+              { text: 'Cancel', style: 'cancel' },
+            ]
+          );
+        } else {
+          // Fallback: navigate to trades list
+          Alert.alert(
+            'Active Trade Exists',
+            message,
+            [
+              {
+                text: 'View Trades',
+                onPress: () => {
+                  console.log('CoinDetail: Navigating to trades tab');
+                  router.push('/(tabs)/trades');
+                },
+              },
+              { text: 'OK' },
+            ]
+          );
+        }
         return;
       }
       
-      // Handle other error statuses
+      // Handle other error responses
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMessage = errorData?.error || errorData?.message || 'Failed to create trade request';
+        const errorMessage = responseData?.message || responseData?.error || 'Failed to create trade request';
         console.error('CoinDetail: Trade initiation failed:', response.status, errorMessage);
         Alert.alert('Error', errorMessage);
         return;
       }
       
-      // Success - parse response
-      const data = await response.json();
-      console.log('CoinDetail: Trade initiation success response:', data);
-      
-      const tradeData = data?.data || data;
+      // Success - extract trade ID
+      const tradeData = responseData?.data || responseData;
       const tradeId = tradeData?.trade?.id || tradeData?.id;
       
       if (!tradeId) {
-        console.error('CoinDetail: No trade ID in response:', data);
+        console.error('CoinDetail: No trade ID in response:', responseData);
         Alert.alert('Error', 'Failed to create trade request');
         return;
       }
@@ -311,6 +341,8 @@ export default function CoinDetailScreen() {
     } catch (error: any) {
       console.error('CoinDetail: Error creating trade:', error);
       Alert.alert('Error', 'Failed to create trade request. Please try again.');
+    } finally {
+      setInitiatingTrade(false);
     }
   };
 
@@ -613,14 +645,24 @@ export default function CoinDetailScreen() {
 
             {/* Trade Button */}
             {!isOwner && coin.tradeStatus === 'open_to_trade' && (
-              <TouchableOpacity style={styles.tradeButton} onPress={handleTrade}>
-                <IconSymbol
-                  ios_icon_name="arrow.left.arrow.right"
-                  android_material_icon_name="swap-horiz"
-                  size={20}
-                  color="#FFFFFF"
-                />
-                <Text style={styles.tradeButtonText}>Propose Trade</Text>
+              <TouchableOpacity 
+                style={[styles.tradeButton, initiatingTrade && styles.tradeButtonDisabled]} 
+                onPress={handleTrade}
+                disabled={initiatingTrade}
+              >
+                {initiatingTrade ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <IconSymbol
+                      ios_icon_name="arrow.left.arrow.right"
+                      android_material_icon_name="swap-horiz"
+                      size={20}
+                      color="#FFFFFF"
+                    />
+                    <Text style={styles.tradeButtonText}>Propose Trade</Text>
+                  </>
+                )}
               </TouchableOpacity>
             )}
           </View>
@@ -840,6 +882,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginTop: 20,
     gap: 8,
+  },
+  tradeButtonDisabled: {
+    opacity: 0.6,
   },
   tradeButtonText: {
     fontSize: 16,
