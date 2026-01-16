@@ -35,6 +35,7 @@ export default function EditCoinScreen() {
   const [loading, setLoading] = useState(false);
   const [loadingCoin, setLoadingCoin] = useState(true);
   const [images, setImages] = useState<CoinImage[]>([]);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
   // Form fields
   const [title, setTitle] = useState('');
@@ -313,89 +314,59 @@ export default function EditCoinScreen() {
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     console.log('EditCoin: handleDelete called for coin:', coinId);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    console.log('EditCoin: User confirmed delete for coin:', coinId);
+    console.log('EditCoin: API_URL:', API_URL);
+    console.log('EditCoin: Full delete URL:', `${API_URL}/api/coins/${coinId}`);
     
-    Alert.alert(
-      'Delete Coin',
-      'Are you sure you want to delete this coin? This action cannot be undone.',
-      [
-        { 
-          text: 'Cancel', 
-          style: 'cancel',
-          onPress: () => console.log('EditCoin: User cancelled delete')
-        },
+    setShowDeleteConfirm(false);
+    setLoading(true);
+    
+    try {
+      console.log('EditCoin: About to send DELETE request...');
+      
+      const response = await authClient.$fetch(`${API_URL}/api/coins/${coinId}`, {
+        method: 'DELETE',
+      });
+
+      console.log('EditCoin: DELETE request completed, response:', response);
+      console.log('EditCoin: Coin deleted successfully');
+      
+      Alert.alert('Deleted', 'Your coin has been deleted.', [
         {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            console.log('EditCoin: User confirmed delete for coin:', coinId);
-            console.log('EditCoin: API_URL:', API_URL);
-            console.log('EditCoin: Full delete URL:', `${API_URL}/api/coins/${coinId}`);
-            
-            setLoading(true);
-            
-            try {
-              console.log('EditCoin: About to send DELETE request...');
-              
-              // Get the session to extract the token
-              const session = await authClient.getSession();
-              console.log('EditCoin: Session retrieved:', session ? 'Session exists' : 'No session');
-              
-              if (!session) {
-                throw new Error('No active session. Please log in again.');
-              }
-
-              // Use standard fetch with manual authentication
-              const response = await fetch(`${API_URL}/api/coins/${coinId}`, {
-                method: 'DELETE',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Cookie': `better_auth.session_token=${session.session.token}`,
-                },
-              });
-
-              console.log('EditCoin: DELETE request completed with status:', response.status);
-              
-              if (!response.ok) {
-                const errorText = await response.text();
-                console.error('EditCoin: DELETE request failed:', errorText);
-                throw new Error(`Failed to delete coin: ${response.status} ${response.statusText}`);
-              }
-
-              const result = await response.json();
-              console.log('EditCoin: Delete response:', result);
-              console.log('EditCoin: Coin deleted successfully');
-              
-              Alert.alert('Deleted', 'Your coin has been deleted.', [
-                {
-                  text: 'OK',
-                  onPress: () => {
-                    console.log('EditCoin: Navigating to profile after delete');
-                    router.replace('/(tabs)/profile');
-                  },
-                },
-              ]);
-            } catch (error: any) {
-              console.error('EditCoin: Error deleting coin - START ERROR DETAILS');
-              console.error('EditCoin: Error object:', error);
-              console.error('EditCoin: Error message:', error?.message);
-              console.error('EditCoin: Error name:', error?.name);
-              console.error('EditCoin: Error stack:', error?.stack);
-              console.error('EditCoin: Full error JSON:', JSON.stringify(error, null, 2));
-              console.error('EditCoin: Error deleting coin - END ERROR DETAILS');
-              
-              Alert.alert(
-                'Error', 
-                `Failed to delete coin: ${error?.message || 'Unknown error'}. Please try again.`
-              );
-            } finally {
-              setLoading(false);
-            }
+          text: 'OK',
+          onPress: () => {
+            console.log('EditCoin: Navigating to profile after delete');
+            router.replace('/(tabs)/profile');
           },
         },
-      ]
-    );
+      ]);
+    } catch (error: any) {
+      console.error('EditCoin: Error deleting coin - START ERROR DETAILS');
+      console.error('EditCoin: Error object:', error);
+      console.error('EditCoin: Error message:', error?.message);
+      console.error('EditCoin: Error name:', error?.name);
+      console.error('EditCoin: Error stack:', error?.stack);
+      console.error('EditCoin: Full error JSON:', JSON.stringify(error, null, 2));
+      console.error('EditCoin: Error deleting coin - END ERROR DETAILS');
+      
+      Alert.alert(
+        'Error', 
+        `Failed to delete coin: ${error?.message || 'Unknown error'}. Please try again.`
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const cancelDelete = () => {
+    console.log('EditCoin: User cancelled delete');
+    setShowDeleteConfirm(false);
   };
 
   if (loadingCoin) {
@@ -676,6 +647,32 @@ export default function EditCoinScreen() {
             <Text style={styles.deleteButtonText}>Delete Coin</Text>
           </TouchableOpacity>
         </ScrollView>
+
+        {/* Delete Confirmation Modal */}
+        {showDeleteConfirm && (
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Delete Coin</Text>
+              <Text style={styles.modalMessage}>
+                Are you sure you want to delete this coin? This action cannot be undone.
+              </Text>
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonCancel]}
+                  onPress={cancelDelete}
+                >
+                  <Text style={styles.modalButtonTextCancel}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonDelete]}
+                  onPress={confirmDelete}
+                >
+                  <Text style={styles.modalButtonTextDelete}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
       </SafeAreaView>
     </>
   );
@@ -826,5 +823,77 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 8,
+      },
+      web: {
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.25)',
+      },
+    }),
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalButtonCancel: {
+    backgroundColor: colors.backgroundAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modalButtonDelete: {
+    backgroundColor: '#FF3B30',
+  },
+  modalButtonTextCancel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  modalButtonTextDelete: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });
