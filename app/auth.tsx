@@ -1,5 +1,10 @@
 
+import { useRouter } from "expo-router";
+import { IconSymbol } from "@/components/IconSymbol";
+import { colors } from "@/styles/commonStyles";
+import Constants from "expo-constants";
 import React, { useState, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   View,
   Text,
@@ -13,11 +18,6 @@ import {
   ScrollView,
   Image,
 } from "react-native";
-import { useAuth } from "@/contexts/AuthContext";
-import { useRouter } from "expo-router";
-import Constants from "expo-constants";
-import { colors } from "@/styles/commonStyles";
-import { IconSymbol } from "@/components/IconSymbol";
 
 type Mode = "signin" | "signup" | "complete-profile";
 
@@ -56,7 +56,7 @@ export default function AuthScreen() {
       }
       
       // User exists - check if profile is complete
-      console.log("AuthScreen: User detected, hasCompletedProfile:", user.hasCompletedProfile, "username:", user.username);
+      console.log("AuthScreen: User detected, hasCompletedProfile:", user.hasCompletedProfile, "username:", user.username, "email:", user.email);
       
       // If user has completed profile, redirect to home
       if (user.hasCompletedProfile && user.username) {
@@ -68,6 +68,11 @@ export default function AuthScreen() {
       // User is authenticated but hasn't completed profile
       console.log("AuthScreen: Profile incomplete, showing profile completion");
       setMode("complete-profile");
+      
+      // Pre-fill email if available
+      if (user.email) {
+        setEmail(user.email);
+      }
     };
 
     checkProfile();
@@ -98,11 +103,13 @@ export default function AuthScreen() {
     
     try {
       if (mode === "signin") {
-        console.log("AuthScreen: Attempting sign in");
+        console.log("AuthScreen: Attempting sign in with email:", email);
         await signInWithEmail(email, password);
+        console.log("AuthScreen: Sign in successful");
       } else {
-        console.log("AuthScreen: Attempting sign up");
-        await signUpWithEmail(email, password, displayName || undefined);
+        console.log("AuthScreen: Attempting sign up with email:", email);
+        await signUpWithEmail(email, password, displayName || email.split('@')[0]);
+        console.log("AuthScreen: Sign up successful");
       }
       // fetchUser is called automatically in signInWithEmail/signUpWithEmail
       // The useEffect will handle navigation based on profile status
@@ -129,10 +136,9 @@ export default function AuthScreen() {
 
     setLoading(true);
     setErrorMessage("");
-    console.log("AuthScreen: Completing profile with username:", username);
+    console.log("AuthScreen: Completing profile with username:", username, "displayName:", displayName);
     
     try {
-      // Fixed: Use the correct endpoint /api/auth/complete-profile
       const response = await fetch(`${API_URL}/api/auth/complete-profile`, {
         method: "POST",
         credentials: "include",
@@ -208,7 +214,7 @@ export default function AuthScreen() {
               <View style={styles.logoCircle}>
                 <IconSymbol
                   ios_icon_name="circle.fill"
-                  android_material_icon_name="circle"
+                  android_material_icon_name="album"
                   size={80}
                   color={colors.primary}
                 />
@@ -219,6 +225,19 @@ export default function AuthScreen() {
             <Text style={styles.subtitle}>
               Welcome to CoinHub! Set up your profile to start collecting.
             </Text>
+
+            {/* Show user's email */}
+            {user.email && (
+              <View style={styles.emailDisplayContainer}>
+                <IconSymbol
+                  ios_icon_name="envelope.fill"
+                  android_material_icon_name="email"
+                  size={16}
+                  color={colors.textSecondary}
+                />
+                <Text style={styles.emailDisplayText}>{user.email}</Text>
+              </View>
+            )}
 
             {errorMessage ? (
               <View style={styles.errorContainer}>
@@ -314,7 +333,7 @@ export default function AuthScreen() {
             <View style={styles.logoCircle}>
               <IconSymbol
                 ios_icon_name="circle.fill"
-                android_material_icon_name="circle"
+                android_material_icon_name="album"
                 size={80}
                 color={colors.primary}
               />
@@ -343,7 +362,7 @@ export default function AuthScreen() {
             />
             <TextInput
               style={styles.input}
-              placeholder="Email"
+              placeholder="Email Address"
               placeholderTextColor={colors.textSecondary}
               value={email}
               onChangeText={setEmail}
@@ -370,6 +389,25 @@ export default function AuthScreen() {
               autoCapitalize="none"
             />
           </View>
+
+          {mode === "signup" && (
+            <View style={styles.inputContainer}>
+              <IconSymbol
+                ios_icon_name="person.fill"
+                android_material_icon_name="account-circle"
+                size={20}
+                color={colors.textSecondary}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Display Name (optional)"
+                placeholderTextColor={colors.textSecondary}
+                value={displayName}
+                onChangeText={setDisplayName}
+                autoCapitalize="words"
+              />
+            </View>
+          )}
 
           <TouchableOpacity
             style={[styles.primaryButton, loading && styles.buttonDisabled]}
@@ -490,6 +528,21 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: 32,
     textAlign: "center",
+  },
+  emailDisplayContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    gap: 8,
+  },
+  emailDisplayText: {
+    fontSize: 14,
+    color: colors.text,
+    fontWeight: "500",
   },
   errorContainer: {
     backgroundColor: "#fee",
