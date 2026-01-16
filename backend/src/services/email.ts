@@ -19,13 +19,16 @@ export function createEmailService(logger: any): EmailService {
     async sendPasswordResetEmail(email: string, resetToken: string, frontendUrl: string) {
       const resetLink = `${frontendUrl}/auth?mode=reset&token=${encodeURIComponent(resetToken)}`;
 
-      // If email service is not enabled, log instead
+      // If email service is not enabled, return error
       if (!isEnabled || !resend) {
-        logger.warn(
+        logger.error(
           { email, resetToken, resetLink },
-          'Email service disabled - password reset email would be sent here'
+          'Email service not configured - cannot send password reset email. Set RESEND_API_KEY environment variable.'
         );
-        return { success: true }; // Return success to maintain user experience
+        return {
+          success: false,
+          error: 'Email service is not configured. Please contact support.',
+        };
       }
 
       try {
@@ -46,7 +49,7 @@ export function createEmailService(logger: any): EmailService {
           );
           return {
             success: false,
-            error: 'Failed to send password reset email',
+            error: `Failed to send password reset email: ${response.error.message || 'Unknown error'}`,
           };
         }
 

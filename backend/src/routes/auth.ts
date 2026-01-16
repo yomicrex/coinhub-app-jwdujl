@@ -622,51 +622,58 @@ export function registerAuthRoutes(app: App) {
         const frontendUrl = process.env.FRONTEND_URL || 'https://coinhub.app';
         const emailService = (app as any).email;
 
-        if (emailService) {
-          try {
-            const emailResult = await emailService.sendPasswordResetEmail(
-              normalizedEmail,
-              resetToken,
-              frontendUrl
-            );
-
-            if (!emailResult.success) {
-              app.logger.warn(
-                { userId: user.id, email: normalizedEmail, error: emailResult.error },
-                'Failed to send password reset email'
-              );
-              // Still return success to user (don't reveal email service is down)
-            } else {
-              app.logger.info(
-                { userId: user.id, email: normalizedEmail },
-                'Password reset email sent successfully'
-              );
-            }
-          } catch (emailError) {
-            app.logger.error(
-              { err: emailError, userId: user.id, email: normalizedEmail },
-              'Unexpected error sending password reset email'
-            );
-            // Continue anyway - don't break the flow for user
-          }
-        } else {
-          app.logger.warn(
+        if (!emailService) {
+          app.logger.error(
             { userId: user.id, email: normalizedEmail },
-            'Email service not available - password reset email not sent'
+            'Email service not available - cannot send password reset email'
           );
+          return reply.status(500).send({
+            error: 'Email service is not available. Please try again later.'
+          });
         }
 
-        return {
-          message: 'If an account exists with this email, a password reset link will be sent shortly',
-          // For development/testing only - remove in production
-          ...(process.env.NODE_ENV === 'development' && {
-            debug: {
-              token: resetToken,
-              expiresAt: expiresAt.toISOString(),
-              resetLink: `${frontendUrl}/auth?mode=reset&token=${encodeURIComponent(resetToken)}`
-            }
-          })
-        };
+        try {
+          const emailResult = await emailService.sendPasswordResetEmail(
+            normalizedEmail,
+            resetToken,
+            frontendUrl
+          );
+
+          if (!emailResult.success) {
+            app.logger.error(
+              { userId: user.id, email: normalizedEmail, error: emailResult.error },
+              'Failed to send password reset email - returning error to user'
+            );
+            return reply.status(500).send({
+              error: emailResult.error || 'Failed to send password reset email. Please try again later.'
+            });
+          }
+
+          app.logger.info(
+            { userId: user.id, email: normalizedEmail },
+            'Password reset email sent successfully'
+          );
+
+          return {
+            message: 'Password reset link has been sent to your email address',
+            // For development/testing only - remove in production
+            ...(process.env.NODE_ENV === 'development' && {
+              debug: {
+                token: resetToken,
+                expiresAt: expiresAt.toISOString(),
+                resetLink: `${frontendUrl}/auth?mode=reset&token=${encodeURIComponent(resetToken)}`
+              }
+            })
+          };
+        } catch (emailError) {
+          app.logger.error(
+            { err: emailError, userId: user.id, email: normalizedEmail },
+            'Unexpected error sending password reset email'
+          );
+          return reply.status(500).send({
+            error: 'An unexpected error occurred while sending the reset email. Please try again later.'
+          });
+        }
       } catch (tokenError) {
         app.logger.error(
           { err: tokenError, userId: user.id, email: normalizedEmail },

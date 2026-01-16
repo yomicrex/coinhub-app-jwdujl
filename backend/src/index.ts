@@ -25,10 +25,15 @@ export type App = typeof app;
 try {
   app.logger.info('Initializing email service');
   (app as any).email = createEmailService(app.logger);
-  app.logger.info('Email service initialized');
+
+  if (process.env.RESEND_API_KEY) {
+    app.logger.info('Email service initialized successfully with API key');
+  } else {
+    app.logger.warn('Email service initialized but RESEND_API_KEY is not set - password reset emails will fail at runtime');
+  }
 } catch (error) {
   app.logger.error({ err: error }, 'Failed to initialize email service');
-  // Don't throw - email is optional
+  throw error;
 }
 
 // Initialize authentication system
