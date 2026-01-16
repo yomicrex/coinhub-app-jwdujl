@@ -86,6 +86,33 @@ export default function SettingsScreen() {
       />
       <SafeAreaView style={styles.container} edges={['bottom']}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
+          {/* Admin Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Admin Tools</Text>
+            
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                console.log('Settings: User tapped Admin Tools - Delete User');
+                router.push('/admin-delete-user');
+              }}
+            >
+              <IconSymbol
+                ios_icon_name="shield.fill"
+                android_material_icon_name="admin-panel-settings"
+                size={24}
+                color={colors.primary}
+              />
+              <Text style={styles.menuItemText}>Delete User Account</Text>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron-right"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
+
           {/* Account Section */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Account</Text>
