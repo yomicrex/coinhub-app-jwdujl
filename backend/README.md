@@ -25,8 +25,21 @@ npm run db:generate
 npm run db:migrate
 ```
 
+## Authentication
+
+CoinHub uses **Better Auth** for email/password authentication with a two-step process:
+
+1. **Sign-Up**: `POST /api/auth/sign-up/email` - Create account (auto-provided by Better Auth)
+2. **Profile Completion**: `POST /api/auth/complete-profile` - Set username and profile details
+
+**See**:
+- `AUTHENTICATION_DEBUG_GUIDE.md` - Complete authentication flow and debugging
+- `AUTHENTICATION_API_REFERENCE.md` - Full endpoint reference with examples
+- `AUTHENTICATION_VERIFICATION_CHECKLIST.md` - Verify setup and troubleshoot
+
 ## Customization
 
 - Add your API endpoints in `src/index.ts`
 - Define your database schema in `src/db/schema.ts`
 - Generate and apply migrations as needed
+- See documentation files for feature-specific guides
