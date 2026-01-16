@@ -153,11 +153,12 @@ export default function CoinDetailScreen() {
       
       // Check if we're on web
       if (Platform.OS === 'web') {
-        console.log('CoinDetail: Running on web, using Web Share API or clipboard fallback');
+        console.log('CoinDetail: Running on web, attempting to share');
         
         // Try to use the Web Share API if available
         if (typeof navigator !== 'undefined' && navigator.share) {
           try {
+            console.log('CoinDetail: Using Web Share API');
             await navigator.share({
               title: `${coin.title} - CoinHub`,
               text: shareMessage,
@@ -173,6 +174,8 @@ export default function CoinDetailScreen() {
             }
             console.log('CoinDetail: Web Share API failed, falling back to clipboard:', shareError);
           }
+        } else {
+          console.log('CoinDetail: Web Share API not available, using clipboard');
         }
         
         // Fallback to clipboard for web
@@ -183,24 +186,36 @@ export default function CoinDetailScreen() {
       } else {
         // Native platforms (iOS/Android)
         console.log('CoinDetail: Running on native platform, using React Native Share API');
-        const result = await Share.share({
-          message: Platform.OS === 'ios' ? shareMessage : fullMessage,
-          url: Platform.OS === 'ios' ? shareUrl : undefined,
-          title: `${coin.title} - CoinHub`,
-        });
+        
+        try {
+          const result = await Share.share(
+            {
+              message: Platform.OS === 'ios' ? shareMessage : fullMessage,
+              url: Platform.OS === 'ios' ? shareUrl : undefined,
+              title: `${coin.title} - CoinHub`,
+            },
+            {
+              dialogTitle: 'Share this coin',
+              subject: `${coin.title} - CoinHub`,
+            }
+          );
 
-        if (result.action === Share.sharedAction) {
-          if (result.activityType) {
-            console.log('CoinDetail: Shared with activity type:', result.activityType);
-          } else {
-            console.log('CoinDetail: Coin shared successfully');
+          if (result.action === Share.sharedAction) {
+            if (result.activityType) {
+              console.log('CoinDetail: Shared with activity type:', result.activityType);
+            } else {
+              console.log('CoinDetail: Coin shared successfully');
+            }
+          } else if (result.action === Share.dismissedAction) {
+            console.log('CoinDetail: Share dismissed');
           }
-        } else if (result.action === Share.dismissedAction) {
-          console.log('CoinDetail: Share dismissed');
+        } catch (error: any) {
+          console.error('CoinDetail: Error sharing on native:', error);
+          Alert.alert('Share Failed', 'Unable to share this coin. Please try again.');
         }
       }
     } catch (error) {
-      console.error('CoinDetail: Error sharing coin:', error);
+      console.error('CoinDetail: Error in share handler:', error);
       Alert.alert('Share Failed', 'Unable to share this coin. Please try again.');
     }
   };
