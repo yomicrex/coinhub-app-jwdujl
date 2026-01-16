@@ -29,7 +29,7 @@ export default function AuthScreen() {
     useAuth();
 
   const [mode, setMode] = useState<Mode>("signin");
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState(""); // Can be email or username
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -92,21 +92,13 @@ export default function AuthScreen() {
   }
 
   const handleEmailAuth = async () => {
-    console.log("AuthScreen: handleEmailAuth called, mode:", mode, "email:", email);
+    console.log("AuthScreen: handleEmailAuth called, mode:", mode, "identifier:", identifier);
     
-    if (!email || !password) {
-      const msg = "Please enter email and password";
+    if (!identifier || !password) {
+      const msg = mode === "signin" 
+        ? "Please enter username/email and password"
+        : "Please enter email and password";
       console.log("AuthScreen: Validation error:", msg);
-      setErrorMessage(msg);
-      Alert.alert("Error", msg);
-      return;
-    }
-
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      const msg = "Please enter a valid email address";
-      console.log("AuthScreen: Email validation error:", msg);
       setErrorMessage(msg);
       Alert.alert("Error", msg);
       return;
@@ -126,17 +118,54 @@ export default function AuthScreen() {
     
     try {
       if (mode === "signin") {
-        console.log("AuthScreen: Attempting sign in with email:", email);
-        await signInWithEmail(email, password);
-        console.log("AuthScreen: Sign in successful");
+        console.log("AuthScreen: Attempting sign in with identifier:", identifier);
+        
+        // Use the new username-or-email endpoint
+        const response = await fetch(`${API_URL}/api/auth/sign-in/username-email`, {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            identifier: identifier.trim(),
+            password: password,
+          }),
+        });
+
+        console.log("AuthScreen: Sign in response status:", response.status);
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error("AuthScreen: Sign in error response:", errorData);
+          throw new Error(errorData.error || errorData.message || "Sign in failed");
+        }
+
+        const data = await response.json();
+        console.log("AuthScreen: Sign in successful, user:", data.user?.id);
+        
+        // Refresh user data
+        await fetchUser();
+        
         Alert.alert("Success", "Signed in successfully!");
       } else {
-        console.log("AuthScreen: Attempting sign up with email:", email);
-        await signUpWithEmail(email, password, displayName || email.split('@')[0]);
+        // For signup, identifier must be an email
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(identifier)) {
+          const msg = "Please enter a valid email address for signup";
+          console.log("AuthScreen: Email validation error:", msg);
+          setErrorMessage(msg);
+          Alert.alert("Error", msg);
+          setLoading(false);
+          return;
+        }
+
+        console.log("AuthScreen: Attempting sign up with email:", identifier);
+        await signUpWithEmail(identifier, password, displayName || identifier.split('@')[0]);
         console.log("AuthScreen: Sign up successful");
         Alert.alert("Success", "Account created successfully! Please complete your profile.");
       }
-      // fetchUser is called automatically in signInWithEmail/signUpWithEmail
+      // fetchUser is called automatically in signUpWithEmail
       // The useEffect will handle navigation based on profile status
     } catch (error: any) {
       console.error("AuthScreen: Authentication error:", error);
@@ -227,9 +256,9 @@ export default function AuthScreen() {
   };
 
   const handleForgotPassword = async () => {
-    console.log("AuthScreen: handleForgotPassword called, email:", email);
+    console.log("AuthScreen: handleForgotPassword called, identifier:", identifier);
     
-    if (!email) {
+    if (!identifier) {
       const msg = "Please enter your email address";
       console.log("AuthScreen: Validation error:", msg);
       setErrorMessage(msg);
@@ -239,8 +268,8 @@ export default function AuthScreen() {
 
     // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      const msg = "Please enter a valid email address";
+    if (!emailRegex.test(identifier)) {
+      const msg = "Please enter a valid email address for password reset";
       console.log("AuthScreen: Email validation error:", msg);
       setErrorMessage(msg);
       Alert.alert("Error", msg);
@@ -252,13 +281,13 @@ export default function AuthScreen() {
     setSuccessMessage("");
     
     try {
-      console.log("AuthScreen: Sending password reset request for email:", email);
+      console.log("AuthScreen: Sending password reset request for email:", identifier);
       const response = await fetch(`${API_URL}/api/auth/request-password-reset`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+        body: JSON.stringify({ email: identifier.trim().toLowerCase() }),
       });
 
       console.log("AuthScreen: Forgot password response status:", response.status);
@@ -488,8 +517,8 @@ export default function AuthScreen() {
                 style={styles.input}
                 placeholder="Email Address"
                 placeholderTextColor={colors.textSecondary}
-                value={email}
-                onChangeText={setEmail}
+                value={identifier}
+                onChangeText={setIdentifier}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -878,7 +907,7 @@ export default function AuthScreen() {
             </View>
           )}
 
-          {/* Important note for sign in */}
+          {/* Updated info box for sign in */}
           {mode === "signin" && (
             <View style={styles.infoBox}>
               <IconSymbol
@@ -888,28 +917,28 @@ export default function AuthScreen() {
                 color={colors.primary}
               />
               <Text style={styles.infoText}>
-                Sign in with your <Text style={styles.boldText}>email address</Text>, not your username
+                You can sign in with either your <Text style={styles.boldText}>username</Text> or <Text style={styles.boldText}>email address</Text>
               </Text>
             </View>
           )}
 
           <View style={styles.inputContainer}>
             <IconSymbol
-              ios_icon_name="envelope"
-              android_material_icon_name="email"
+              ios_icon_name={mode === "signin" ? "person" : "envelope"}
+              android_material_icon_name={mode === "signin" ? "person" : "email"}
               size={20}
               color={colors.textSecondary}
             />
             <TextInput
               style={styles.input}
-              placeholder="Email Address"
+              placeholder={mode === "signin" ? "Username or Email" : "Email Address"}
               placeholderTextColor={colors.textSecondary}
-              value={email}
+              value={identifier}
               onChangeText={(text) => {
-                console.log("AuthScreen: Email input changed:", text);
-                setEmail(text);
+                console.log("AuthScreen: Identifier input changed:", text);
+                setIdentifier(text);
               }}
-              keyboardType="email-address"
+              keyboardType={mode === "signin" ? "default" : "email-address"}
               autoCapitalize="none"
               autoCorrect={false}
             />
