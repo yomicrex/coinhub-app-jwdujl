@@ -863,6 +863,21 @@ export default function AuthScreen() {
             </View>
           ) : null}
 
+          {/* Beta testing note for signup */}
+          {mode === "signup" && (
+            <View style={styles.betaBox}>
+              <IconSymbol
+                ios_icon_name="info.circle"
+                android_material_icon_name="info"
+                size={20}
+                color={colors.primary}
+              />
+              <Text style={styles.betaText}>
+                <Text style={styles.boldText}>Beta Testing:</Text> You can create multiple accounts with the same email address as long as you use different usernames. This is temporary while we fix the password reset feature.
+              </Text>
+            </View>
+          )}
+
           {/* Important note for sign in */}
           {mode === "signin" && (
             <View style={styles.infoBox}>
@@ -1128,6 +1143,23 @@ const styles = StyleSheet.create({
     color: "#0a0",
     fontSize: 14,
     textAlign: "center",
+  },
+  betaBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#fff3cd",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#ffc107",
+    gap: 8,
+  },
+  betaText: {
+    flex: 1,
+    fontSize: 13,
+    color: "#856404",
+    lineHeight: 18,
   },
   infoBox: {
     flexDirection: "row",
