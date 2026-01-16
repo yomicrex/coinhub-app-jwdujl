@@ -1,7 +1,7 @@
 
 import { Redirect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import React from 'react';
 import { colors } from '@/styles/commonStyles';
 
@@ -14,6 +14,7 @@ export default function Index() {
     return (
       <View style={styles.container}>
         <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Loading...</Text>
       </View>
     );
   }
@@ -41,5 +42,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.background,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: colors.textSecondary,
   },
 });

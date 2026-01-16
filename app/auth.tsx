@@ -146,9 +146,10 @@ export default function AuthScreen() {
     console.log("AuthScreen: Completing profile with username:", username, "displayName:", displayName, "email:", profileEmail);
     
     try {
+      // Use authClient.$fetch to ensure authentication cookies are sent
       const response = await fetch(`${API_URL}/api/auth/complete-profile`, {
         method: "POST",
-        credentials: "include",
+        credentials: "include", // This is critical - ensures cookies are sent
         headers: {
           "Content-Type": "application/json",
         },
@@ -164,6 +165,7 @@ export default function AuthScreen() {
 
       if (!response.ok) {
         const errorData = await response.json();
+        console.error("AuthScreen: Profile completion error response:", errorData);
         throw new Error(errorData.error || errorData.message || "Failed to complete profile");
       }
 
@@ -171,7 +173,11 @@ export default function AuthScreen() {
       console.log("AuthScreen: Complete profile response data:", data);
 
       Alert.alert("Success", "Profile created successfully!");
+      
+      // Refresh user data to get the updated profile
       await fetchUser();
+      
+      // Navigate to home
       router.replace("/(tabs)/(home)");
     } catch (error: any) {
       console.error("AuthScreen: Profile completion error:", error);

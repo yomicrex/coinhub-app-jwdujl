@@ -139,6 +139,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               console.log("AuthProvider: Profile incomplete, user needs to complete profile:", userWithFlag);
               setUser(userWithFlag as User);
             }
+          } else if (response.status === 401) {
+            // Session is invalid - clear everything and show sign in
+            console.log("AuthProvider: Session invalid (401), clearing auth state");
+            await clearAuthTokens();
+            setUser(null);
           } else {
             console.log("AuthProvider: Profile fetch returned non-OK status:", response.status);
             // Profile doesn't exist - user needs to complete profile
@@ -163,6 +168,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("AuthProvider: Failed to fetch user:", error);
+      // Clear any stale auth state
+      await clearAuthTokens();
       setUser(null);
     } finally {
       setLoading(false);
