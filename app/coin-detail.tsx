@@ -248,7 +248,6 @@ export default function CoinDetailScreen() {
       console.log('CoinDetail: Initiating trade via POST /api/trades/initiate');
       
       // Use raw fetch for better control over error handling
-      // authClient.$fetch wraps errors in a way that makes it hard to access the response body
       const response = await fetch(`${API_URL}/api/trades/initiate`, {
         method: 'POST',
         headers: {
@@ -266,45 +265,16 @@ export default function CoinDetailScreen() {
       
       // Handle 409 Conflict - active trade already exists
       if (response.status === 409) {
-        console.log('CoinDetail: 409 Conflict - active trade already exists');
+        console.log('CoinDetail: 409 Conflict - active trade already exists, navigating to existing trade');
         
         const existingTradeId = responseData?.existingTradeId;
-        const message = responseData?.message || 'You already have an active trade request for this coin.';
-        
-        console.log('CoinDetail: Existing trade ID:', existingTradeId);
         
         if (existingTradeId) {
-          // We have the existing trade ID, navigate directly to it
-          Alert.alert(
-            'Active Trade Exists',
-            message,
-            [
-              {
-                text: 'View Trade',
-                onPress: () => {
-                  console.log('CoinDetail: Navigating to existing trade:', existingTradeId);
-                  router.push(`/trade-detail?id=${existingTradeId}`);
-                },
-              },
-              { text: 'Cancel', style: 'cancel' },
-            ]
-          );
+          console.log('CoinDetail: Navigating to existing trade:', existingTradeId);
+          router.push(`/trade-detail?id=${existingTradeId}`);
         } else {
-          // Fallback: navigate to trades list
-          Alert.alert(
-            'Active Trade Exists',
-            message,
-            [
-              {
-                text: 'View Trades',
-                onPress: () => {
-                  console.log('CoinDetail: Navigating to trades tab');
-                  router.push('/(tabs)/trades');
-                },
-              },
-              { text: 'OK' },
-            ]
-          );
+          console.error('CoinDetail: No existingTradeId in 409 response');
+          Alert.alert('Error', 'Unable to open trade. Please try again.');
         }
         return;
       }
@@ -317,7 +287,7 @@ export default function CoinDetailScreen() {
         return;
       }
       
-      // Success - extract trade ID
+      // Success - extract trade ID and navigate to trade detail page
       const tradeData = responseData?.data || responseData;
       const tradeId = tradeData?.trade?.id || tradeData?.id;
       
@@ -327,17 +297,8 @@ export default function CoinDetailScreen() {
         return;
       }
       
-      console.log('CoinDetail: Trade created successfully with ID:', tradeId);
-      Alert.alert('Success', 'Trade request sent!', [
-        {
-          text: 'View Trade',
-          onPress: () => {
-            console.log('CoinDetail: Navigating to trade detail:', tradeId);
-            router.push(`/trade-detail?id=${tradeId}`);
-          },
-        },
-        { text: 'OK' },
-      ]);
+      console.log('CoinDetail: Trade created successfully with ID:', tradeId, '- navigating to trade page');
+      router.push(`/trade-detail?id=${tradeId}`);
     } catch (error: any) {
       console.error('CoinDetail: Error creating trade:', error);
       Alert.alert('Error', 'Failed to create trade request. Please try again.');
@@ -660,7 +621,7 @@ export default function CoinDetailScreen() {
                       size={20}
                       color="#FFFFFF"
                     />
-                    <Text style={styles.tradeButtonText}>Propose Trade</Text>
+                    <Text style={styles.tradeButtonText}>Open Trade</Text>
                   </>
                 )}
               </TouchableOpacity>
