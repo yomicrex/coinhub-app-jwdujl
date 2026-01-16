@@ -526,14 +526,24 @@ export default function FeedScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>CoinHub</Text>
-        <TouchableOpacity onPress={handleAddCoin} style={styles.addButton}>
-          <IconSymbol
-            ios_icon_name="plus.app"
-            android_material_icon_name="add-box"
-            size={28}
-            color={colors.text}
-          />
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity onPress={() => router.push('/search-users')} style={styles.headerButton}>
+            <IconSymbol
+              ios_icon_name="magnifyingglass"
+              android_material_icon_name="search"
+              size={28}
+              color={colors.text}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleAddCoin} style={styles.addButton}>
+            <IconSymbol
+              ios_icon_name="plus.app"
+              android_material_icon_name="add-box"
+              size={28}
+              color={colors.text}
+            />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <FlatList
@@ -648,6 +658,14 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: colors.text,
     fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerButton: {
+    padding: 4,
   },
   addButton: {
     padding: 4,

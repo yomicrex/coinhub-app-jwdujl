@@ -179,6 +179,14 @@ export default function ProfileScreen() {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>{user.username}</Text>
           <View style={styles.headerButtons}>
+            <TouchableOpacity onPress={() => router.push('/search-users')} style={styles.headerButton}>
+              <IconSymbol
+                ios_icon_name="magnifyingglass"
+                android_material_icon_name="search"
+                size={24}
+                color={colors.text}
+              />
+            </TouchableOpacity>
             <TouchableOpacity onPress={handleMyTrades} style={styles.headerButton}>
               <IconSymbol
                 ios_icon_name="arrow.left.arrow.right"
