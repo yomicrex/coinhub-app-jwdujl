@@ -26,8 +26,12 @@ interface UserProfile {
   username: string;
   displayName: string;
   avatar_url?: string;
+  avatarUrl?: string;
   bio?: string;
   location?: string;
+  followerCount?: number;
+  followingCount?: number;
+  isFollowing?: boolean;
 }
 
 interface UserCoin {
@@ -42,7 +46,7 @@ interface UserCoin {
 }
 
 export default function UserProfileScreen() {
-  const { userId } = useLocalSearchParams<{ userId: string }>();
+  const { userId, username } = useLocalSearchParams<{ userId?: string; username?: string }>();
   const { user: currentUser } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [coins, setCoins] = useState<UserCoin[]>([]);
@@ -54,61 +58,125 @@ export default function UserProfileScreen() {
   const router = useRouter();
 
   useEffect(() => {
-    console.log('UserProfileScreen: Viewing user profile:', userId);
-    if (userId) {
+    console.log('UserProfileScreen: Viewing user profile, userId:', userId, 'username:', username);
+    if (userId || username) {
       fetchUserProfile();
-      fetchUserCoins();
-      fetchFollowCounts();
-      checkFollowStatus();
+      if (userId) {
+        fetchUserCoins();
+        fetchFollowCounts();
+        checkFollowStatus();
+      }
     }
-  }, [userId]);
+  }, [userId, username]);
 
   const fetchUserProfile = async () => {
     try {
-      console.log('UserProfileScreen: Fetching profile for user:', userId);
-      // Fetch user coins first to get user info
-      const coinsResponse = await fetch(`${API_URL}/api/users/${userId}/coins?limit=1`, {
-        credentials: 'include',
-      });
+      console.log('UserProfileScreen: Fetching profile');
+      
+      // First, try to fetch profile by username if available
+      if (username) {
+        console.log('UserProfileScreen: Fetching by username:', username);
+        const profileResponse = await fetch(`${API_URL}/api/users/${username}`, {
+          credentials: 'include',
+        });
 
-      if (coinsResponse.ok) {
-        const coinsData = await coinsResponse.json();
-        console.log('UserProfileScreen: Coins data:', coinsData);
-        
-        // Extract user profile from coins response
-        if (coinsData.coins && coinsData.coins.length > 0 && coinsData.coins[0].user) {
-          const userProfile = coinsData.coins[0].user;
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json();
+          console.log('UserProfileScreen: Profile fetched by username:', profileData);
+          
           setProfile({
-            id: userProfile.id,
-            username: userProfile.username,
-            displayName: userProfile.displayName || userProfile.display_name,
-            avatar_url: userProfile.avatar_url || userProfile.avatarUrl,
-            bio: userProfile.bio,
-            location: userProfile.location,
+            id: profileData.id,
+            username: profileData.username,
+            displayName: profileData.displayName || profileData.display_name,
+            avatar_url: profileData.avatar_url || profileData.avatarUrl,
+            avatarUrl: profileData.avatar_url || profileData.avatarUrl,
+            bio: profileData.bio,
+            location: profileData.location,
+            followerCount: profileData.followerCount,
+            followingCount: profileData.followingCount,
+            isFollowing: profileData.isFollowing,
           });
-          console.log('UserProfileScreen: Profile extracted from coins:', userProfile);
+          
+          // Update counts if available
+          if (profileData.followerCount !== undefined) {
+            setFollowerCount(profileData.followerCount);
+          }
+          if (profileData.followingCount !== undefined) {
+            setFollowingCount(profileData.followingCount);
+          }
+          if (profileData.isFollowing !== undefined) {
+            setIsFollowing(profileData.isFollowing);
+          }
+          
+          // If we got the profile by username, also fetch coins using the userId
+          if (profileData.id) {
+            fetchUserCoinsById(profileData.id);
+            if (!profileData.followerCount) {
+              fetchFollowCountsById(profileData.id);
+            }
+            if (profileData.isFollowing === undefined) {
+              checkFollowStatusById(profileData.id);
+            }
+          }
+          
+          setLoading(false);
+          return;
         } else {
-          // If no coins, create a minimal profile
-          setProfile({
-            id: userId,
-            username: 'user',
-            displayName: 'User',
-          });
+          console.error('UserProfileScreen: Failed to fetch profile by username, status:', profileResponse.status);
         }
-      } else {
-        console.error('UserProfileScreen: Failed to fetch profile, status:', coinsResponse.status);
-        Alert.alert('Error', 'Failed to load user profile');
+      }
+      
+      // Fallback: Try to fetch user coins to get user info
+      if (userId) {
+        console.log('UserProfileScreen: Fetching coins to extract profile for userId:', userId);
+        const coinsResponse = await fetch(`${API_URL}/api/users/${userId}/coins?limit=1`, {
+          credentials: 'include',
+        });
+
+        if (coinsResponse.ok) {
+          const coinsData = await coinsResponse.json();
+          console.log('UserProfileScreen: Coins data:', coinsData);
+          
+          // Extract user profile from coins response
+          if (coinsData.coins && coinsData.coins.length > 0 && coinsData.coins[0].user) {
+            const userProfile = coinsData.coins[0].user;
+            setProfile({
+              id: userProfile.id,
+              username: userProfile.username,
+              displayName: userProfile.displayName || userProfile.display_name,
+              avatar_url: userProfile.avatar_url || userProfile.avatarUrl,
+              avatarUrl: userProfile.avatar_url || userProfile.avatarUrl,
+              bio: userProfile.bio,
+              location: userProfile.location,
+            });
+            console.log('UserProfileScreen: Profile extracted from coins:', userProfile);
+          } else {
+            // If no coins, we need to get profile from another source
+            console.log('UserProfileScreen: No coins found, cannot extract profile. Need to fetch by username.');
+            Alert.alert('Error', 'Unable to load user profile. Please try again.');
+          }
+        } else {
+          console.error('UserProfileScreen: Failed to fetch coins, status:', coinsResponse.status);
+          Alert.alert('Error', 'Failed to load user profile');
+        }
       }
     } catch (error) {
       console.error('UserProfileScreen: Error fetching profile:', error);
       Alert.alert('Error', 'Failed to load user profile');
+    } finally {
+      setLoading(false);
     }
   };
 
   const fetchUserCoins = async () => {
+    if (!userId) return;
+    fetchUserCoinsById(userId);
+  };
+
+  const fetchUserCoinsById = async (id: string) => {
     try {
-      console.log('UserProfileScreen: Fetching coins for user:', userId);
-      const response = await fetch(`${API_URL}/api/users/${userId}/coins?limit=20&offset=0`, {
+      console.log('UserProfileScreen: Fetching coins for user:', id);
+      const response = await fetch(`${API_URL}/api/users/${id}/coins?limit=20&offset=0`, {
         credentials: 'include',
       });
 
@@ -119,16 +187,19 @@ export default function UserProfileScreen() {
       }
     } catch (error) {
       console.error('UserProfileScreen: Error fetching coins:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
   const fetchFollowCounts = async () => {
+    if (!userId) return;
+    fetchFollowCountsById(userId);
+  };
+
+  const fetchFollowCountsById = async (id: string) => {
     try {
-      console.log('UserProfileScreen: Fetching follow counts for user:', userId);
+      console.log('UserProfileScreen: Fetching follow counts for user:', id);
       
-      const followersResponse = await fetch(`${API_URL}/api/users/${userId}/followers?limit=1`, {
+      const followersResponse = await fetch(`${API_URL}/api/users/${id}/followers?limit=1`, {
         credentials: 'include',
       });
       
@@ -138,7 +209,7 @@ export default function UserProfileScreen() {
         setFollowerCount(followersData.total || 0);
       }
 
-      const followingResponse = await fetch(`${API_URL}/api/users/${userId}/following?limit=1`, {
+      const followingResponse = await fetch(`${API_URL}/api/users/${id}/following?limit=1`, {
         credentials: 'include',
       });
       
@@ -153,9 +224,14 @@ export default function UserProfileScreen() {
   };
 
   const checkFollowStatus = async () => {
+    if (!userId) return;
+    checkFollowStatusById(userId);
+  };
+
+  const checkFollowStatusById = async (id: string) => {
     try {
-      console.log('UserProfileScreen: Checking follow status for user:', userId);
-      const response = await fetch(`${API_URL}/api/users/${userId}/is-following`, {
+      console.log('UserProfileScreen: Checking follow status for user:', id);
+      const response = await fetch(`${API_URL}/api/users/${id}/is-following`, {
         credentials: 'include',
       });
 
@@ -170,8 +246,8 @@ export default function UserProfileScreen() {
   };
 
   const handleFollowToggle = async () => {
-    if (followLoading) {
-      console.log('UserProfileScreen: Follow action already in progress');
+    if (followLoading || !profile) {
+      console.log('UserProfileScreen: Follow action already in progress or no profile');
       return;
     }
 
@@ -179,7 +255,7 @@ export default function UserProfileScreen() {
     setFollowLoading(true);
 
     try {
-      const endpoint = `${API_URL}/api/users/${userId}/follow`;
+      const endpoint = `${API_URL}/api/users/${profile.id}/follow`;
 
       if (isFollowing) {
         // Unfollow - use DELETE
@@ -221,13 +297,20 @@ export default function UserProfileScreen() {
   };
 
   const handleViewFollowers = () => {
+    if (!profile) return;
     console.log('UserProfileScreen: User tapped Followers');
-    router.push(`/user-list?userId=${userId}&type=followers`);
+    router.push(`/user-list?userId=${profile.id}&type=followers`);
   };
 
   const handleViewFollowing = () => {
+    if (!profile) return;
     console.log('UserProfileScreen: User tapped Following');
-    router.push(`/user-list?userId=${userId}&type=following`);
+    router.push(`/user-list?userId=${profile.id}&type=following`);
+  };
+
+  const handleCoinPress = (coinId: string) => {
+    console.log('UserProfileScreen: User tapped on coin:', coinId);
+    router.push(`/coin-detail?coinId=${coinId}`);
   };
 
   if (loading || !profile) {
@@ -248,7 +331,7 @@ export default function UserProfileScreen() {
     );
   }
 
-  const isOwnProfile = currentUser?.id === userId;
+  const isOwnProfile = currentUser?.id === profile.id;
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -262,8 +345,8 @@ export default function UserProfileScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <View style={styles.avatarContainer}>
-            {profile.avatar_url ? (
-              <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
+            {(profile.avatar_url || profile.avatarUrl) ? (
+              <Image source={{ uri: profile.avatar_url || profile.avatarUrl }} style={styles.avatar} />
             ) : (
               <View style={styles.avatarPlaceholder}>
                 <IconSymbol
@@ -357,14 +440,7 @@ export default function UserProfileScreen() {
                 <TouchableOpacity
                   key={coin.id}
                   style={styles.coinCard}
-                  onPress={() => {
-                    console.log('UserProfileScreen: User tapped on coin:', coin.title);
-                    Alert.alert(
-                      coin.title,
-                      `${coin.year} • ${coin.country}\n\n${coin.like_count} likes • ${coin.comment_count} comments`,
-                      [{ text: 'OK' }]
-                    );
-                  }}
+                  onPress={() => handleCoinPress(coin.id)}
                 >
                   {coin.images[0] && (
                     <Image
@@ -379,6 +455,16 @@ export default function UserProfileScreen() {
                     </Text>
                     <Text style={styles.coinYear}>{coin.year}</Text>
                   </View>
+                  {coin.trade_status === 'open_to_trade' && (
+                    <View style={styles.tradeBadge}>
+                      <IconSymbol
+                        ios_icon_name="arrow.left.arrow.right"
+                        android_material_icon_name="swap-horiz"
+                        size={12}
+                        color="#FFFFFF"
+                      />
+                    </View>
+                  )}
                 </TouchableOpacity>
               ))}
             </View>
@@ -541,6 +627,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.backgroundAlt,
     borderWidth: 1,
     borderColor: colors.border,
+    position: 'relative',
   },
   coinImage: {
     width: '100%',
@@ -563,5 +650,13 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#FFFFFF',
     marginTop: 2,
+  },
+  tradeBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    padding: 6,
   },
 });

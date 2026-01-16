@@ -223,11 +223,12 @@ export default function CoinDetailScreen() {
   const handleUserPress = () => {
     if (!coin) return;
     
-    console.log('CoinDetail: User tapped on profile:', coin.user.username);
+    console.log('CoinDetail: User tapped on profile:', coin.user.username, 'userId:', coin.user.id);
     if (coin.user.id === user?.id) {
       router.push('/(tabs)/profile');
     } else {
-      router.push(`/user-profile?userId=${coin.user.id}`);
+      // Pass both userId and username for better profile loading
+      router.push(`/user-profile?userId=${coin.user.id}&username=${encodeURIComponent(coin.user.username)}`);
     }
   };
 
