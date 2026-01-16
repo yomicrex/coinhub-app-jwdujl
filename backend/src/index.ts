@@ -2,6 +2,7 @@ import { createApplication } from "@specific-dev/framework";
 import * as appSchema from './db/schema.js';
 import * as authSchema from './db/auth-schema.js';
 import { registerAuthRoutes } from './routes/auth.js';
+import { registerAdminRoutes } from './routes/admin.js';
 import { registerInviteCodesRoutes } from './routes/invite-codes.js';
 import { registerProfileRoutes } from './routes/profiles.js';
 import { registerCoinsRoutes } from './routes/coins.js';
@@ -62,6 +63,10 @@ try {
   app.logger.info('Registering authentication routes');
   registerAuthRoutes(app);
   app.logger.info('Authentication routes registered');
+
+  app.logger.info('Registering admin routes');
+  registerAdminRoutes(app);
+  app.logger.info('Admin routes registered');
 
   app.logger.info('Registering CoinHub routes');
   registerInviteCodesRoutes(app);
