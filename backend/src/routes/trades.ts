@@ -1,5 +1,5 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { eq, and, or } from 'drizzle-orm';
+import { eq, and, or, ne } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import type { App } from '../index.js';
 import { z } from 'zod';
@@ -91,7 +91,11 @@ export function registerTradesRoutes(app: App) {
 
       if (existingActiveTrade) {
         app.logger.warn({ userId: session.user.id, coinId: body.coinId, existingTradeId: existingActiveTrade.id }, 'Active trade already exists for this coin');
-        return reply.status(409).send({ error: 'You already have an active trade request for this coin' });
+        return reply.status(409).send({
+          error: 'You already have an active trade request for this coin',
+          existingTradeId: existingActiveTrade.id,
+          message: 'You can continue with the existing trade request'
+        });
       }
 
       // Create new trade
@@ -355,11 +359,16 @@ export function registerTradesRoutes(app: App) {
           coinOwner: {
             columns: { id: true, username: true, displayName: true, avatarUrl: true },
           },
-          coin: true,
+          coin: {
+            with: { images: true },
+          },
           offers: {
             with: {
               offerer: { columns: { id: true, username: true, displayName: true, avatarUrl: true } },
-              offeredCoin: { columns: { id: true, title: true, country: true, year: true } },
+              offeredCoin: {
+                columns: { id: true, title: true, country: true, year: true },
+                with: { images: true },
+              },
             },
             orderBy: (o) => o.createdAt,
           },
@@ -446,13 +455,49 @@ export function registerTradesRoutes(app: App) {
         })
       );
 
+      // Generate signed URLs for coin images
+      const coinImagesWithUrls = await Promise.all(
+        (trade.coin.images || []).map(async (img) => {
+          try {
+            const { url } = await app.storage.getSignedUrl(img.url);
+            return { ...img, url };
+          } catch (urlError) {
+            app.logger.warn({ err: urlError }, 'Failed to generate coin image signed URL');
+            return img;
+          }
+        })
+      );
+
+      // Generate signed URLs for offered coin images
+      const offersWithImagesAndAvatars = await Promise.all(
+        offersWithAvatars.map(async (offer) => {
+          const offeredCoinImagesWithUrls = await Promise.all(
+            (offer.offeredCoin?.images || []).map(async (img) => {
+              try {
+                const { url } = await app.storage.getSignedUrl(img.url);
+                return { ...img, url };
+              } catch (urlError) {
+                app.logger.warn({ err: urlError }, 'Failed to generate offered coin image signed URL');
+                return img;
+              }
+            })
+          );
+
+          return {
+            ...offer,
+            offeredCoin: offer.offeredCoin ? { ...offer.offeredCoin, images: offeredCoinImagesWithUrls } : null,
+          };
+        })
+      );
+
       app.logger.info({ tradeId, userId: session.user.id }, 'Trade detail fetched');
 
       return {
         ...trade,
+        coin: { ...trade.coin, images: coinImagesWithUrls },
         initiator: { ...trade.initiator, avatarUrl: initiatorAvatarUrl },
         coinOwner: { ...trade.coinOwner, avatarUrl: ownerAvatarUrl },
-        offers: offersWithAvatars,
+        offers: offersWithImagesAndAvatars,
         messages: messagesWithAvatars,
       };
     } catch (error) {
@@ -646,6 +691,18 @@ export function registerTradesRoutes(app: App) {
         .set({ status: 'accepted', updatedAt: new Date() })
         .where(eq(schema.tradeOffers.id, offerId));
 
+      // Auto-reject all other pending offers for this trade to prevent confusion
+      await app.db
+        .update(schema.tradeOffers)
+        .set({ status: 'rejected', updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.tradeOffers.tradeId, tradeId),
+            ne(schema.tradeOffers.id, offerId),
+            eq(schema.tradeOffers.status, 'pending')
+          )
+        );
+
       // Update trade status to accepted
       await app.db
         .update(schema.trades)
@@ -762,15 +819,17 @@ export function registerTradesRoutes(app: App) {
       }
 
       // Update offer status
-      await app.db
+      const updatedOffer = await app.db
         .update(schema.tradeOffers)
         .set({ status: 'rejected', updatedAt: new Date() })
-        .where(eq(schema.tradeOffers.id, offerId));
+        .where(eq(schema.tradeOffers.id, offerId))
+        .returning();
 
       app.logger.info({ offerId, tradeId, userId: session.user.id }, 'Trade offer rejected');
 
       return {
-        status: 'success',
+        id: updatedOffer[0]?.id,
+        status: updatedOffer[0]?.status || 'rejected',
         message: 'Offer rejected.',
       };
     } catch (error) {
@@ -1096,11 +1155,18 @@ export function registerTradesRoutes(app: App) {
         .set({ status: 'disputed', updatedAt: new Date() })
         .where(eq(schema.trades.id, tradeId));
 
+      // Fetch updated trade status
+      const updatedTrade = await app.db.query.trades.findFirst({
+        where: eq(schema.trades.id, tradeId),
+      });
+
       app.logger.info({ reportId: newReport.id, tradeId, reporterId: session.user.id }, 'Trade reported');
 
       return {
+        id: newReport.id,
         reportId: newReport.id,
-        status: 'success',
+        status: newReport.status,
+        tradeStatus: updatedTrade?.status,
         message: 'Trade violation reported. Our support team will review this shortly.',
       };
     } catch (error) {
@@ -1188,15 +1254,17 @@ export function registerTradesRoutes(app: App) {
       }
 
       // Update trade status to cancelled
-      await app.db
+      const updatedTrade = await app.db
         .update(schema.trades)
         .set({ status: 'cancelled', updatedAt: new Date() })
-        .where(eq(schema.trades.id, tradeId));
+        .where(eq(schema.trades.id, tradeId))
+        .returning();
 
       app.logger.info({ tradeId, userId: session.user.id }, 'Trade cancelled');
 
       return {
-        status: 'success',
+        id: updatedTrade[0]?.id,
+        status: updatedTrade[0]?.status || 'cancelled',
         message: 'Trade cancelled',
       };
     } catch (error) {
