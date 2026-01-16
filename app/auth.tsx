@@ -263,24 +263,37 @@ export default function AuthScreen() {
 
       console.log("AuthScreen: Forgot password response status:", response.status);
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error("AuthScreen: Forgot password error response:", errorData);
-        throw new Error(errorData.error || errorData.message || "Failed to send reset email");
-      }
-
       const data = await response.json();
       console.log("AuthScreen: Forgot password response data:", data);
 
-      const successMsg = "Password reset email sent! Please check your inbox.";
+      if (!response.ok) {
+        console.error("AuthScreen: Forgot password error response:", data);
+        throw new Error(data.error || data.message || "Failed to send reset email");
+      }
+
+      // Check if the backend actually sent the email or just logged it
+      if (data.success === false) {
+        throw new Error(data.error || "Failed to send password reset email. Please try again later.");
+      }
+
+      const successMsg = data.message || "Password reset email sent! Please check your inbox and spam folder.";
       setSuccessMessage(successMsg);
-      Alert.alert("Success", successMsg);
-      
-      // Switch to reset password mode
-      setMode("reset-password");
+      Alert.alert(
+        "Email Sent", 
+        successMsg + "\n\nIf you don't receive the email within a few minutes, please check your spam folder or try again.",
+        [
+          {
+            text: "OK",
+            onPress: () => {
+              // Switch to reset password mode
+              setMode("reset-password");
+            }
+          }
+        ]
+      );
     } catch (error: any) {
       console.error("AuthScreen: Forgot password error:", error);
-      const errorMsg = error.message || "Failed to send reset email. Please try again.";
+      const errorMsg = error.message || "Failed to send reset email. The email service may be temporarily unavailable. Please try again later.";
       setErrorMessage(errorMsg);
       Alert.alert("Error", errorMsg);
     } finally {
