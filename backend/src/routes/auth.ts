@@ -618,12 +618,43 @@ export function registerAuthRoutes(app: App) {
           'Password reset token generated and stored successfully'
         );
 
-        // In production, send email here
-        // For now, just log it
-        app.logger.info(
-          { userId: user.id, email: normalizedEmail, resetToken },
-          'Password reset email would be sent here'
-        );
+        // Send password reset email
+        const frontendUrl = process.env.FRONTEND_URL || 'https://coinhub.app';
+        const emailService = (app as any).email;
+
+        if (emailService) {
+          try {
+            const emailResult = await emailService.sendPasswordResetEmail(
+              normalizedEmail,
+              resetToken,
+              frontendUrl
+            );
+
+            if (!emailResult.success) {
+              app.logger.warn(
+                { userId: user.id, email: normalizedEmail, error: emailResult.error },
+                'Failed to send password reset email'
+              );
+              // Still return success to user (don't reveal email service is down)
+            } else {
+              app.logger.info(
+                { userId: user.id, email: normalizedEmail },
+                'Password reset email sent successfully'
+              );
+            }
+          } catch (emailError) {
+            app.logger.error(
+              { err: emailError, userId: user.id, email: normalizedEmail },
+              'Unexpected error sending password reset email'
+            );
+            // Continue anyway - don't break the flow for user
+          }
+        } else {
+          app.logger.warn(
+            { userId: user.id, email: normalizedEmail },
+            'Email service not available - password reset email not sent'
+          );
+        }
 
         return {
           message: 'If an account exists with this email, a password reset link will be sent shortly',
@@ -632,7 +663,7 @@ export function registerAuthRoutes(app: App) {
             debug: {
               token: resetToken,
               expiresAt: expiresAt.toISOString(),
-              resetLink: `http://localhost:3000/reset-password?token=${resetToken}`
+              resetLink: `${frontendUrl}/auth?mode=reset&token=${encodeURIComponent(resetToken)}`
             }
           })
         };

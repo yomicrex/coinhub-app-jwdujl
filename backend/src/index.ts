@@ -12,6 +12,7 @@ import { registerFeedRoutes } from './routes/feed.js';
 import { registerFollowRoutes } from './routes/follows.js';
 import { registerTradesRoutes } from './routes/trades.js';
 import { registerSearchRoutes } from './routes/search.js';
+import { createEmailService } from './services/email.js';
 import { seedDatabase } from './db/seed.js';
 
 const schema = { ...appSchema, ...authSchema };
@@ -19,6 +20,16 @@ const schema = { ...appSchema, ...authSchema };
 export const app = await createApplication(schema);
 
 export type App = typeof app;
+
+// Initialize email service
+try {
+  app.logger.info('Initializing email service');
+  (app as any).email = createEmailService(app.logger);
+  app.logger.info('Email service initialized');
+} catch (error) {
+  app.logger.error({ err: error }, 'Failed to initialize email service');
+  // Don't throw - email is optional
+}
 
 // Initialize authentication system
 // Better Auth automatically enables email/password provider
