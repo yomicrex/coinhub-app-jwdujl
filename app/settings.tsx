@@ -93,6 +93,28 @@ export default function SettingsScreen() {
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => {
+                console.log('Settings: User tapped Admin Tools - Reset Password');
+                router.push('/admin-reset-password');
+              }}
+            >
+              <IconSymbol
+                ios_icon_name="key.fill"
+                android_material_icon_name="vpn-key"
+                size={24}
+                color={colors.primary}
+              />
+              <Text style={styles.menuItemText}>Reset User Password</Text>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron-right"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
                 console.log('Settings: User tapped Admin Tools - Delete User');
                 router.push('/admin-delete-user');
               }}
