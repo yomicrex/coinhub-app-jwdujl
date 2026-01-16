@@ -253,11 +253,39 @@ export default function CoinDetailScreen() {
       });
 
       console.log('CoinDetail: Trade initiation response:', response);
+      
+      // Check if there's an error in the response
+      if (response?.error) {
+        const errorMessage = response.error.error || response.error.message || 'Failed to create trade request';
+        console.log('CoinDetail: Trade initiation error:', errorMessage);
+        
+        // Handle specific error cases
+        if (errorMessage.includes('already have an active trade')) {
+          Alert.alert(
+            'Active Trade Exists',
+            'You already have an active trade request for this coin. Please check your Trades tab.',
+            [
+              {
+                text: 'View Trades',
+                onPress: () => {
+                  console.log('CoinDetail: Navigating to trades tab');
+                  router.push('/(tabs)/trades');
+                },
+              },
+              { text: 'OK' },
+            ]
+          );
+        } else {
+          Alert.alert('Error', errorMessage);
+        }
+        return;
+      }
+      
       const tradeData = response?.data || response;
       const tradeId = tradeData?.trade?.id || tradeData?.id;
       
       if (!tradeId) {
-        console.error('CoinDetail: No trade ID in response:', tradeData);
+        console.error('CoinDetail: No trade ID in response:', response);
         Alert.alert('Error', 'Failed to create trade request');
         return;
       }
@@ -275,14 +303,45 @@ export default function CoinDetailScreen() {
       ]);
     } catch (error: any) {
       console.error('CoinDetail: Error creating trade:', error);
-      Alert.alert('Error', error?.message || 'Failed to create trade request');
+      
+      // Extract error message from the error object
+      let errorMessage = 'Failed to create trade request';
+      
+      if (error?.error?.error) {
+        errorMessage = error.error.error;
+      } else if (error?.message) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      
+      console.log('CoinDetail: Extracted error message:', errorMessage);
+      
+      // Handle specific error cases
+      if (errorMessage.includes('already have an active trade')) {
+        Alert.alert(
+          'Active Trade Exists',
+          'You already have an active trade request for this coin. Please check your Trades tab.',
+          [
+            {
+              text: 'View Trades',
+              onPress: () => {
+                console.log('CoinDetail: Navigating to trades tab');
+                router.push('/(tabs)/trades');
+              },
+            },
+            { text: 'OK' },
+          ]
+        );
+      } else {
+        Alert.alert('Error', errorMessage);
+      }
     }
   };
 
   const handleImageScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / width);
-    console.log('CoinDetail: Image scrolled, contentOffsetX:', contentOffsetX, 'calculated index:', index);
     setCurrentImageIndex(index);
   };
 

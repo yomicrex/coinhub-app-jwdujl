@@ -182,8 +182,35 @@ export default function UserProfileScreen() {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('UserProfileScreen: Fetched', data.coins?.length || 0, 'coins');
-        setCoins(data.coins || []);
+        console.log('UserProfileScreen: Raw coins response:', data);
+        
+        // Handle different response formats
+        let coinsArray: UserCoin[] = [];
+        
+        if (Array.isArray(data)) {
+          // Response is directly an array
+          coinsArray = data;
+          console.log('UserProfileScreen: Response is array, length:', coinsArray.length);
+        } else if (data.coins && Array.isArray(data.coins)) {
+          // Response has a coins property
+          coinsArray = data.coins;
+          console.log('UserProfileScreen: Response has coins property, length:', coinsArray.length);
+        } else if (data.data && Array.isArray(data.data)) {
+          // Response has a data property
+          coinsArray = data.data;
+          console.log('UserProfileScreen: Response has data property, length:', coinsArray.length);
+        } else if (data.data && data.data.coins && Array.isArray(data.data.coins)) {
+          // Response has nested data.coins
+          coinsArray = data.data.coins;
+          console.log('UserProfileScreen: Response has data.coins property, length:', coinsArray.length);
+        } else {
+          console.warn('UserProfileScreen: Unexpected response format:', data);
+        }
+        
+        console.log('UserProfileScreen: Fetched', coinsArray.length, 'coins');
+        setCoins(coinsArray);
+      } else {
+        console.error('UserProfileScreen: Failed to fetch coins, status:', response.status);
       }
     } catch (error) {
       console.error('UserProfileScreen: Error fetching coins:', error);
@@ -290,7 +317,11 @@ export default function UserProfileScreen() {
       console.log('UserProfileScreen: Follow status updated successfully');
     } catch (error: any) {
       console.error('UserProfileScreen: Error toggling follow:', error);
-      Alert.alert('Error', error.message || 'Failed to update follow status');
+      
+      // Don't show error if it's just "already following" - the state is already correct
+      if (!error?.message?.includes('Already following')) {
+        Alert.alert('Error', error.message || 'Failed to update follow status');
+      }
     } finally {
       setFollowLoading(false);
     }
@@ -442,7 +473,7 @@ export default function UserProfileScreen() {
                   style={styles.coinCard}
                   onPress={() => handleCoinPress(coin.id)}
                 >
-                  {coin.images[0] && (
+                  {coin.images && coin.images[0] && (
                     <Image
                       source={{ uri: coin.images[0].url }}
                       style={styles.coinImage}
