@@ -280,7 +280,9 @@ export default function CoinDetailScreen() {
 
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
     if (viewableItems.length > 0) {
-      setCurrentImageIndex(viewableItems[0].index || 0);
+      const newIndex = viewableItems[0].index ?? 0;
+      console.log('CoinDetail: Image changed to index:', newIndex);
+      setCurrentImageIndex(newIndex);
     }
   }).current;
 

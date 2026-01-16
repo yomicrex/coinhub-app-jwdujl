@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -54,6 +54,7 @@ export default function FeedScreen() {
   const [loading, setLoading] = useState(true);
   const [loadingTrade, setLoadingTrade] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [imageIndices, setImageIndices] = useState<{ [key: string]: number }>({});
   const { user } = useAuth();
   const router = useRouter();
 
@@ -83,6 +84,13 @@ export default function FeedScreen() {
       }
       
       setCoins(coinsData);
+      
+      // Initialize image indices for all coins
+      const indices: { [key: string]: number } = {};
+      coinsData.forEach((coin: Coin) => {
+        indices[coin.id] = 0;
+      });
+      setImageIndices(indices);
     } catch (error) {
       console.error('FeedScreen: Error fetching coins:', error);
     } finally {
@@ -220,6 +228,13 @@ export default function FeedScreen() {
     router.push(`/coin-detail?coinId=${coinId}`);
   };
 
+  const handleImageScroll = (coinId: string, event: any) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(contentOffsetX / width);
+    console.log('FeedScreen: Image scrolled for coin', coinId, 'to index', index);
+    setImageIndices(prev => ({ ...prev, [coinId]: index }));
+  };
+
   const renderTradeCoinCard = (item: Coin) => {
     const sortedImages = item.images?.sort((a, b) => {
       const aIndex = a.order_index ?? a.orderIndex ?? 0;
@@ -299,18 +314,12 @@ export default function FeedScreen() {
       return aIndex - bIndex;
     }) || [];
     
-    const mainImage = sortedImages[0];
+    const currentIndex = imageIndices[item.id] || 0;
     const likeCount = item.like_count ?? item.likeCount ?? 0;
     const commentCount = item.comment_count ?? item.commentCount ?? 0;
     const tradeStatus = item.trade_status ?? item.tradeStatus ?? 'not_for_trade';
     const avatarUrl = item.user.avatar_url ?? item.user.avatarUrl;
     const isLiked = item.isLiked || false;
-    
-    if (mainImage) {
-      console.log('FeedScreen: Main image URL for', item.title, ':', mainImage.url);
-    } else {
-      console.log('FeedScreen: No images found for coin:', item.title);
-    }
     
     return (
       <View style={styles.card}>
@@ -355,21 +364,63 @@ export default function FeedScreen() {
           </View>
         </TouchableOpacity>
 
-        {/* Coin Image */}
-        <TouchableOpacity onPress={() => handleCoinPress(item.id)} activeOpacity={0.95}>
-          {mainImage && mainImage.url ? (
-            <Image
-              source={{ uri: mainImage.url }}
-              style={styles.coinImage}
-              resizeMode="cover"
-              onError={(error) => {
-                console.error('FeedScreen: Image failed to load:', mainImage.url, error.nativeEvent.error);
-              }}
-              onLoad={() => {
-                console.log('FeedScreen: Image loaded successfully:', mainImage.url);
-              }}
-            />
-          ) : (
+        {/* Coin Image Gallery with Swipe */}
+        {sortedImages.length > 0 ? (
+          <View style={styles.imageGalleryContainer}>
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onScroll={(event) => handleImageScroll(item.id, event)}
+              scrollEventThrottle={16}
+            >
+              {sortedImages.map((image, index) => (
+                <TouchableOpacity
+                  key={`${item.id}-image-${index}`}
+                  onPress={() => handleCoinPress(item.id)}
+                  activeOpacity={0.95}
+                >
+                  <Image
+                    source={{ uri: image.url }}
+                    style={styles.coinImage}
+                    resizeMode="cover"
+                    onError={(error) => {
+                      console.error('FeedScreen: Image failed to load:', image.url, error.nativeEvent.error);
+                    }}
+                    onLoad={() => {
+                      console.log('FeedScreen: Image loaded successfully:', image.url);
+                    }}
+                  />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            
+            {/* Image Counter */}
+            {sortedImages.length > 1 && (
+              <View style={styles.imageCounter}>
+                <Text style={styles.imageCounterText}>
+                  {currentIndex + 1} / {sortedImages.length}
+                </Text>
+              </View>
+            )}
+            
+            {/* Image Indicator Dots */}
+            {sortedImages.length > 1 && (
+              <View style={styles.imageIndicatorContainer}>
+                {sortedImages.map((_, index) => (
+                  <View
+                    key={`${item.id}-dot-${index}`}
+                    style={[
+                      styles.imageIndicatorDot,
+                      index === currentIndex && styles.imageIndicatorDotActive,
+                    ]}
+                  />
+                ))}
+              </View>
+            )}
+          </View>
+        ) : (
+          <TouchableOpacity onPress={() => handleCoinPress(item.id)} activeOpacity={0.95}>
             <View style={styles.coinImagePlaceholder}>
               <IconSymbol
                 ios_icon_name="photo"
@@ -379,8 +430,8 @@ export default function FeedScreen() {
               />
               <Text style={styles.noImageText}>No image available</Text>
             </View>
-          )}
-        </TouchableOpacity>
+          </TouchableOpacity>
+        )}
 
         {/* Actions */}
         <View style={styles.cardActions}>
@@ -654,6 +705,12 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '500',
   },
+  imageGalleryContainer: {
+    width: width,
+    height: width,
+    backgroundColor: colors.backgroundAlt,
+    position: 'relative',
+  },
   coinImage: {
     width: width,
     height: width,
@@ -670,6 +727,42 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 16,
     color: colors.textSecondary,
+  },
+  imageCounter: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  imageCounterText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  imageIndicatorContainer: {
+    position: 'absolute',
+    bottom: 16,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  imageIndicatorDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  imageIndicatorDotActive: {
+    backgroundColor: '#FFFFFF',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   cardActions: {
     paddingHorizontal: 12,
