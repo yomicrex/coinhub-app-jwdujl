@@ -131,6 +131,13 @@ export default function CoinDetailScreen() {
     }
   };
 
+  const handleComments = () => {
+    if (!coin) return;
+    
+    console.log('CoinDetail: User tapped comments button');
+    router.push(`/coin-comments?coinId=${coinId}&coinTitle=${encodeURIComponent(coin.title)}`);
+  };
+
   const handleUserPress = () => {
     if (!coin) return;
     
@@ -340,7 +347,7 @@ export default function CoinDetailScreen() {
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionButton}>
+            <TouchableOpacity style={styles.actionButton} onPress={handleComments}>
               <IconSymbol
                 ios_icon_name="message.fill"
                 android_material_icon_name="chat-bubble"

@@ -69,24 +69,27 @@ export default function EditCoinScreen() {
 
       console.log('EditCoin: Coin data loaded:', response);
 
+      // Handle both response formats
+      const coinData = response?.data || response;
+
       // Populate form fields
-      setTitle(response.title || '');
-      setCountry(response.country || '');
-      setYear(response.year?.toString() || '');
-      setUnit(response.unit || '');
-      setOrganization(response.organization || '');
-      setAgency(response.agency || '');
-      setDeployment(response.deployment || '');
-      setCoinNumber(response.coinNumber || response.coin_number || '');
-      setMintMark(response.mintMark || response.mint_mark || '');
-      setCondition(response.condition || '');
-      setDescription(response.description || '');
-      setVisibility(response.visibility || 'public');
-      setTradeStatus(response.tradeStatus || response.trade_status || 'not_for_trade');
+      setTitle(coinData.title || '');
+      setCountry(coinData.country || '');
+      setYear(coinData.year?.toString() || '');
+      setUnit(coinData.unit || '');
+      setOrganization(coinData.organization || '');
+      setAgency(coinData.agency || '');
+      setDeployment(coinData.deployment || '');
+      setCoinNumber(coinData.coinNumber || coinData.coin_number || '');
+      setMintMark(coinData.mintMark || coinData.mint_mark || '');
+      setCondition(coinData.condition || '');
+      setDescription(coinData.description || '');
+      setVisibility(coinData.visibility || 'public');
+      setTradeStatus(coinData.tradeStatus || coinData.trade_status || 'not_for_trade');
       
       // Set existing images - handle both camelCase and snake_case
-      if (response.images && response.images.length > 0) {
-        setImages(response.images.map((img: any, index: number) => ({
+      if (coinData.images && coinData.images.length > 0) {
+        setImages(coinData.images.map((img: any, index: number) => ({
           id: img.id,
           url: img.url,
           orderIndex: img.orderIndex ?? img.order_index ?? index,
@@ -198,25 +201,38 @@ export default function EditCoinScreen() {
 
   const handleSubmit = async () => {
     console.log('EditCoin: User tapped save button');
+    console.log('EditCoin: Current form state:', {
+      title,
+      country,
+      year,
+      imagesCount: images.length,
+      tradeStatus,
+      visibility
+    });
     
     // Validation
     if (!title.trim()) {
+      console.log('EditCoin: Validation failed - no title');
       Alert.alert('Required Field', 'Please enter a coin title');
       return;
     }
     if (!country.trim()) {
+      console.log('EditCoin: Validation failed - no country');
       Alert.alert('Required Field', 'Please enter the country');
       return;
     }
     if (!year.trim() || isNaN(Number(year))) {
+      console.log('EditCoin: Validation failed - invalid year');
       Alert.alert('Invalid Year', 'Please enter a valid year');
       return;
     }
     if (images.length === 0) {
+      console.log('EditCoin: Validation failed - no images');
       Alert.alert('No Images', 'Please add at least one image of your coin');
       return;
     }
 
+    console.log('EditCoin: Validation passed, starting update...');
     setLoading(true);
 
     try {
@@ -239,7 +255,7 @@ export default function EditCoinScreen() {
         tradeStatus,
       };
 
-      console.log('EditCoin: Updating coin with data:', coinData);
+      console.log('EditCoin: Sending PUT request with data:', coinData);
 
       const updatedCoin = await authClient.$fetch(`${API_URL}/api/coins/${coinId}`, {
         method: 'PUT',
@@ -304,6 +320,7 @@ export default function EditCoinScreen() {
       );
     } catch (error: any) {
       console.error('EditCoin: Error updating coin:', error);
+      console.error('EditCoin: Error details:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
       Alert.alert(
         'Error',
         error.message || 'Failed to update coin. Please try again.',
