@@ -21,6 +21,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { authClient } from '@/lib/auth';
 import { useAuth } from '@/contexts/AuthContext';
 import Constants from 'expo-constants';
+import * as Clipboard from 'expo-clipboard';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 const { width } = Dimensions.get('window');
@@ -147,26 +148,60 @@ export default function CoinDetailScreen() {
     
     try {
       const shareMessage = `Check out this coin: ${coin.title} (${coin.year}, ${coin.country})`;
-      const shareUrl = `https://coinhub.app/coins/${coinId}`; // Update with your actual app URL
+      const shareUrl = `https://coinhub.app/coins/${coinId}`;
+      const fullMessage = `${shareMessage}\n${shareUrl}`;
       
-      const result = await Share.share({
-        message: Platform.OS === 'ios' ? shareMessage : `${shareMessage}\n${shareUrl}`,
-        url: Platform.OS === 'ios' ? shareUrl : undefined,
-        title: `${coin.title} - CoinHub`,
-      });
-
-      if (result.action === Share.sharedAction) {
-        if (result.activityType) {
-          console.log('CoinDetail: Shared with activity type:', result.activityType);
-        } else {
-          console.log('CoinDetail: Coin shared successfully');
+      // Check if we're on web
+      if (Platform.OS === 'web') {
+        console.log('CoinDetail: Running on web, using Web Share API or clipboard fallback');
+        
+        // Try to use the Web Share API if available
+        if (typeof navigator !== 'undefined' && navigator.share) {
+          try {
+            await navigator.share({
+              title: `${coin.title} - CoinHub`,
+              text: shareMessage,
+              url: shareUrl,
+            });
+            console.log('CoinDetail: Shared successfully using Web Share API');
+            return;
+          } catch (shareError: any) {
+            // User cancelled or share failed
+            if (shareError.name === 'AbortError') {
+              console.log('CoinDetail: Share cancelled by user');
+              return;
+            }
+            console.log('CoinDetail: Web Share API failed, falling back to clipboard:', shareError);
+          }
         }
-      } else if (result.action === Share.dismissedAction) {
-        console.log('CoinDetail: Share dismissed');
+        
+        // Fallback to clipboard for web
+        console.log('CoinDetail: Copying to clipboard as fallback');
+        await Clipboard.setStringAsync(fullMessage);
+        Alert.alert('Link Copied', 'The coin link has been copied to your clipboard!');
+        console.log('CoinDetail: Link copied to clipboard successfully');
+      } else {
+        // Native platforms (iOS/Android)
+        console.log('CoinDetail: Running on native platform, using React Native Share API');
+        const result = await Share.share({
+          message: Platform.OS === 'ios' ? shareMessage : fullMessage,
+          url: Platform.OS === 'ios' ? shareUrl : undefined,
+          title: `${coin.title} - CoinHub`,
+        });
+
+        if (result.action === Share.sharedAction) {
+          if (result.activityType) {
+            console.log('CoinDetail: Shared with activity type:', result.activityType);
+          } else {
+            console.log('CoinDetail: Coin shared successfully');
+          }
+        } else if (result.action === Share.dismissedAction) {
+          console.log('CoinDetail: Share dismissed');
+        }
       }
     } catch (error) {
       console.error('CoinDetail: Error sharing coin:', error);
-      Alert.alert('Error', 'Failed to share coin. Please try again.');
+      Alert.alert('Share Failed', 'Unable to share this coin. Please try again.');
     }
   };
 
