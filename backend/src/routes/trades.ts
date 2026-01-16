@@ -111,17 +111,80 @@ export function registerTradesRoutes(app: App) {
 
       app.logger.info({ tradeId: newTrade.id, userId: session.user.id, coinId: body.coinId }, 'Trade initiated successfully');
 
-      return {
-        trade: {
-          id: newTrade.id,
-          initiatorId: newTrade.initiatorId,
-          coinOwnerId: newTrade.coinOwnerId,
-          coinId: newTrade.coinId,
-          status: newTrade.status,
-          createdAt: newTrade.createdAt,
-          updatedAt: newTrade.updatedAt,
+      // Fetch full trade details with coin and user info
+      const fullTrade = await app.db.query.trades.findFirst({
+        where: eq(schema.trades.id, newTrade.id),
+        with: {
+          coin: {
+            with: { images: true },
+          },
+          initiator: {
+            columns: { id: true, username: true, displayName: true, avatarUrl: true },
+          },
+          coinOwner: {
+            columns: { id: true, username: true, displayName: true, avatarUrl: true },
+          },
         },
-        message: 'Trade initiated. You can now send offers to the coin owner.',
+      });
+
+      // Generate signed URLs for avatars and coin images
+      let initiatorAvatarUrl = fullTrade?.initiator.avatarUrl;
+      if (initiatorAvatarUrl) {
+        try {
+          const { url } = await app.storage.getSignedUrl(initiatorAvatarUrl);
+          initiatorAvatarUrl = url;
+        } catch (urlError) {
+          app.logger.warn({ err: urlError }, 'Failed to generate avatar signed URL');
+          initiatorAvatarUrl = null;
+        }
+      }
+
+      let ownerAvatarUrl = fullTrade?.coinOwner.avatarUrl;
+      if (ownerAvatarUrl) {
+        try {
+          const { url } = await app.storage.getSignedUrl(ownerAvatarUrl);
+          ownerAvatarUrl = url;
+        } catch (urlError) {
+          app.logger.warn({ err: urlError }, 'Failed to generate avatar signed URL');
+          ownerAvatarUrl = null;
+        }
+      }
+
+      const coinImagesWithUrls = await Promise.all(
+        (fullTrade?.coin.images || []).map(async (img) => {
+          try {
+            const { url } = await app.storage.getSignedUrl(img.url);
+            return { ...img, url };
+          } catch (urlError) {
+            app.logger.warn({ err: urlError }, 'Failed to generate image signed URL');
+            return img;
+          }
+        })
+      );
+
+      return {
+        id: newTrade.id,
+        coin: {
+          id: fullTrade?.coin.id,
+          title: fullTrade?.coin.title,
+          country: fullTrade?.coin.country,
+          year: fullTrade?.coin.year,
+          images: coinImagesWithUrls,
+        },
+        requester: {
+          id: fullTrade?.initiator.id,
+          username: fullTrade?.initiator.username,
+          displayName: fullTrade?.initiator.displayName,
+          avatarUrl: initiatorAvatarUrl,
+        },
+        owner: {
+          id: fullTrade?.coinOwner.id,
+          username: fullTrade?.coinOwner.username,
+          displayName: fullTrade?.coinOwner.displayName,
+          avatarUrl: ownerAvatarUrl,
+        },
+        status: newTrade.status,
+        createdAt: newTrade.createdAt,
       };
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -181,19 +244,19 @@ export function registerTradesRoutes(app: App) {
           },
           coin: {
             columns: { id: true, title: true, country: true, year: true },
-          },
-          offers: {
-            columns: { id: true, status: true, createdAt: true },
+            with: { images: true },
           },
           messages: {
-            columns: { id: true, createdAt: true },
+            columns: { id: true, content: true, createdAt: true },
+            orderBy: (m) => m.createdAt,
+            limit: 1,
           },
         },
         orderBy: (t) => t.updatedAt,
       });
 
-      // Generate signed URLs for user avatars
-      const tradesWithAvatars = await Promise.all(
+      // Generate signed URLs for user avatars and coin images
+      const tradesWithSignedUrls = await Promise.all(
         trades.map(async (trade) => {
           let initiatorAvatarUrl = trade.initiator.avatarUrl;
           if (initiatorAvatarUrl) {
@@ -217,16 +280,53 @@ export function registerTradesRoutes(app: App) {
             }
           }
 
+          // Generate signed URLs for coin images
+          const coinImagesWithUrls = await Promise.all(
+            (trade.coin.images || []).map(async (img) => {
+              try {
+                const { url } = await app.storage.getSignedUrl(img.url);
+                return { ...img, url };
+              } catch (urlError) {
+                app.logger.warn({ err: urlError }, 'Failed to generate coin image signed URL');
+                return img;
+              }
+            })
+          );
+
+          // Get the last message (most recent)
+          const lastMessage = trade.messages && trade.messages.length > 0 ? trade.messages[trade.messages.length - 1] : null;
+
           return {
-            ...trade,
-            initiator: { ...trade.initiator, avatarUrl: initiatorAvatarUrl },
-            coinOwner: { ...trade.coinOwner, avatarUrl: ownerAvatarUrl },
+            id: trade.id,
+            coin: {
+              id: trade.coin.id,
+              title: trade.coin.title,
+              country: trade.coin.country,
+              year: trade.coin.year,
+              images: coinImagesWithUrls,
+            },
+            requester: {
+              id: trade.initiator.id,
+              username: trade.initiator.username,
+              displayName: trade.initiator.displayName,
+              avatarUrl: initiatorAvatarUrl,
+            },
+            owner: {
+              id: trade.coinOwner.id,
+              username: trade.coinOwner.username,
+              displayName: trade.coinOwner.displayName,
+              avatarUrl: ownerAvatarUrl,
+            },
+            status: trade.status,
+            lastMessage: lastMessage ? { id: lastMessage.id, content: lastMessage.content, createdAt: lastMessage.createdAt } : null,
+            createdAt: trade.createdAt,
+            updatedAt: trade.updatedAt,
           };
         })
       );
 
-      app.logger.info({ userId: session.user.id, count: tradesWithAvatars.length }, 'Trades fetched');
-      return { trades: tradesWithAvatars };
+      app.logger.info({ userId: session.user.id, count: tradesWithSignedUrls.length }, 'Trades fetched');
+      return { trades: tradesWithSignedUrls };
     } catch (error) {
       app.logger.error({ err: error, userId: session.user.id }, 'Failed to fetch trades');
       throw error;
@@ -418,6 +518,7 @@ export function registerTradesRoutes(app: App) {
           offererId: session.user.id,
           offeredCoinId: body.offeredCoinId || null,
           message: body.message || null,
+          isCounterOffer: trade.status !== 'pending',
         })
         .returning();
 
@@ -429,12 +530,66 @@ export function registerTradesRoutes(app: App) {
           .where(eq(schema.trades.id, tradeId));
       }
 
+      // Fetch full offer with related data
+      const offerWithDetails = await app.db.query.tradeOffers.findFirst({
+        where: eq(schema.tradeOffers.id, newOffer.id),
+        with: {
+          offerer: {
+            columns: { id: true, username: true, displayName: true, avatarUrl: true },
+          },
+          offeredCoin: {
+            columns: { id: true, title: true, country: true, year: true },
+            with: { images: true },
+          },
+        },
+      });
+
+      // Generate signed URL for offerer avatar
+      let offererAvatarUrl = offerWithDetails?.offerer.avatarUrl;
+      if (offererAvatarUrl) {
+        try {
+          const { url } = await app.storage.getSignedUrl(offererAvatarUrl);
+          offererAvatarUrl = url;
+        } catch (urlError) {
+          app.logger.warn({ err: urlError }, 'Failed to generate offerer avatar signed URL');
+          offererAvatarUrl = null;
+        }
+      }
+
+      // Generate signed URLs for coin images
+      const coinImagesWithUrls = await Promise.all(
+        (offerWithDetails?.offeredCoin?.images || []).map(async (img) => {
+          try {
+            const { url } = await app.storage.getSignedUrl(img.url);
+            return { ...img, url };
+          } catch (urlError) {
+            app.logger.warn({ err: urlError }, 'Failed to generate image signed URL');
+            return img;
+          }
+        })
+      );
+
       app.logger.info({ offerId: newOffer.id, tradeId, userId: session.user.id }, 'Trade offer created');
 
       return {
-        offerId: newOffer.id,
-        status: 'success',
-        message: 'Offer created successfully',
+        id: newOffer.id,
+        coin: offerWithDetails?.offeredCoin ? {
+          id: offerWithDetails.offeredCoin.id,
+          title: offerWithDetails.offeredCoin.title,
+          country: offerWithDetails.offeredCoin.country,
+          year: offerWithDetails.offeredCoin.year,
+          images: coinImagesWithUrls,
+        } : null,
+        offeredBy: {
+          id: offerWithDetails?.offerer.id,
+          username: offerWithDetails?.offerer.username,
+          displayName: offerWithDetails?.offerer.displayName,
+          avatarUrl: offererAvatarUrl,
+        },
+        message: newOffer.message,
+        isCounterOffer: newOffer.isCounterOffer,
+        status: newOffer.status,
+        createdAt: newOffer.createdAt,
       };
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -497,10 +652,68 @@ export function registerTradesRoutes(app: App) {
         .set({ status: 'accepted', updatedAt: new Date() })
         .where(eq(schema.trades.id, tradeId));
 
+      // Fetch updated trade with full details
+      const updatedTrade = await app.db.query.trades.findFirst({
+        where: eq(schema.trades.id, tradeId),
+        with: {
+          coin: {
+            columns: { id: true, title: true, country: true, year: true },
+          },
+          initiator: {
+            columns: { id: true, username: true, displayName: true, avatarUrl: true },
+          },
+          coinOwner: {
+            columns: { id: true, username: true, displayName: true, avatarUrl: true },
+          },
+        },
+      });
+
+      // Generate signed URLs for avatars
+      let initiatorAvatarUrl = updatedTrade?.initiator.avatarUrl;
+      if (initiatorAvatarUrl) {
+        try {
+          const { url } = await app.storage.getSignedUrl(initiatorAvatarUrl);
+          initiatorAvatarUrl = url;
+        } catch (urlError) {
+          app.logger.warn({ err: urlError }, 'Failed to generate avatar signed URL');
+          initiatorAvatarUrl = null;
+        }
+      }
+
+      let ownerAvatarUrl = updatedTrade?.coinOwner.avatarUrl;
+      if (ownerAvatarUrl) {
+        try {
+          const { url } = await app.storage.getSignedUrl(ownerAvatarUrl);
+          ownerAvatarUrl = url;
+        } catch (urlError) {
+          app.logger.warn({ err: urlError }, 'Failed to generate avatar signed URL');
+          ownerAvatarUrl = null;
+        }
+      }
+
       app.logger.info({ offerId, tradeId, userId: session.user.id }, 'Trade offer accepted');
 
       return {
-        status: 'success',
+        id: updatedTrade?.id,
+        coin: {
+          id: updatedTrade?.coin.id,
+          title: updatedTrade?.coin.title,
+          country: updatedTrade?.coin.country,
+          year: updatedTrade?.coin.year,
+        },
+        requester: {
+          id: updatedTrade?.initiator.id,
+          username: updatedTrade?.initiator.username,
+          displayName: updatedTrade?.initiator.displayName,
+          avatarUrl: initiatorAvatarUrl,
+        },
+        owner: {
+          id: updatedTrade?.coinOwner.id,
+          username: updatedTrade?.coinOwner.username,
+          displayName: updatedTrade?.coinOwner.displayName,
+          avatarUrl: ownerAvatarUrl,
+        },
+        status: updatedTrade?.status,
         message: 'Offer accepted. Prepare your coin for shipping.',
       };
     } catch (error) {
@@ -608,12 +821,40 @@ export function registerTradesRoutes(app: App) {
         })
         .returning();
 
+      // Fetch full message with sender info
+      const messageWithSender = await app.db.query.tradeMessages.findFirst({
+        where: eq(schema.tradeMessages.id, newMessage.id),
+        with: {
+          sender: {
+            columns: { id: true, username: true, displayName: true, avatarUrl: true },
+          },
+        },
+      });
+
+      // Generate signed URL for sender avatar
+      let senderAvatarUrl = messageWithSender?.sender.avatarUrl;
+      if (senderAvatarUrl) {
+        try {
+          const { url } = await app.storage.getSignedUrl(senderAvatarUrl);
+          senderAvatarUrl = url;
+        } catch (urlError) {
+          app.logger.warn({ err: urlError }, 'Failed to generate sender avatar signed URL');
+          senderAvatarUrl = null;
+        }
+      }
+
       app.logger.info({ messageId: newMessage.id, tradeId, userId: session.user.id }, 'Trade message sent');
 
       return {
-        messageId: newMessage.id,
-        status: 'success',
-        message: 'Message sent successfully',
+        id: newMessage.id,
+        sender: {
+          id: messageWithSender?.sender.id,
+          username: messageWithSender?.sender.username,
+          displayName: messageWithSender?.sender.displayName,
+          avatarUrl: senderAvatarUrl,
+        },
+        content: newMessage.content,
+        createdAt: newMessage.createdAt,
       };
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -686,11 +927,26 @@ export function registerTradesRoutes(app: App) {
         .set({ ...updates, updatedAt: new Date() })
         .where(eq(schema.tradeShipping.tradeId, tradeId));
 
+      // Fetch updated shipping record
+      const updatedShipping = await app.db.query.tradeShipping.findFirst({
+        where: eq(schema.tradeShipping.tradeId, tradeId),
+      });
+
       app.logger.info({ tradeId, userId: session.user.id }, 'Shipping initiated');
 
+      // Return shipping info based on who made the update
+      const shippingInfo = isInitiator ? {
+        initiatorShipped: updatedShipping?.initiatorShipped || false,
+        initiatorTrackingNumber: updatedShipping?.initiatorTrackingNumber || null,
+        initiatorShippedAt: updatedShipping?.initiatorShippedAt || null,
+      } : {
+        ownerShipped: updatedShipping?.ownerShipped || false,
+        ownerTrackingNumber: updatedShipping?.ownerTrackingNumber || null,
+        ownerShippedAt: updatedShipping?.ownerShippedAt || null,
+      };
+
       return {
-        status: 'success',
-        message: 'Coins marked as shipped',
+        ...shippingInfo,
       };
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -755,20 +1011,31 @@ export function registerTradesRoutes(app: App) {
         where: eq(schema.tradeShipping.tradeId, tradeId),
       });
 
+      let tradeCompleted = false;
       if (updatedShipping?.initiatorReceived && updatedShipping.ownerReceived) {
         await app.db
           .update(schema.trades)
           .set({ status: 'completed', updatedAt: new Date() })
           .where(eq(schema.trades.id, tradeId));
 
+        tradeCompleted = true;
         app.logger.info({ tradeId }, 'Trade marked as completed');
       }
 
       app.logger.info({ tradeId, userId: session.user.id }, 'Coins marked as received');
 
+      // Return shipping info based on who marked as received
+      const receivedInfo = isInitiator ? {
+        initiatorReceived: updatedShipping?.initiatorReceived || false,
+        initiatorReceivedAt: updatedShipping?.initiatorReceivedAt || null,
+      } : {
+        ownerReceived: updatedShipping?.ownerReceived || false,
+        ownerReceivedAt: updatedShipping?.ownerReceivedAt || null,
+      };
+
       return {
-        status: 'success',
-        message: 'Coins marked as received',
+        ...receivedInfo,
+        tradeCompleted,
       };
     } catch (error) {
       app.logger.error({ err: error, tradeId, userId: session.user.id }, 'Failed to mark as received');
