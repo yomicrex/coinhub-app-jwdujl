@@ -11,6 +11,8 @@ import {
   Dimensions,
   Platform,
   FlatList,
+  Share,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
@@ -134,8 +136,38 @@ export default function CoinDetailScreen() {
   const handleComments = () => {
     if (!coin) return;
     
-    console.log('CoinDetail: User tapped comments button');
+    console.log('CoinDetail: User tapped comments button, navigating to comments screen');
     router.push(`/coin-comments?coinId=${coinId}&coinTitle=${encodeURIComponent(coin.title)}`);
+  };
+
+  const handleShare = async () => {
+    if (!coin) return;
+    
+    console.log('CoinDetail: User tapped share button');
+    
+    try {
+      const shareMessage = `Check out this coin: ${coin.title} (${coin.year}, ${coin.country})`;
+      const shareUrl = `https://coinhub.app/coins/${coinId}`; // Update with your actual app URL
+      
+      const result = await Share.share({
+        message: Platform.OS === 'ios' ? shareMessage : `${shareMessage}\n${shareUrl}`,
+        url: Platform.OS === 'ios' ? shareUrl : undefined,
+        title: `${coin.title} - CoinHub`,
+      });
+
+      if (result.action === Share.sharedAction) {
+        if (result.activityType) {
+          console.log('CoinDetail: Shared with activity type:', result.activityType);
+        } else {
+          console.log('CoinDetail: Coin shared successfully');
+        }
+      } else if (result.action === Share.dismissedAction) {
+        console.log('CoinDetail: Share dismissed');
+      }
+    } catch (error) {
+      console.error('CoinDetail: Error sharing coin:', error);
+      Alert.alert('Error', 'Failed to share coin. Please try again.');
+    }
   };
 
   const handleUserPress = () => {
@@ -359,10 +391,10 @@ export default function CoinDetailScreen() {
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionButton}>
+            <TouchableOpacity style={styles.actionButton} onPress={handleShare}>
               <IconSymbol
                 ios_icon_name="paperplane.fill"
-                android_material_icon_name="send"
+                android_material_icon_name="share"
                 size={28}
                 color={colors.text}
               />

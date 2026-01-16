@@ -206,7 +206,7 @@ export default function CoinCommentsScreen() {
                   <View style={styles.emptyContainer}>
                     <IconSymbol
                       ios_icon_name="message"
-                      android_material_icon_name="chat-bubble-outline"
+                      android_material_icon_name="chat-bubble"
                       size={64}
                       color={colors.textSecondary}
                     />
