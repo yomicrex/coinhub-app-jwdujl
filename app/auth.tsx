@@ -268,11 +268,30 @@ export default function AuthScreen() {
 
       if (!response.ok) {
         console.error("AuthScreen: Forgot password error response:", data);
+        
+        // Check if this is an email service configuration error
+        if (data.error && data.error.includes("Email service is not configured")) {
+          throw new Error(
+            "The email service is currently being configured. " +
+            "In the meantime, please contact support at support@coinhub.app for password reset assistance. " +
+            "We apologize for the inconvenience."
+          );
+        }
+        
         throw new Error(data.error || data.message || "Failed to send reset email");
       }
 
       // Check if the backend actually sent the email or just logged it
       if (data.success === false) {
+        // Check if this is an email service configuration error
+        if (data.error && data.error.includes("Email service is not configured")) {
+          throw new Error(
+            "The email service is currently being configured. " +
+            "In the meantime, please contact support at support@coinhub.app for password reset assistance. " +
+            "We apologize for the inconvenience."
+          );
+        }
+        
         throw new Error(data.error || "Failed to send password reset email. Please try again later.");
       }
 
@@ -280,7 +299,7 @@ export default function AuthScreen() {
       setSuccessMessage(successMsg);
       Alert.alert(
         "Email Sent", 
-        successMsg + "\n\nIf you don't receive the email within a few minutes, please check your spam folder or try again.",
+        successMsg + "\n\nIf you don't receive the email within a few minutes, please check your spam folder or contact support at support@coinhub.app.",
         [
           {
             text: "OK",
@@ -293,9 +312,9 @@ export default function AuthScreen() {
       );
     } catch (error: any) {
       console.error("AuthScreen: Forgot password error:", error);
-      const errorMsg = error.message || "Failed to send reset email. The email service may be temporarily unavailable. Please try again later.";
+      const errorMsg = error.message || "Failed to send reset email. Please contact support at support@coinhub.app for assistance.";
       setErrorMessage(errorMsg);
-      Alert.alert("Error", errorMsg);
+      Alert.alert("Password Reset", errorMsg);
     } finally {
       setLoading(false);
     }
@@ -365,7 +384,7 @@ export default function AuthScreen() {
       setMode("signin");
     } catch (error: any) {
       console.error("AuthScreen: Reset password error:", error);
-      const errorMsg = error.message || "Failed to reset password. Please try again.";
+      const errorMsg = error.message || "Failed to reset password. Please try again or contact support at support@coinhub.app.";
       setErrorMessage(errorMsg);
       Alert.alert("Error", errorMsg);
     } finally {
@@ -502,6 +521,20 @@ export default function AuthScreen() {
                 Already have a reset code? Enter it here
               </Text>
             </TouchableOpacity>
+
+            {/* Support contact info */}
+            <View style={styles.supportBox}>
+              <IconSymbol
+                ios_icon_name="info.circle"
+                android_material_icon_name="info"
+                size={20}
+                color={colors.textSecondary}
+              />
+              <Text style={styles.supportText}>
+                Need help? Contact us at{"\n"}
+                <Text style={styles.supportEmail}>support@coinhub.app</Text>
+              </Text>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -644,6 +677,20 @@ export default function AuthScreen() {
                 Need a new reset code? Request one here
               </Text>
             </TouchableOpacity>
+
+            {/* Support contact info */}
+            <View style={styles.supportBox}>
+              <IconSymbol
+                ios_icon_name="info.circle"
+                android_material_icon_name="info"
+                size={20}
+                color={colors.textSecondary}
+              />
+              <Text style={styles.supportText}>
+                Need help? Contact us at{"\n"}
+                <Text style={styles.supportEmail}>support@coinhub.app</Text>
+              </Text>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -1067,6 +1114,7 @@ const styles = StyleSheet.create({
     color: "#c00",
     fontSize: 14,
     textAlign: "center",
+    lineHeight: 20,
   },
   successContainer: {
     backgroundColor: "#efe",
@@ -1211,5 +1259,24 @@ const styles = StyleSheet.create({
   },
   appleButtonText: {
     color: "#fff",
+  },
+  supportBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 24,
+    gap: 12,
+  },
+  supportText: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
+  },
+  supportEmail: {
+    fontWeight: "600",
+    color: colors.primary,
   },
 });
