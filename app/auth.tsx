@@ -33,6 +33,7 @@ export default function AuthScreen() {
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [profileEmail, setProfileEmail] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -67,6 +68,10 @@ export default function AuthScreen() {
       
       // User is authenticated but hasn't completed profile
       console.log("AuthScreen: Profile incomplete, showing profile completion");
+      // Pre-fill email if available from OAuth or email signup
+      if (user.email) {
+        setProfileEmail(user.email);
+      }
       setMode("complete-profile");
     };
 
@@ -119,7 +124,7 @@ export default function AuthScreen() {
   };
 
   const handleCompleteProfile = async () => {
-    if (!username || !displayName || !inviteCode) {
+    if (!username || !displayName || !inviteCode || !profileEmail) {
       setErrorMessage("Please fill in all required fields");
       return;
     }
@@ -129,9 +134,16 @@ export default function AuthScreen() {
       return;
     }
 
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(profileEmail)) {
+      setErrorMessage("Please enter a valid email address");
+      return;
+    }
+
     setLoading(true);
     setErrorMessage("");
-    console.log("AuthScreen: Completing profile with username:", username, "displayName:", displayName);
+    console.log("AuthScreen: Completing profile with username:", username, "displayName:", displayName, "email:", profileEmail);
     
     try {
       const response = await fetch(`${API_URL}/api/auth/complete-profile`, {
@@ -143,6 +155,7 @@ export default function AuthScreen() {
         body: JSON.stringify({
           username,
           displayName,
+          email: profileEmail,
           inviteCode: inviteCode.toUpperCase(),
         }),
       });
@@ -226,6 +239,26 @@ export default function AuthScreen() {
                 <Text style={styles.errorText}>{errorMessage}</Text>
               </View>
             ) : null}
+
+            <View style={styles.inputContainer}>
+              <IconSymbol
+                ios_icon_name="envelope"
+                android_material_icon_name="email"
+                size={20}
+                color={colors.textSecondary}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Email Address (required)"
+                placeholderTextColor={colors.textSecondary}
+                value={profileEmail}
+                onChangeText={setProfileEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!user?.email}
+              />
+            </View>
 
             <View style={styles.inputContainer}>
               <IconSymbol
