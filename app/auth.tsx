@@ -138,7 +138,19 @@ export default function AuthScreen() {
         if (!response.ok) {
           const errorData = await response.json();
           console.error("AuthScreen: Sign in error response:", errorData);
-          throw new Error(errorData.error || errorData.message || "Sign in failed");
+          
+          // Provide more helpful error messages
+          let errorMsg = errorData.error || errorData.message || "Sign in failed";
+          
+          if (response.status === 401) {
+            if (errorMsg.toLowerCase().includes("user not found") || errorMsg.toLowerCase().includes("not found")) {
+              errorMsg = `Account "${identifier}" not found. Please check your username/email or create a new account.`;
+            } else if (errorMsg.toLowerCase().includes("incorrect password") || errorMsg.toLowerCase().includes("password")) {
+              errorMsg = `Incorrect password for "${identifier}". Please try again or use "Forgot Password" to reset it.`;
+            }
+          }
+          
+          throw new Error(errorMsg);
         }
 
         const data = await response.json();
@@ -892,18 +904,23 @@ export default function AuthScreen() {
             </View>
           ) : null}
 
-          {/* Beta testing note for signup */}
+          {/* Account creation instructions for signup */}
           {mode === "signup" && (
-            <View style={styles.betaBox}>
+            <View style={styles.instructionsBox}>
               <IconSymbol
                 ios_icon_name="info.circle"
                 android_material_icon_name="info"
                 size={20}
                 color={colors.primary}
               />
-              <Text style={styles.betaText}>
-                <Text style={styles.boldText}>Beta Testing:</Text> You can create multiple accounts with the same email address as long as you use different usernames. This is temporary while we fix the password reset feature.
-              </Text>
+              <View style={styles.instructionsContent}>
+                <Text style={styles.instructionsTitle}>Creating Your Account:</Text>
+                <Text style={styles.instructionsText}>
+                  1. Enter your email and password{"\n"}
+                  2. Complete your profile with username{"\n"}
+                  3. Use invite code: <Text style={styles.boldText}>BETA2026</Text>
+                </Text>
+              </View>
             </View>
           )}
 
@@ -1173,22 +1190,30 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: "center",
   },
-  betaBox: {
+  instructionsBox: {
     flexDirection: "row",
     alignItems: "flex-start",
-    backgroundColor: "#fff3cd",
+    backgroundColor: colors.backgroundAlt,
     borderRadius: 12,
-    padding: 12,
+    padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#ffc107",
-    gap: 8,
+    borderColor: colors.primary,
+    gap: 12,
   },
-  betaText: {
+  instructionsContent: {
     flex: 1,
-    fontSize: 13,
-    color: "#856404",
-    lineHeight: 18,
+  },
+  instructionsTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: colors.text,
+    marginBottom: 8,
+  },
+  instructionsText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
   },
   infoBox: {
     flexDirection: "row",
