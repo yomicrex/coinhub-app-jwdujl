@@ -124,8 +124,25 @@ export function registerSearchRoutes(app: App) {
         offset,
       });
 
-      app.logger.info({ q, count: users.length }, 'User search completed');
-      return users;
+      // Generate signed URLs for user avatars
+      const usersWithAvatars = await Promise.all(
+        users.map(async (user) => {
+          let avatarUrl = user.avatarUrl;
+          if (avatarUrl) {
+            try {
+              const { url } = await app.storage.getSignedUrl(avatarUrl);
+              avatarUrl = url;
+            } catch (urlError) {
+              app.logger.warn({ err: urlError, userId: user.id }, 'Failed to generate avatar signed URL');
+              avatarUrl = null;
+            }
+          }
+          return { ...user, avatarUrl };
+        })
+      );
+
+      app.logger.info({ q, count: usersWithAvatars.length }, 'User search completed');
+      return usersWithAvatars;
     } catch (error) {
       app.logger.error({ err: error, q }, 'Failed to search users');
       throw error;
