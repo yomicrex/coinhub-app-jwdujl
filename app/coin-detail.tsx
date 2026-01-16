@@ -237,41 +237,44 @@ export default function CoinDetailScreen() {
   };
 
   const handleTrade = async () => {
-    console.log('CoinDetail: User tapped Trade button');
+    if (!coin) return;
+    
+    console.log('CoinDetail: User tapped Trade button for coin:', coinId);
     
     try {
-      const session = await authClient.getSession();
-      if (!session) {
-        console.log('CoinDetail: No session found');
-        Alert.alert('Error', 'Please log in to initiate a trade');
-        return;
-      }
-
-      const response = await fetch(`${API_URL}/api/trades/initiate`, {
+      console.log('CoinDetail: Initiating trade via POST /api/trades/initiate');
+      const response = await authClient.$fetch(`${API_URL}/api/trades/initiate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.session.token}`,
         },
         body: JSON.stringify({ coinId }),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to create trade');
+      console.log('CoinDetail: Trade initiation response:', response);
+      const tradeData = response?.data || response;
+      const tradeId = tradeData?.trade?.id || tradeData?.id;
+      
+      if (!tradeId) {
+        console.error('CoinDetail: No trade ID in response:', tradeData);
+        Alert.alert('Error', 'Failed to create trade request');
+        return;
       }
-
-      const data = await response.json();
-      console.log('CoinDetail: Trade created:', data.trade.id);
+      
+      console.log('CoinDetail: Trade created successfully with ID:', tradeId);
       Alert.alert('Success', 'Trade request sent!', [
         {
           text: 'View Trade',
-          onPress: () => router.push(`/trade-detail?id=${data.trade.id}`),
+          onPress: () => {
+            console.log('CoinDetail: Navigating to trade detail:', tradeId);
+            router.push(`/trade-detail?id=${tradeId}`);
+          },
         },
         { text: 'OK' },
       ]);
-    } catch (error) {
+    } catch (error: any) {
       console.error('CoinDetail: Error creating trade:', error);
-      Alert.alert('Error', 'Failed to create trade request');
+      Alert.alert('Error', error?.message || 'Failed to create trade request');
     }
   };
 
