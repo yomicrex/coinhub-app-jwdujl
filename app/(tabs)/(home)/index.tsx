@@ -100,6 +100,20 @@ export default function FeedScreen() {
     const coin = coins.find(c => c.id === coinId);
     const isCurrentlyLiked = coin?.isLiked || false;
     
+    // Optimistic update
+    setCoins(prevCoins =>
+      prevCoins.map(c =>
+        c.id === coinId 
+          ? { 
+              ...c, 
+              like_count: isCurrentlyLiked ? (c.like_count || 1) - 1 : (c.like_count || 0) + 1, 
+              likeCount: isCurrentlyLiked ? (c.likeCount || 1) - 1 : (c.likeCount || 0) + 1,
+              isLiked: !isCurrentlyLiked
+            } 
+          : c
+      )
+    );
+    
     try {
       let response;
       
@@ -130,6 +144,7 @@ export default function FeedScreen() {
       
       console.log('FeedScreen: New like count:', newLikeCount, 'Liked:', newLikedState);
       
+      // Update with server response
       setCoins(prevCoins =>
         prevCoins.map(c =>
           c.id === coinId 
@@ -144,6 +159,19 @@ export default function FeedScreen() {
       );
     } catch (error) {
       console.error('FeedScreen: Error toggling like:', error);
+      // Revert optimistic update on error
+      setCoins(prevCoins =>
+        prevCoins.map(c =>
+          c.id === coinId 
+            ? { 
+                ...c, 
+                like_count: isCurrentlyLiked ? (c.like_count || 0) + 1 : (c.like_count || 1) - 1, 
+                likeCount: isCurrentlyLiked ? (c.likeCount || 0) + 1 : (c.likeCount || 1) - 1,
+                isLiked: isCurrentlyLiked
+              } 
+            : c
+        )
+      );
     }
   };
 
@@ -217,8 +245,18 @@ export default function FeedScreen() {
             )}
           </View>
           <View style={styles.userInfo}>
-            <Text style={styles.displayName}>{item.user.displayName}</Text>
-            <Text style={styles.username}>@{item.user.username}</Text>
+            <Text style={styles.username}>{item.user.username}</Text>
+            {tradeStatus === 'open_to_trade' && (
+              <View style={styles.tradeIndicator}>
+                <IconSymbol
+                  ios_icon_name="arrow.2.squarepath"
+                  android_material_icon_name="swap-horiz"
+                  size={12}
+                  color={colors.primary}
+                />
+                <Text style={styles.tradeIndicatorText}>Open to Trade</Text>
+              </View>
+            )}
           </View>
         </TouchableOpacity>
 
@@ -248,18 +286,6 @@ export default function FeedScreen() {
             </View>
           )}
         </TouchableOpacity>
-        
-        {tradeStatus === 'open_to_trade' && (
-          <View style={styles.tradeBadge}>
-            <IconSymbol
-              ios_icon_name="arrow.2.squarepath"
-              android_material_icon_name="swap-horiz"
-              size={14}
-              color="#FFFFFF"
-            />
-            <Text style={styles.tradeBadgeText}>Open to Trade</Text>
-          </View>
-        )}
 
         {/* Actions */}
         <View style={styles.cardActions}>
@@ -271,8 +297,8 @@ export default function FeedScreen() {
               <IconSymbol
                 ios_icon_name={isLiked ? "heart.fill" : "heart"}
                 android_material_icon_name={isLiked ? "favorite" : "favorite-border"}
-                size={26}
-                color={isLiked ? colors.primary : colors.text}
+                size={28}
+                color={isLiked ? "#FF3B30" : colors.text}
               />
             </TouchableOpacity>
 
@@ -281,18 +307,21 @@ export default function FeedScreen() {
               onPress={() => handleCoinPress(item.id)}
             >
               <IconSymbol
-                ios_icon_name="message.fill"
-                android_material_icon_name="chat-bubble"
-                size={26}
+                ios_icon_name="message"
+                android_material_icon_name="chat-bubble-outline"
+                size={28}
                 color={colors.text}
               />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionButton}>
+            <TouchableOpacity 
+              style={styles.actionButton}
+              onPress={() => handleCoinPress(item.id)}
+            >
               <IconSymbol
-                ios_icon_name="paperplane.fill"
+                ios_icon_name="paperplane"
                 android_material_icon_name="send"
-                size={26}
+                size={28}
                 color={colors.text}
               />
             </TouchableOpacity>
@@ -303,13 +332,13 @@ export default function FeedScreen() {
         <View style={styles.cardContent}>
           {likeCount > 0 && (
             <Text style={styles.likesText}>
-              {likeCount} {likeCount === 1 ? 'like' : 'likes'}
+              {likeCount.toLocaleString()} {likeCount === 1 ? 'like' : 'likes'}
             </Text>
           )}
           
           <TouchableOpacity onPress={() => handleCoinPress(item.id)}>
             <View style={styles.captionContainer}>
-              <Text style={styles.captionUsername}>{item.user.displayName}</Text>
+              <Text style={styles.captionUsername}>{item.user.username}</Text>
               <Text style={styles.captionText}>
                 {' '}{item.title} • {item.year} • {item.country}
               </Text>
@@ -431,8 +460,6 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.background,
     marginBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -462,14 +489,21 @@ const styles = StyleSheet.create({
   userInfo: {
     flex: 1,
   },
-  displayName: {
+  username: {
     fontSize: 14,
     fontWeight: '600',
     color: colors.text,
   },
-  username: {
-    fontSize: 12,
-    color: colors.textSecondary,
+  tradeIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  tradeIndicatorText: {
+    fontSize: 11,
+    color: colors.primary,
+    fontWeight: '500',
   },
   coinImage: {
     width: width,
@@ -487,25 +521,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 16,
     color: colors.textSecondary,
-  },
-  tradeBadge: {
-    position: 'absolute',
-    top: 60,
-    right: 16,
-    backgroundColor: colors.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.2)',
-    elevation: 4,
-  },
-  tradeBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
   },
   cardActions: {
     paddingHorizontal: 12,

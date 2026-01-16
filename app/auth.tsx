@@ -11,10 +11,13 @@ import {
   Platform,
   KeyboardAvoidingView,
   ScrollView,
+  Image,
 } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "expo-router";
 import Constants from "expo-constants";
+import { colors } from "@/styles/commonStyles";
+import { IconSymbol } from "@/components/IconSymbol";
 
 type Mode = "signin" | "signup" | "complete-profile";
 
@@ -73,7 +76,7 @@ export default function AuthScreen() {
   if (authLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>Loading...</Text>
       </View>
     );
@@ -200,9 +203,21 @@ export default function AuthScreen() {
       >
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.content}>
+            {/* Logo/Icon */}
+            <View style={styles.logoContainer}>
+              <View style={styles.logoCircle}>
+                <IconSymbol
+                  ios_icon_name="circle.fill"
+                  android_material_icon_name="circle"
+                  size={80}
+                  color={colors.primary}
+                />
+              </View>
+            </View>
+
             <Text style={styles.title}>Complete Your Profile</Text>
             <Text style={styles.subtitle}>
-              Welcome to CoinHub! Please set up your profile to continue.
+              Welcome to CoinHub! Set up your profile to start collecting.
             </Text>
 
             {errorMessage ? (
@@ -211,31 +226,58 @@ export default function AuthScreen() {
               </View>
             ) : null}
 
-            <TextInput
-              style={styles.input}
-              placeholder="Username (required)"
-              value={username}
-              onChangeText={setUsername}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
+            <View style={styles.inputContainer}>
+              <IconSymbol
+                ios_icon_name="person"
+                android_material_icon_name="person"
+                size={20}
+                color={colors.textSecondary}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Username (required)"
+                placeholderTextColor={colors.textSecondary}
+                value={username}
+                onChangeText={setUsername}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
 
-            <TextInput
-              style={styles.input}
-              placeholder="Display Name (required)"
-              value={displayName}
-              onChangeText={setDisplayName}
-              autoCapitalize="words"
-            />
+            <View style={styles.inputContainer}>
+              <IconSymbol
+                ios_icon_name="person.fill"
+                android_material_icon_name="account-circle"
+                size={20}
+                color={colors.textSecondary}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Display Name (required)"
+                placeholderTextColor={colors.textSecondary}
+                value={displayName}
+                onChangeText={setDisplayName}
+                autoCapitalize="words"
+              />
+            </View>
 
-            <TextInput
-              style={styles.input}
-              placeholder="Invite Code (required)"
-              value={inviteCode}
-              onChangeText={setInviteCode}
-              autoCapitalize="characters"
-              autoCorrect={false}
-            />
+            <View style={styles.inputContainer}>
+              <IconSymbol
+                ios_icon_name="key.fill"
+                android_material_icon_name="vpn-key"
+                size={20}
+                color={colors.textSecondary}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Invite Code (required)"
+                placeholderTextColor={colors.textSecondary}
+                value={inviteCode}
+                onChangeText={setInviteCode}
+                autoCapitalize="characters"
+                autoCorrect={false}
+              />
+            </View>
 
             <View style={styles.inviteCodeBox}>
               <Text style={styles.inviteCodeLabel}>Beta Invite Code:</Text>
@@ -267,9 +309,19 @@ export default function AuthScreen() {
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.content}>
-          <Text style={styles.title}>
-            {mode === "signin" ? "Welcome to CoinHub" : "Join CoinHub"}
-          </Text>
+          {/* Logo/Icon */}
+          <View style={styles.logoContainer}>
+            <View style={styles.logoCircle}>
+              <IconSymbol
+                ios_icon_name="circle.fill"
+                android_material_icon_name="circle"
+                size={80}
+                color={colors.primary}
+              />
+            </View>
+          </View>
+
+          <Text style={styles.title}>CoinHub</Text>
           <Text style={styles.subtitle}>
             {mode === "signin"
               ? "Sign in to your account"
@@ -282,24 +334,42 @@ export default function AuthScreen() {
             </View>
           ) : null}
 
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
+          <View style={styles.inputContainer}>
+            <IconSymbol
+              ios_icon_name="envelope"
+              android_material_icon_name="email"
+              size={20}
+              color={colors.textSecondary}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              placeholderTextColor={colors.textSecondary}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Password (min 6 characters)"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-          />
+          <View style={styles.inputContainer}>
+            <IconSymbol
+              ios_icon_name="lock.fill"
+              android_material_icon_name="lock"
+              size={20}
+              color={colors.textSecondary}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Password (min 6 characters)"
+              placeholderTextColor={colors.textSecondary}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              autoCapitalize="none"
+            />
+          </View>
 
           <TouchableOpacity
             style={[styles.primaryButton, loading && styles.buttonDisabled]}
@@ -331,7 +401,7 @@ export default function AuthScreen() {
 
           <View style={styles.divider}>
             <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or continue with</Text>
+            <Text style={styles.dividerText}>or</Text>
             <View style={styles.dividerLine} />
           </View>
 
@@ -340,6 +410,12 @@ export default function AuthScreen() {
             onPress={() => handleSocialAuth("google")}
             disabled={loading}
           >
+            <IconSymbol
+              ios_icon_name="g.circle.fill"
+              android_material_icon_name="g-translate"
+              size={20}
+              color={colors.text}
+            />
             <Text style={styles.socialButtonText}>Continue with Google</Text>
           </TouchableOpacity>
 
@@ -349,6 +425,12 @@ export default function AuthScreen() {
               onPress={() => handleSocialAuth("apple")}
               disabled={loading}
             >
+              <IconSymbol
+                ios_icon_name="apple.logo"
+                android_material_icon_name="apple"
+                size={20}
+                color="#FFFFFF"
+              />
               <Text style={[styles.socialButtonText, styles.appleButtonText]}>
                 Continue with Apple
               </Text>
@@ -363,18 +445,18 @@ export default function AuthScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: colors.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#fff",
+    backgroundColor: colors.background,
   },
   loadingText: {
     marginTop: 12,
     fontSize: 16,
-    color: "#666",
+    color: colors.textSecondary,
   },
   scrollContent: {
     flexGrow: 1,
@@ -384,22 +466,34 @@ const styles = StyleSheet.create({
     padding: 24,
     justifyContent: "center",
   },
+  logoContainer: {
+    alignItems: "center",
+    marginBottom: 32,
+  },
+  logoCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: colors.backgroundAlt,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   title: {
     fontSize: 32,
     fontWeight: "bold",
     marginBottom: 8,
     textAlign: "center",
-    color: "#000",
+    color: colors.text,
   },
   subtitle: {
     fontSize: 16,
-    color: "#666",
+    color: colors.textSecondary,
     marginBottom: 32,
     textAlign: "center",
   },
   errorContainer: {
     backgroundColor: "#fee",
-    borderRadius: 8,
+    borderRadius: 12,
     padding: 12,
     marginBottom: 16,
     borderWidth: 1,
@@ -410,40 +504,47 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: "center",
   },
-  input: {
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
     height: 50,
     borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 8,
+    borderColor: colors.border,
+    borderRadius: 12,
     paddingHorizontal: 16,
     marginBottom: 16,
+    backgroundColor: colors.card,
+    gap: 12,
+  },
+  input: {
+    flex: 1,
     fontSize: 16,
-    backgroundColor: "#fff",
+    color: colors.text,
   },
   inviteCodeBox: {
-    backgroundColor: "#f0f8ff",
-    borderRadius: 8,
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#007AFF",
+    borderColor: colors.primary,
     alignItems: "center",
   },
   inviteCodeLabel: {
     fontSize: 14,
-    color: "#666",
+    color: colors.textSecondary,
     marginBottom: 4,
   },
   inviteCodeText: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#007AFF",
+    color: colors.primary,
     letterSpacing: 2,
   },
   primaryButton: {
     height: 50,
-    backgroundColor: "#007AFF",
-    borderRadius: 8,
+    backgroundColor: colors.primary,
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
     marginTop: 8,
@@ -461,8 +562,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   switchModeText: {
-    color: "#007AFF",
+    color: colors.primary,
     fontSize: 14,
+    fontWeight: "500",
   },
   divider: {
     flexDirection: "row",
@@ -472,26 +574,28 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: "#ddd",
+    backgroundColor: colors.border,
   },
   dividerText: {
     marginHorizontal: 12,
-    color: "#666",
+    color: colors.textSecondary,
     fontSize: 14,
   },
   socialButton: {
     height: 50,
     borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 8,
+    borderColor: colors.border,
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 12,
-    backgroundColor: "#fff",
+    backgroundColor: colors.card,
+    flexDirection: "row",
+    gap: 12,
   },
   socialButtonText: {
     fontSize: 16,
-    color: "#000",
+    color: colors.text,
     fontWeight: "500",
   },
   appleButton: {
