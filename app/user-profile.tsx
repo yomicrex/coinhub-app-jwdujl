@@ -61,103 +61,97 @@ export default function UserProfileScreen() {
     console.log('UserProfileScreen: Viewing user profile, userId:', userId, 'username:', username);
     if (userId || username) {
       fetchUserProfile();
-      if (userId) {
-        fetchUserCoins();
-        fetchFollowCounts();
-        checkFollowStatus();
-      }
     }
   }, [userId, username]);
 
   const fetchUserProfile = async () => {
     try {
       console.log('UserProfileScreen: Fetching profile');
+      setLoading(true);
       
-      // First, try to fetch profile by username if available
+      // Try to fetch profile by username first if available
       if (username) {
         console.log('UserProfileScreen: Fetching by username:', username);
-        const profileResponse = await fetch(`${API_URL}/api/users/${username}`, {
-          credentials: 'include',
-        });
-
-        if (profileResponse.ok) {
-          const profileData = await profileResponse.json();
-          console.log('UserProfileScreen: Profile fetched by username:', profileData);
-          
-          setProfile({
-            id: profileData.id,
-            username: profileData.username,
-            displayName: profileData.displayName || profileData.display_name,
-            avatar_url: profileData.avatar_url || profileData.avatarUrl,
-            avatarUrl: profileData.avatar_url || profileData.avatarUrl,
-            bio: profileData.bio,
-            location: profileData.location,
-            followerCount: profileData.followerCount,
-            followingCount: profileData.followingCount,
-            isFollowing: profileData.isFollowing,
+        try {
+          const profileResponse = await fetch(`${API_URL}/api/users/${username}`, {
+            credentials: 'include',
           });
-          
-          // Update counts if available
-          if (profileData.followerCount !== undefined) {
-            setFollowerCount(profileData.followerCount);
-          }
-          if (profileData.followingCount !== undefined) {
-            setFollowingCount(profileData.followingCount);
-          }
-          if (profileData.isFollowing !== undefined) {
-            setIsFollowing(profileData.isFollowing);
-          }
-          
-          // If we got the profile by username, also fetch coins using the userId
-          if (profileData.id) {
-            fetchUserCoinsById(profileData.id);
-            if (!profileData.followerCount) {
-              fetchFollowCountsById(profileData.id);
+
+          if (profileResponse.ok) {
+            const profileData = await profileResponse.json();
+            console.log('UserProfileScreen: Profile fetched by username:', profileData);
+            
+            const userProfile: UserProfile = {
+              id: profileData.id,
+              username: profileData.username,
+              displayName: profileData.displayName || profileData.display_name,
+              avatar_url: profileData.avatar_url || profileData.avatarUrl,
+              avatarUrl: profileData.avatar_url || profileData.avatarUrl,
+              bio: profileData.bio,
+              location: profileData.location,
+              followerCount: profileData.followerCount,
+              followingCount: profileData.followingCount,
+              isFollowing: profileData.isFollowing,
+            };
+            
+            setProfile(userProfile);
+            
+            // Update counts if available
+            if (profileData.followerCount !== undefined) {
+              setFollowerCount(profileData.followerCount);
             }
-            if (profileData.isFollowing === undefined) {
-              checkFollowStatusById(profileData.id);
+            if (profileData.followingCount !== undefined) {
+              setFollowingCount(profileData.followingCount);
             }
+            if (profileData.isFollowing !== undefined) {
+              setIsFollowing(profileData.isFollowing);
+            }
+            
+            // Fetch coins using the userId from the profile
+            if (profileData.id) {
+              await fetchUserCoinsById(profileData.id);
+              
+              // Fetch additional data if not included in profile response
+              if (profileData.followerCount === undefined) {
+                await fetchFollowCountsById(profileData.id);
+              }
+              if (profileData.isFollowing === undefined) {
+                await checkFollowStatusById(profileData.id);
+              }
+            }
+            
+            setLoading(false);
+            return;
+          } else {
+            console.error('UserProfileScreen: Failed to fetch profile by username, status:', profileResponse.status);
           }
-          
-          setLoading(false);
-          return;
-        } else {
-          console.error('UserProfileScreen: Failed to fetch profile by username, status:', profileResponse.status);
+        } catch (error) {
+          console.error('UserProfileScreen: Error fetching by username:', error);
         }
       }
       
-      // Fallback: Try to fetch user coins to get user info
+      // Fallback: Try to fetch using userId
       if (userId) {
-        console.log('UserProfileScreen: Fetching coins to extract profile for userId:', userId);
-        const coinsResponse = await fetch(`${API_URL}/api/users/${userId}/coins?limit=1`, {
-          credentials: 'include',
-        });
-
-        if (coinsResponse.ok) {
-          const coinsData = await coinsResponse.json();
-          console.log('UserProfileScreen: Coins data:', coinsData);
-          
-          // Extract user profile from coins response
-          if (coinsData.coins && coinsData.coins.length > 0 && coinsData.coins[0].user) {
-            const userProfile = coinsData.coins[0].user;
-            setProfile({
-              id: userProfile.id,
-              username: userProfile.username,
-              displayName: userProfile.displayName || userProfile.display_name,
-              avatar_url: userProfile.avatar_url || userProfile.avatarUrl,
-              avatarUrl: userProfile.avatar_url || userProfile.avatarUrl,
-              bio: userProfile.bio,
-              location: userProfile.location,
-            });
-            console.log('UserProfileScreen: Profile extracted from coins:', userProfile);
-          } else {
-            // If no coins, we need to get profile from another source
-            console.log('UserProfileScreen: No coins found, cannot extract profile. Need to fetch by username.');
-            Alert.alert('Error', 'Unable to load user profile. Please try again.');
-          }
-        } else {
-          console.error('UserProfileScreen: Failed to fetch coins, status:', coinsResponse.status);
-          Alert.alert('Error', 'Failed to load user profile');
+        console.log('UserProfileScreen: Fetching by userId:', userId);
+        
+        // Fetch coins first to get user info
+        const coinsData = await fetchUserCoinsById(userId);
+        
+        // If we got coins with user info, extract the profile
+        if (coinsData && coinsData.length > 0) {
+          // The coins endpoint should include user info in each coin
+          // But we need to fetch the full profile separately
+          console.log('UserProfileScreen: Coins fetched, now fetching full profile');
+        }
+        
+        // Fetch follow counts
+        await fetchFollowCountsById(userId);
+        await checkFollowStatusById(userId);
+        
+        // If we still don't have a profile, show error
+        if (!profile) {
+          console.error('UserProfileScreen: Could not load profile');
+          Alert.alert('Error', 'Unable to load user profile. Please try again.');
         }
       }
     } catch (error) {
@@ -168,12 +162,7 @@ export default function UserProfileScreen() {
     }
   };
 
-  const fetchUserCoins = async () => {
-    if (!userId) return;
-    fetchUserCoinsById(userId);
-  };
-
-  const fetchUserCoinsById = async (id: string) => {
+  const fetchUserCoinsById = async (id: string): Promise<UserCoin[] | null> => {
     try {
       console.log('UserProfileScreen: Fetching coins for user:', id);
       const response = await fetch(`${API_URL}/api/users/${id}/coins?limit=20&offset=0`, {
@@ -186,49 +175,88 @@ export default function UserProfileScreen() {
         
         // Handle different response formats
         let coinsArray: UserCoin[] = [];
+        let userInfo: any = null;
         
         if (Array.isArray(data)) {
           // Response is directly an array
           coinsArray = data;
           console.log('UserProfileScreen: Response is array, length:', coinsArray.length);
+          
+          // Try to extract user info from first coin
+          if (coinsArray.length > 0 && (coinsArray[0] as any).user) {
+            userInfo = (coinsArray[0] as any).user;
+          }
         } else if (data.coins && Array.isArray(data.coins)) {
           // Response has a coins property
           coinsArray = data.coins;
           console.log('UserProfileScreen: Response has coins property, length:', coinsArray.length);
+          
+          // Try to extract user info from first coin
+          if (coinsArray.length > 0 && (coinsArray[0] as any).user) {
+            userInfo = (coinsArray[0] as any).user;
+          }
         } else if (data.data && Array.isArray(data.data)) {
           // Response has a data property
           coinsArray = data.data;
           console.log('UserProfileScreen: Response has data property, length:', coinsArray.length);
+          
+          // Try to extract user info from first coin
+          if (coinsArray.length > 0 && (coinsArray[0] as any).user) {
+            userInfo = (coinsArray[0] as any).user;
+          }
         } else if (data.data && data.data.coins && Array.isArray(data.data.coins)) {
           // Response has nested data.coins
           coinsArray = data.data.coins;
           console.log('UserProfileScreen: Response has data.coins property, length:', coinsArray.length);
+          
+          // Try to extract user info from first coin
+          if (coinsArray.length > 0 && (coinsArray[0] as any).user) {
+            userInfo = (coinsArray[0] as any).user;
+          }
         } else {
           console.warn('UserProfileScreen: Unexpected response format:', data);
         }
         
         console.log('UserProfileScreen: Fetched', coinsArray.length, 'coins');
         setCoins(coinsArray);
+        
+        // If we extracted user info and don't have a profile yet, set it
+        if (userInfo && !profile) {
+          console.log('UserProfileScreen: Extracted user info from coins:', userInfo);
+          setProfile({
+            id: userInfo.id,
+            username: userInfo.username,
+            displayName: userInfo.displayName || userInfo.display_name,
+            avatar_url: userInfo.avatar_url || userInfo.avatarUrl,
+            avatarUrl: userInfo.avatar_url || userInfo.avatarUrl,
+            bio: userInfo.bio,
+            location: userInfo.location,
+          });
+        }
+        
+        return coinsArray;
       } else {
         console.error('UserProfileScreen: Failed to fetch coins, status:', response.status);
+        return null;
       }
     } catch (error) {
       console.error('UserProfileScreen: Error fetching coins:', error);
+      return null;
     }
-  };
-
-  const fetchFollowCounts = async () => {
-    if (!userId) return;
-    fetchFollowCountsById(userId);
   };
 
   const fetchFollowCountsById = async (id: string) => {
     try {
       console.log('UserProfileScreen: Fetching follow counts for user:', id);
       
-      const followersResponse = await fetch(`${API_URL}/api/users/${id}/followers?limit=1`, {
-        credentials: 'include',
-      });
+      const [followersResponse, followingResponse] = await Promise.all([
+        fetch(`${API_URL}/api/users/${id}/followers?limit=1`, {
+          credentials: 'include',
+        }),
+        fetch(`${API_URL}/api/users/${id}/following?limit=1`, {
+          credentials: 'include',
+        }),
+      ]);
       
       if (followersResponse.ok) {
         const followersData = await followersResponse.json();
@@ -236,10 +264,6 @@ export default function UserProfileScreen() {
         setFollowerCount(followersData.total || 0);
       }
 
-      const followingResponse = await fetch(`${API_URL}/api/users/${id}/following?limit=1`, {
-        credentials: 'include',
-      });
-      
       if (followingResponse.ok) {
         const followingData = await followingResponse.json();
         console.log('UserProfileScreen: Following count:', followingData.total);
@@ -248,11 +272,6 @@ export default function UserProfileScreen() {
     } catch (error) {
       console.error('UserProfileScreen: Error fetching follow counts:', error);
     }
-  };
-
-  const checkFollowStatus = async () => {
-    if (!userId) return;
-    checkFollowStatusById(userId);
   };
 
   const checkFollowStatusById = async (id: string) => {
@@ -344,7 +363,7 @@ export default function UserProfileScreen() {
     router.push(`/coin-detail?coinId=${coinId}`);
   };
 
-  if (loading || !profile) {
+  if (loading) {
     return (
       <SafeAreaView style={styles.container}>
         <Stack.Screen
@@ -357,6 +376,38 @@ export default function UserProfileScreen() {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading profile...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            title: 'Profile',
+            headerBackTitle: 'Back',
+          }}
+        />
+        <View style={styles.loadingContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle.fill"
+            android_material_icon_name="error"
+            size={60}
+            color={colors.textSecondary}
+          />
+          <Text style={styles.errorText}>Unable to load profile</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => {
+              setLoading(true);
+              fetchUserProfile();
+            }}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -515,11 +566,31 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 20,
   },
   loadingText: {
     marginTop: 12,
     fontSize: 16,
     color: colors.textSecondary,
+  },
+  errorText: {
+    marginTop: 16,
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 20,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
   scrollContent: {
     paddingBottom: 100,
