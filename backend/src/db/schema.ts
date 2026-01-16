@@ -34,12 +34,18 @@ export const inviteCodes = pgTable(
 /**
  * Users Table
  * Stores user profiles and metadata
+ *
+ * TEMPORARY BETA TESTING CHANGE:
+ * Email uniqueness constraint removed to allow multiple accounts with same email
+ * but different usernames. This is a temporary change for beta testing while
+ * password reset functionality is being improved.
+ * TODO: Restore unique constraint on email when beta testing is complete.
  */
 export const users = pgTable(
   'users',
   {
     id: text('id').primaryKey(), // text to match Better Auth
-    email: text('email').notNull().unique(),
+    email: text('email').notNull(), // TEMP: Removed .unique() for beta testing
     username: text('username').notNull().unique(),
     displayName: text('display_name').notNull(),
     avatarUrl: text('avatar_url'),

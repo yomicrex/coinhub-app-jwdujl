@@ -298,13 +298,14 @@ export function registerAuthRoutes(app: App) {
       const body = CompleteProfileSchema.parse(requestBody);
 
       // Check if username is already taken
+      // TEMPORARY BETA TESTING: Allow multiple accounts per email with different usernames
       const existingUsername = await app.db.query.users.findFirst({
         where: eq(schema.users.username, body.username),
       });
 
       if (existingUsername && existingUsername.id !== session.user.id) {
         app.logger.warn({ username: body.username, userId: session.user.id }, 'Username already taken');
-        return reply.status(409).send({ error: 'Username already taken', message: 'This username is already in use' });
+        return reply.status(409).send({ error: 'Username already taken' });
       }
 
       // Validate and process invite code if provided
@@ -472,7 +473,7 @@ export function registerAuthRoutes(app: App) {
       const errorMsg = String(error);
       if (errorMsg.includes('duplicate key') || errorMsg.includes('unique constraint')) {
         app.logger.warn({ err: error, userId: session.user.id, username: requestBody?.username }, 'Username already taken - unique constraint violation');
-        return reply.status(409).send({ error: 'Username already taken', message: 'This username is already in use' });
+        return reply.status(409).send({ error: 'Username already taken' });
       }
 
       app.logger.error(
@@ -480,6 +481,35 @@ export function registerAuthRoutes(app: App) {
         'Failed to complete profile - unexpected error'
       );
       return reply.status(500).send({ error: 'Server error', message: 'Failed to complete profile' });
+    }
+  });
+
+  /**
+   * GET /api/auth/check-username/:username
+   * Check if a username is available (public endpoint)
+   * Used during signup to validate username availability
+   *
+   * TEMPORARY BETA TESTING: Allow multiple accounts per email with different usernames
+   *
+   * Response: { available: boolean, username: string }
+   */
+  app.fastify.get('/api/auth/check-username/:username', async (request: FastifyRequest, reply: FastifyReply) => {
+    const { username } = request.params as { username: string };
+
+    app.logger.info({ username }, 'Checking username availability');
+
+    try {
+      const existingUser = await app.db.query.users.findFirst({
+        where: eq(schema.users.username, username.toLowerCase()),
+      });
+
+      const available = !existingUser;
+      app.logger.info({ username, available }, 'Username availability checked');
+
+      return { available, username };
+    } catch (error) {
+      app.logger.error({ err: error, username }, 'Failed to check username availability');
+      return reply.status(500).send({ error: 'Server error', message: 'Failed to check username availability' });
     }
   });
 

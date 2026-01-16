@@ -1,9 +1,15 @@
 import { pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core";
 
+/**
+ * TEMPORARY BETA TESTING CHANGE:
+ * Email uniqueness constraint removed to allow multiple accounts with same email
+ * but different usernames. This is a temporary change for beta testing.
+ * TODO: Restore unique constraint on email when beta testing is complete.
+ */
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
-  email: text("email").notNull().unique(),
+  email: text("email").notNull(), // TEMP: Removed .unique() for beta testing
   emailVerified: boolean("email_verified").default(false).notNull(),
   image: text("image"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
