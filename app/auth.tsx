@@ -374,6 +374,21 @@ export default function AuthScreen() {
             </View>
           ) : null}
 
+          {/* Important note for sign in */}
+          {mode === "signin" && (
+            <View style={styles.infoBox}>
+              <IconSymbol
+                ios_icon_name="info.circle"
+                android_material_icon_name="info"
+                size={20}
+                color={colors.primary}
+              />
+              <Text style={styles.infoText}>
+                Sign in with your <Text style={styles.boldText}>email address</Text>, not your username
+              </Text>
+            </View>
+          )}
+
           <View style={styles.inputContainer}>
             <IconSymbol
               ios_icon_name="envelope"
@@ -547,7 +562,7 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: colors.textSecondary,
-    marginBottom: 32,
+    marginBottom: 24,
     textAlign: "center",
   },
   errorContainer: {
@@ -562,6 +577,27 @@ const styles = StyleSheet.create({
     color: "#c00",
     fontSize: 14,
     textAlign: "center",
+  },
+  infoBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    gap: 8,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text,
+    lineHeight: 20,
+  },
+  boldText: {
+    fontWeight: "bold",
+    color: colors.primary,
   },
   inputContainer: {
     flexDirection: "row",
