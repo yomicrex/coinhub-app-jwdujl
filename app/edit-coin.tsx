@@ -313,27 +313,42 @@ export default function EditCoinScreen() {
     }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
+    console.log('EditCoin: handleDelete called for coin:', coinId);
+    
     Alert.alert(
       'Delete Coin',
       'Are you sure you want to delete this coin? This action cannot be undone.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Cancel', 
+          style: 'cancel',
+          onPress: () => console.log('EditCoin: User cancelled delete')
+        },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
             console.log('EditCoin: User confirmed delete for coin:', coinId);
+            console.log('EditCoin: API_URL:', API_URL);
+            console.log('EditCoin: Full delete URL:', `${API_URL}/api/coins/${coinId}`);
+            
             setLoading(true);
             
             try {
-              console.log('EditCoin: Sending DELETE request to:', `${API_URL}/api/coins/${coinId}`);
+              console.log('EditCoin: About to send DELETE request...');
+              console.log('EditCoin: Using authClient.$fetch');
               
               // Use authClient.$fetch which automatically handles authentication
               const response = await authClient.$fetch(`${API_URL}/api/coins/${coinId}`, {
                 method: 'DELETE',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({}), // Send empty body to avoid FST_ERR_CTP_EMPTY_JSON_BODY
               });
 
+              console.log('EditCoin: DELETE request completed');
               console.log('EditCoin: Delete response:', response);
               console.log('EditCoin: Coin deleted successfully');
               
@@ -347,9 +362,21 @@ export default function EditCoinScreen() {
                 },
               ]);
             } catch (error: any) {
-              console.error('EditCoin: Error deleting coin:', error);
-              console.error('EditCoin: Error details:', JSON.stringify(error, null, 2));
-              Alert.alert('Error', error.message || 'Failed to delete coin. Please try again.');
+              console.error('EditCoin: Error deleting coin - START ERROR DETAILS');
+              console.error('EditCoin: Error object:', error);
+              console.error('EditCoin: Error message:', error?.message);
+              console.error('EditCoin: Error name:', error?.name);
+              console.error('EditCoin: Error stack:', error?.stack);
+              console.error('EditCoin: Error status:', error?.status);
+              console.error('EditCoin: Error statusText:', error?.statusText);
+              console.error('EditCoin: Error response:', error?.response);
+              console.error('EditCoin: Full error JSON:', JSON.stringify(error, null, 2));
+              console.error('EditCoin: Error deleting coin - END ERROR DETAILS');
+              
+              Alert.alert(
+                'Error', 
+                `Failed to delete coin: ${error?.message || 'Unknown error'}. Please try again.`
+              );
             } finally {
               setLoading(false);
             }
