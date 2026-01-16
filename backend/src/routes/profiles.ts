@@ -103,8 +103,12 @@ export function registerProfileRoutes(app: App) {
       }
 
       return {
-        ...profile,
+        id: profile.id,
+        username: profile.username,
+        displayName: profile.displayName,
         avatarUrl,
+        bio: profile.bio || null,
+        location: profile.location || null,
         followerCount,
         followingCount,
         isFollowing,

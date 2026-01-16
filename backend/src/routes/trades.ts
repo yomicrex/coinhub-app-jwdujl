@@ -76,22 +76,22 @@ export function registerTradesRoutes(app: App) {
         return reply.status(400).send({ error: 'Cannot initiate trade for your own coin' });
       }
 
-      // Check if trade already exists
-      const existingTrade = await app.db.query.trades.findFirst({
+      // Check if there's an active trade (only pending or accepted trades are considered active)
+      // Allows new trades if previous trades are cancelled, completed, or disputed
+      const existingActiveTrade = await app.db.query.trades.findFirst({
         where: and(
           eq(schema.trades.initiatorId, session.user.id),
           eq(schema.trades.coinId, body.coinId),
           or(
             eq(schema.trades.status, 'pending'),
-            eq(schema.trades.status, 'accepted'),
-            eq(schema.trades.status, 'countered')
+            eq(schema.trades.status, 'accepted')
           )
         ),
       });
 
-      if (existingTrade) {
-        app.logger.warn({ userId: session.user.id, coinId: body.coinId }, 'Trade already exists');
-        return reply.status(400).send({ error: 'Trade request already exists for this coin' });
+      if (existingActiveTrade) {
+        app.logger.warn({ userId: session.user.id, coinId: body.coinId, existingTradeId: existingActiveTrade.id }, 'Active trade already exists for this coin');
+        return reply.status(409).send({ error: 'You already have an active trade request for this coin' });
       }
 
       // Create new trade
