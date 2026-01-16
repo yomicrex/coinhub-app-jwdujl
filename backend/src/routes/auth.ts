@@ -1,5 +1,5 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import * as authSchema from '../db/auth-schema.js';
 import type { App } from '../index.js';
@@ -620,10 +620,10 @@ export function registerAuthRoutes(app: App) {
       const body = RequestPasswordResetSchema.parse(requestBody);
       const normalizedEmail = body.email.toLowerCase();
 
-      // Check if user exists (case-insensitive)
+      // Check if user exists (case-insensitive using SQL LOWER function)
       app.logger.info({ email: normalizedEmail }, 'Looking up user for password reset');
       const user = await app.db.query.user.findFirst({
-        where: eq(authSchema.user.email, normalizedEmail)
+        where: sql`LOWER(${authSchema.user.email}) = LOWER(${normalizedEmail})`
       });
 
       // Always return success message (don't leak whether email exists)
@@ -796,9 +796,9 @@ export function registerAuthRoutes(app: App) {
         });
       }
 
-      // Find user by email (identifier)
+      // Find user by email (identifier) using case-insensitive comparison
       const user = await app.db.query.user.findFirst({
-        where: eq(authSchema.user.email, verification.identifier.toLowerCase())
+        where: sql`LOWER(${authSchema.user.email}) = LOWER(${verification.identifier})`
       });
 
       if (!user) {
@@ -813,31 +813,34 @@ export function registerAuthRoutes(app: App) {
 
       try {
         // Hash the new password using bcrypt (same as Better Auth)
-        // Better Auth expects the hash to be stored in account.password with provider_id 'password'
+        // Better Auth stores the hash in account.password with provider_id 'credential'
         const bcrypt = await import('bcryptjs') as any;
         const hashedPassword = await bcrypt.hash(body.password, 10);
 
-        // Find or create the password account record
-        const passwordAccount = await app.db.query.account.findFirst({
-          where: eq(authSchema.account.userId, user.id)
+        // Find the credential account record
+        const credentialAccount = await app.db.query.account.findFirst({
+          where: and(
+            eq(authSchema.account.userId, user.id),
+            eq(authSchema.account.providerId, 'credential')
+          )
         });
 
-        if (passwordAccount) {
-          // Update existing account with new password
+        if (credentialAccount) {
+          // Update existing credential account with new password
           await app.db
             .update(authSchema.account)
             .set({ password: hashedPassword })
-            .where(eq(authSchema.account.id, passwordAccount.id));
+            .where(eq(authSchema.account.id, credentialAccount.id));
 
-          app.logger.info({ userId: user.id }, 'Password updated in existing account');
+          app.logger.info({ userId: user.id, accountId: credentialAccount.id }, 'Password updated in credential account');
         } else {
           // This shouldn't happen if user did sign up with password
-          app.logger.warn({ userId: user.id }, 'No password account found for user, creating one');
+          app.logger.warn({ userId: user.id }, 'No credential account found for user, creating one');
           await app.db.insert(authSchema.account).values({
             id: crypto.randomUUID(),
             userId: user.id,
-            accountId: `password-${user.id}`,
-            providerId: 'password',
+            accountId: `credential-${user.id}`,
+            providerId: 'credential',
             password: hashedPassword,
           });
         }
@@ -925,9 +928,10 @@ export function registerAuthRoutes(app: App) {
 
       if (isEmail) {
         // Look up by email in both auth user and CoinHub users tables
+        // Using case-insensitive comparison for email using SQL LOWER function
         try {
           authUser = await app.db.query.user.findFirst({
-            where: eq(authSchema.user.email, email),
+            where: sql`LOWER(${authSchema.user.email}) = LOWER(${email})`,
           });
 
           if (authUser) {

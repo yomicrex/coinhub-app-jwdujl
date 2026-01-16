@@ -1,8 +1,9 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import * as authSchema from '../db/auth-schema.js';
 import type { App } from '../index.js';
+import { z } from 'zod';
 
 export function registerAdminRoutes(app: App) {
   /**
@@ -99,6 +100,117 @@ export function registerAdminRoutes(app: App) {
         'Admin: Failed to delete user account'
       );
       return reply.status(500).send({ error: 'Failed to delete user account' });
+    }
+  });
+
+  /**
+   * POST /api/admin/users/:username/reset-password
+   * Admin endpoint to directly reset a user's password
+   *
+   * Path parameter: username (string) - The username of the account to reset password for
+   * Request body: { password: string } - New password (must be at least 8 characters)
+   *
+   * Returns: { success: true, message: "Password reset successfully for user {username}" }
+   * Returns 404 if user not found: { error: "User not found" }
+   * Returns 400 if password validation fails
+   * Returns 500 if database error occurs
+   */
+  app.fastify.post('/api/admin/users/:username/reset-password', async (request: FastifyRequest, reply: FastifyReply) => {
+    const { username } = request.params as { username: string };
+    const requestBody = request.body as Record<string, any>;
+
+    app.logger.info({ username }, 'Admin: Password reset requested for user');
+
+    const ResetPasswordSchema = z.object({
+      password: z.string().min(8, 'Password must be at least 8 characters'),
+    });
+
+    try {
+      const body = ResetPasswordSchema.parse(requestBody);
+
+      // Step 1: Find the user by username
+      const coinHubUser = await app.db.query.users.findFirst({
+        where: eq(schema.users.username, username),
+      });
+
+      if (!coinHubUser) {
+        app.logger.warn({ username }, 'Admin: User not found for password reset');
+        return reply.status(404).send({ error: 'User not found' });
+      }
+
+      app.logger.info({ userId: coinHubUser.id, username }, 'Admin: User found, resetting password');
+
+      // Step 2: Hash the new password
+      const bcrypt = await import('bcryptjs') as any;
+      const hashedPassword = await bcrypt.hash(body.password, 10);
+
+      // Step 3: Find or create the credential account
+      let credentialAccount = await app.db.query.account.findFirst({
+        where: and(
+          eq(authSchema.account.userId, coinHubUser.id),
+          eq(authSchema.account.providerId, 'credential')
+        ),
+      });
+
+      if (credentialAccount) {
+        // Update existing credential account
+        await app.db
+          .update(authSchema.account)
+          .set({ password: hashedPassword })
+          .where(eq(authSchema.account.id, credentialAccount.id));
+
+        app.logger.info(
+          { userId: coinHubUser.id, username, accountId: credentialAccount.id },
+          'Admin: Password updated in existing credential account'
+        );
+      } else {
+        // Create new credential account
+        await app.db.insert(authSchema.account).values({
+          id: crypto.randomUUID(),
+          userId: coinHubUser.id,
+          accountId: `credential-${coinHubUser.id}`,
+          providerId: 'credential',
+          password: hashedPassword,
+        });
+
+        app.logger.info(
+          { userId: coinHubUser.id, username },
+          'Admin: Created new credential account with password'
+        );
+      }
+
+      // Step 4: Invalidate all existing sessions for security
+      try {
+        await app.db
+          .delete(authSchema.session)
+          .where(eq(authSchema.session.userId, coinHubUser.id));
+
+        app.logger.info(
+          { userId: coinHubUser.id, username },
+          'Admin: Invalidated all sessions for user after password reset'
+        );
+      } catch (sessionErr) {
+        app.logger.warn(
+          { err: sessionErr, userId: coinHubUser.id, username },
+          'Admin: Failed to invalidate sessions after password reset'
+        );
+      }
+
+      return {
+        success: true,
+        message: `Password reset successfully for user ${username}`,
+      };
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        app.logger.warn({ error: error.issues, username }, 'Admin: Password validation failed');
+        return reply.status(400).send({ error: 'Validation failed', details: error.issues });
+      }
+
+      app.logger.error(
+        { err: error, username },
+        'Admin: Failed to reset user password'
+      );
+      return reply.status(500).send({ error: 'Failed to reset password' });
     }
   });
 }
