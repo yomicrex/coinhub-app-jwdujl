@@ -265,15 +265,17 @@ export default function CoinDetailScreen() {
       
       // Handle 409 Conflict - active trade already exists
       if (response.status === 409) {
-        console.log('CoinDetail: 409 Conflict - active trade already exists, navigating to existing trade');
+        console.log('CoinDetail: 409 Conflict - active trade already exists');
         
         const existingTradeId = responseData?.existingTradeId;
+        console.log('CoinDetail: Extracted existingTradeId:', existingTradeId);
         
         if (existingTradeId) {
-          console.log('CoinDetail: Navigating to existing trade:', existingTradeId);
+          console.log('CoinDetail: Navigating to existing trade with ID:', existingTradeId);
           router.push(`/trade-detail?id=${existingTradeId}`);
+          console.log('CoinDetail: Navigation command sent to router');
         } else {
-          console.error('CoinDetail: No existingTradeId in 409 response');
+          console.error('CoinDetail: No existingTradeId in 409 response, responseData:', responseData);
           Alert.alert('Error', 'Unable to open trade. Please try again.');
         }
         return;

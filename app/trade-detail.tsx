@@ -75,7 +75,7 @@ interface TradeDetail {
   createdAt: string;
 }
 
-const API_URL = Constants.expoConfig?.extra?.backendUrl || 'http://localhost:3000';
+const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 
 export default function TradeDetailScreen() {
   const router = useRouter();
@@ -91,24 +91,47 @@ export default function TradeDetailScreen() {
   const [userCoins, setUserCoins] = useState<Coin[]>([]);
   const [trackingNumber, setTrackingNumber] = useState('');
   const [offerMessage, setOfferMessage] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     console.log('TradeDetailScreen: Component mounted, trade ID:', id);
-    fetchTradeDetail();
+    if (id) {
+      fetchTradeDetail();
+    } else {
+      console.error('TradeDetailScreen: No trade ID provided in URL params');
+      setError('No trade ID provided');
+      setLoading(false);
+    }
   }, [id]);
 
   const fetchTradeDetail = async () => {
+    if (!id) {
+      console.error('TradeDetailScreen: Cannot fetch trade - no ID');
+      return;
+    }
+
     try {
       console.log('TradeDetailScreen: Fetching trade detail for ID:', id);
       const response = await authClient.$fetch(`${API_URL}/api/trades/${id}`);
       
-      console.log('TradeDetailScreen: Fetched trade detail:', response);
-      const tradeData = response?.trade || response;
+      console.log('TradeDetailScreen: Fetched trade detail response:', response);
+      const tradeData = response?.trade || response?.data || response;
+      
+      if (!tradeData) {
+        console.error('TradeDetailScreen: No trade data in response');
+        setError('Trade not found');
+        setLoading(false);
+        return;
+      }
+
+      console.log('TradeDetailScreen: Trade data loaded successfully, status:', tradeData.status);
       setTrade(tradeData);
-      console.log('TradeDetailScreen: Trade status:', tradeData.status);
-    } catch (error) {
+      setError(null);
+    } catch (error: any) {
       console.error('TradeDetailScreen: Error fetching trade detail:', error);
-      Alert.alert('Error', 'Failed to load trade details');
+      console.error('TradeDetailScreen: Error details:', error.message, error.status);
+      setError('Failed to load trade details');
+      Alert.alert('Error', 'Failed to load trade details. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -448,12 +471,13 @@ export default function TradeDetailScreen() {
         />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading trade...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  if (!trade) {
+  if (error || !trade) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <Stack.Screen
@@ -464,7 +488,19 @@ export default function TradeDetailScreen() {
           }}
         />
         <View style={styles.loadingContainer}>
-          <Text style={styles.emptyText}>Trade not found</Text>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="warning"
+            size={64}
+            color={colors.textSecondary}
+          />
+          <Text style={styles.emptyText}>{error || 'Trade not found'}</Text>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.primaryButton, { marginTop: 16 }]}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.buttonText}>Go Back</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -885,6 +921,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: colors.textSecondary,
   },
   scrollContent: {
     paddingBottom: 100,
