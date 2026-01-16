@@ -12,6 +12,8 @@ import {
   Platform,
   Dimensions,
   ScrollView,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -228,11 +230,15 @@ export default function FeedScreen() {
     router.push(`/coin-detail?coinId=${coinId}`);
   };
 
-  const handleImageScroll = (coinId: string, event: any) => {
+  const handleImageScroll = (coinId: string, event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / width);
-    console.log('FeedScreen: Image scrolled for coin', coinId, 'to index', index);
-    setImageIndices(prev => ({ ...prev, [coinId]: index }));
+    console.log('FeedScreen: Image scrolled for coin', coinId, 'contentOffsetX:', contentOffsetX, 'calculated index:', index);
+    setImageIndices(prev => {
+      const newIndices = { ...prev, [coinId]: index };
+      console.log('FeedScreen: Updated imageIndices:', newIndices);
+      return newIndices;
+    });
   };
 
   const renderTradeCoinCard = (item: Coin) => {
@@ -315,6 +321,8 @@ export default function FeedScreen() {
     }) || [];
     
     const currentIndex = imageIndices[item.id] || 0;
+    console.log('FeedScreen: Current image index for coin', item.id, ':', currentIndex);
+    
     const likeCount = item.like_count ?? item.likeCount ?? 0;
     const commentCount = item.comment_count ?? item.commentCount ?? 0;
     const tradeStatus = item.trade_status ?? item.tradeStatus ?? 'not_for_trade';

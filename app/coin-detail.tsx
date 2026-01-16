@@ -10,9 +10,10 @@ import {
   ActivityIndicator,
   Dimensions,
   Platform,
-  FlatList,
   Share,
   Alert,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
@@ -27,7 +28,7 @@ const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9r
 const { width } = Dimensions.get('window');
 
 interface CoinImage {
-  id: string;
+  id?: string;
   url: string;
   orderIndex: number;
 }
@@ -67,7 +68,6 @@ export default function CoinDetailScreen() {
   const [coin, setCoin] = useState<CoinDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
     console.log('CoinDetail: Loading coin:', coinId);
@@ -278,17 +278,12 @@ export default function CoinDetailScreen() {
     }
   };
 
-  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
-    if (viewableItems.length > 0) {
-      const newIndex = viewableItems[0].index ?? 0;
-      console.log('CoinDetail: Image changed to index:', newIndex);
-      setCurrentImageIndex(newIndex);
-    }
-  }).current;
-
-  const viewabilityConfig = useRef({
-    itemVisiblePercentThreshold: 50,
-  }).current;
+  const handleImageScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(contentOffsetX / width);
+    console.log('CoinDetail: Image scrolled, contentOffsetX:', contentOffsetX, 'calculated index:', index);
+    setCurrentImageIndex(index);
+  };
 
   if (loading) {
     return (
@@ -340,6 +335,8 @@ export default function CoinDetailScreen() {
   const sortedImages = coin.images?.sort((a, b) => a.orderIndex - b.orderIndex) || [];
   const isOwner = coin.user.id === user?.id;
 
+  console.log('CoinDetail: Rendering with', sortedImages.length, 'images, current index:', currentImageIndex);
+
   return (
     <>
       <Stack.Screen
@@ -369,31 +366,29 @@ export default function CoinDetailScreen() {
           {/* Image Gallery with Swipe */}
           {sortedImages.length > 0 ? (
             <View style={styles.imageGalleryContainer}>
-              <FlatList
-                ref={flatListRef}
-                data={sortedImages}
+              <ScrollView
                 horizontal
                 pagingEnabled
                 showsHorizontalScrollIndicator={false}
-                onViewableItemsChanged={onViewableItemsChanged}
-                viewabilityConfig={viewabilityConfig}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                  <View style={styles.imageSlide}>
+                onScroll={handleImageScroll}
+                scrollEventThrottle={16}
+              >
+                {sortedImages.map((image, index) => (
+                  <View key={`image-${index}`} style={styles.imageSlide}>
                     <Image
-                      source={{ uri: item.url }}
+                      source={{ uri: image.url }}
                       style={styles.coinImage}
                       resizeMode="cover"
                       onError={(error) => {
-                        console.error('CoinDetail: Image failed to load:', item.url, error.nativeEvent.error);
+                        console.error('CoinDetail: Image failed to load:', image.url, error.nativeEvent.error);
                       }}
                       onLoad={() => {
-                        console.log('CoinDetail: Image loaded successfully:', item.url);
+                        console.log('CoinDetail: Image loaded successfully:', image.url);
                       }}
                     />
                   </View>
-                )}
-              />
+                ))}
+              </ScrollView>
               
               {/* Image Indicator Dots */}
               {sortedImages.length > 1 && (
