@@ -88,13 +88,31 @@ export default function AuthScreen() {
   }
 
   const handleEmailAuth = async () => {
+    console.log("AuthScreen: handleEmailAuth called, mode:", mode, "email:", email);
+    
     if (!email || !password) {
-      setErrorMessage("Please enter email and password");
+      const msg = "Please enter email and password";
+      console.log("AuthScreen: Validation error:", msg);
+      setErrorMessage(msg);
+      Alert.alert("Error", msg);
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      const msg = "Please enter a valid email address";
+      console.log("AuthScreen: Email validation error:", msg);
+      setErrorMessage(msg);
+      Alert.alert("Error", msg);
       return;
     }
 
     if (password.length < 6) {
-      setErrorMessage("Password must be at least 6 characters");
+      const msg = "Password must be at least 6 characters";
+      console.log("AuthScreen: Password validation error:", msg);
+      setErrorMessage(msg);
+      Alert.alert("Error", msg);
       return;
     }
 
@@ -106,10 +124,12 @@ export default function AuthScreen() {
         console.log("AuthScreen: Attempting sign in with email:", email);
         await signInWithEmail(email, password);
         console.log("AuthScreen: Sign in successful");
+        Alert.alert("Success", "Signed in successfully!");
       } else {
         console.log("AuthScreen: Attempting sign up with email:", email);
         await signUpWithEmail(email, password, displayName || email.split('@')[0]);
         console.log("AuthScreen: Sign up successful");
+        Alert.alert("Success", "Account created successfully! Please complete your profile.");
       }
       // fetchUser is called automatically in signInWithEmail/signUpWithEmail
       // The useEffect will handle navigation based on profile status
@@ -124,20 +144,31 @@ export default function AuthScreen() {
   };
 
   const handleCompleteProfile = async () => {
+    console.log("AuthScreen: handleCompleteProfile called, username:", username, "displayName:", displayName, "email:", profileEmail, "inviteCode:", inviteCode);
+    
     if (!username || !displayName || !inviteCode || !profileEmail) {
-      setErrorMessage("Please fill in all required fields");
+      const msg = "Please fill in all required fields";
+      console.log("AuthScreen: Validation error:", msg);
+      setErrorMessage(msg);
+      Alert.alert("Error", msg);
       return;
     }
 
     if (username.length < 3) {
-      setErrorMessage("Username must be at least 3 characters");
+      const msg = "Username must be at least 3 characters";
+      console.log("AuthScreen: Username validation error:", msg);
+      setErrorMessage(msg);
+      Alert.alert("Error", msg);
       return;
     }
 
     // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(profileEmail)) {
-      setErrorMessage("Please enter a valid email address");
+      const msg = "Please enter a valid email address";
+      console.log("AuthScreen: Email validation error:", msg);
+      setErrorMessage(msg);
+      Alert.alert("Error", msg);
       return;
     }
 
@@ -202,6 +233,8 @@ export default function AuthScreen() {
       } else if (provider === "github") {
         await signInWithGitHub();
       }
+      console.log("AuthScreen: Social auth successful");
+      Alert.alert("Success", "Signed in successfully!");
       // fetchUser is called automatically in the social auth methods
       // The useEffect will handle navigation based on profile status
     } catch (error: any) {
@@ -401,7 +434,10 @@ export default function AuthScreen() {
               placeholder="Email Address"
               placeholderTextColor={colors.textSecondary}
               value={email}
-              onChangeText={setEmail}
+              onChangeText={(text) => {
+                console.log("AuthScreen: Email input changed:", text);
+                setEmail(text);
+              }}
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
@@ -420,7 +456,10 @@ export default function AuthScreen() {
               placeholder="Password (min 6 characters)"
               placeholderTextColor={colors.textSecondary}
               value={password}
-              onChangeText={setPassword}
+              onChangeText={(text) => {
+                console.log("AuthScreen: Password input changed, length:", text.length);
+                setPassword(text);
+              }}
               secureTextEntry
               autoCapitalize="none"
             />
@@ -439,7 +478,10 @@ export default function AuthScreen() {
                 placeholder="Display Name (optional)"
                 placeholderTextColor={colors.textSecondary}
                 value={displayName}
-                onChangeText={setDisplayName}
+                onChangeText={(text) => {
+                  console.log("AuthScreen: Display name input changed:", text);
+                  setDisplayName(text);
+                }}
                 autoCapitalize="words"
               />
             </View>
@@ -447,7 +489,10 @@ export default function AuthScreen() {
 
           <TouchableOpacity
             style={[styles.primaryButton, loading && styles.buttonDisabled]}
-            onPress={handleEmailAuth}
+            onPress={() => {
+              console.log("AuthScreen: Primary button pressed, mode:", mode);
+              handleEmailAuth();
+            }}
             disabled={loading}
           >
             {loading ? (
@@ -462,7 +507,9 @@ export default function AuthScreen() {
           <TouchableOpacity
             style={styles.switchModeButton}
             onPress={() => {
-              setMode(mode === "signin" ? "signup" : "signin");
+              const newMode = mode === "signin" ? "signup" : "signin";
+              console.log("AuthScreen: Switching mode from", mode, "to", newMode);
+              setMode(newMode);
               setErrorMessage("");
             }}
           >
@@ -481,7 +528,10 @@ export default function AuthScreen() {
 
           <TouchableOpacity
             style={styles.socialButton}
-            onPress={() => handleSocialAuth("google")}
+            onPress={() => {
+              console.log("AuthScreen: Google button pressed");
+              handleSocialAuth("google");
+            }}
             disabled={loading}
           >
             <IconSymbol
@@ -496,7 +546,10 @@ export default function AuthScreen() {
           {Platform.OS === "ios" && (
             <TouchableOpacity
               style={[styles.socialButton, styles.appleButton]}
-              onPress={() => handleSocialAuth("apple")}
+              onPress={() => {
+                console.log("AuthScreen: Apple button pressed");
+                handleSocialAuth("apple");
+              }}
               disabled={loading}
             >
               <IconSymbol

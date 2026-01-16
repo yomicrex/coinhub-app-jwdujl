@@ -178,8 +178,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithEmail = async (email: string, password: string) => {
     try {
-      console.log("AuthProvider: Signing in with email:", email);
-      const result = await authClient.signIn.email({ email, password });
+      console.log("AuthProvider: Starting signInWithEmail, email:", email);
+      console.log("AuthProvider: Calling authClient.signIn.email with baseURL:", API_URL);
+      
+      const result = await authClient.signIn.email({ 
+        email: email.trim().toLowerCase(), 
+        password 
+      });
+      
       console.log("AuthProvider: Sign in result:", result);
       
       if (result.error) {
@@ -187,24 +193,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         // Provide more specific error messages
         const status = result.error.status;
-        if (status === 401 || status === 400) {
+        const message = result.error.message || "";
+        
+        if (status === 401 || status === 400 || message.includes("Invalid") || message.includes("credentials")) {
           throw new Error("Invalid email or password. Please check your credentials and try again.");
         } else if (status === 500) {
           throw new Error("Server error. Our team has been notified. Please try again in a few minutes.");
-        } else if (status === 404) {
+        } else if (status === 404 || message.includes("not found")) {
           throw new Error("Account not found. Please sign up first.");
         } else {
-          throw new Error(result.error.message || "Sign in failed. Please try again.");
+          throw new Error(message || "Sign in failed. Please try again.");
         }
       }
       
       console.log("AuthProvider: Sign in successful, fetching user");
       await fetchUser();
+      console.log("AuthProvider: User fetched after sign in");
     } catch (error: any) {
       console.error("AuthProvider: Email sign in failed:", error);
       
       // Provide more helpful error messages
-      if (error.message?.includes("fetch") || error.message?.includes("network")) {
+      if (error.message?.includes("fetch") || error.message?.includes("network") || error.message?.includes("Failed to fetch")) {
         throw new Error("Cannot connect to server. Please check your internet connection and try again.");
       }
       
@@ -215,12 +224,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUpWithEmail = async (email: string, password: string, name?: string) => {
     try {
-      console.log("AuthProvider: Signing up with email:", email);
+      console.log("AuthProvider: Starting signUpWithEmail, email:", email);
+      console.log("AuthProvider: Calling authClient.signUp.email with baseURL:", API_URL);
+      
       const result = await authClient.signUp.email({
-        email,
+        email: email.trim().toLowerCase(),
         password,
         name: name || email.split('@')[0],
       });
+      
       console.log("AuthProvider: Sign up result:", result);
       
       if (result.error) {
@@ -230,7 +242,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const status = result.error.status;
         const message = result.error.message || "";
         
-        if (status === 409 || message.includes("already exists") || message.includes("duplicate")) {
+        if (status === 409 || message.includes("already exists") || message.includes("duplicate") || message.includes("unique")) {
           throw new Error("An account with this email already exists. Please sign in instead.");
         } else if (status === 400) {
           throw new Error("Invalid email or password format. Password must be at least 6 characters.");
@@ -243,11 +255,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       console.log("AuthProvider: Sign up successful, fetching user");
       await fetchUser();
+      console.log("AuthProvider: User fetched after sign up");
     } catch (error: any) {
       console.error("AuthProvider: Email sign up failed:", error);
       
       // Provide more helpful error messages
-      if (error.message?.includes("fetch") || error.message?.includes("network")) {
+      if (error.message?.includes("fetch") || error.message?.includes("network") || error.message?.includes("Failed to fetch")) {
         throw new Error("Cannot connect to server. Please check your internet connection and try again.");
       }
       
@@ -258,12 +271,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithSocial = async (provider: "google" | "apple" | "github") => {
     try {
-      console.log("AuthProvider: Signing in with social provider:", provider);
+      console.log("AuthProvider: Starting signInWithSocial, provider:", provider);
       if (Platform.OS === "web") {
+        console.log("AuthProvider: Opening OAuth popup for", provider);
         const token = await openOAuthPopup(provider);
+        console.log("AuthProvider: OAuth popup returned token");
         storeWebBearerToken(token);
         await fetchUser();
       } else {
+        console.log("AuthProvider: Using native OAuth for", provider);
         await authClient.signIn.social({
           provider,
           callbackURL: "/(tabs)/(home)",
