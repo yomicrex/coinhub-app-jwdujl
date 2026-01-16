@@ -10,6 +10,7 @@ import { registerLikesRoutes } from './routes/likes.js';
 import { registerCommentsRoutes } from './routes/comments.js';
 import { registerFeedRoutes } from './routes/feed.js';
 import { registerFollowRoutes } from './routes/follows.js';
+import { registerTradesRoutes } from './routes/trades.js';
 import { seedDatabase } from './db/seed.js';
 
 const schema = { ...appSchema, ...authSchema };
@@ -54,6 +55,7 @@ try {
   registerCommentsRoutes(app);
   registerFeedRoutes(app);
   registerFollowRoutes(app);
+  registerTradesRoutes(app);
   app.logger.info('All CoinHub routes registered');
 } catch (error) {
   app.logger.error({ err: error }, 'Failed to register routes');
