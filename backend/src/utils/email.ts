@@ -39,53 +39,8 @@ export async function sendEmail(app: App, options: EmailOptions): Promise<boolea
       return true;
     }
 
-    if (emailProvider === 'smtp') {
-      // Production mode: use nodemailer with SMTP
-      const nodemailer = await import('nodemailer');
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: parseInt(process.env.SMTP_PORT || '587', 10),
-        secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASSWORD,
-        },
-      });
-
-      const result = await transporter.sendMail({
-        from: emailFrom,
-        to: options.to,
-        subject: options.subject,
-        text: options.text || 'Email',
-        html: options.html,
-      });
-
-      app.logger.info(
-        { to: options.to, messageId: result.messageId },
-        'Email sent successfully'
-      );
-      return true;
-    }
-
-    if (emailProvider === 'sendgrid') {
-      // SendGrid via their Node.js library
-      const sgMail = (await import('@sendgrid/mail')).default as any;
-      sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
-
-      const result = await sgMail.send({
-        to: options.to,
-        from: emailFrom,
-        subject: options.subject,
-        text: options.text || 'Email',
-        html: options.html,
-      });
-
-      app.logger.info(
-        { to: options.to, messageId: result[0].headers['x-message-id'] },
-        'Email sent successfully via SendGrid'
-      );
-      return true;
-    }
+    // NOTE: SMTP and SendGrid providers are not currently configured
+    // Please use Resend as the email provider by setting EMAIL_PROVIDER=resend
 
     if (emailProvider === 'resend') {
       // Resend.com email service

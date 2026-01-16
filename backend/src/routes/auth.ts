@@ -57,6 +57,12 @@ const ResetPasswordSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
+const UsernameEmailSignInSchema = z.object({
+  identifier: z.string().min(1, 'Username or email is required'),
+  password: z.string().min(1, 'Password is required'),
+  rememberMe: z.boolean().optional(),
+});
+
 export function registerAuthRoutes(app: App) {
   const requireAuth = app.requireAuth();
 
@@ -883,6 +889,197 @@ export function registerAuthRoutes(app: App) {
         error: 'Server error',
         message: 'Failed to reset password'
       });
+    }
+  });
+
+  /**
+   * POST /api/auth/sign-in/username-email
+   * Sign in with username or email address
+   * Allows users to authenticate using either their username or email
+   *
+   * Request body: { identifier: string (username or email), password: string, rememberMe?: boolean }
+   * Returns: { user: { id, email, name, ... }, session: { token, ... } }
+   *
+   * Security:
+   * - Returns generic "Invalid username or password" error for all failures (doesn't reveal if user exists)
+   * - Case-insensitive username lookup
+   * - Logs all sign-in attempts for security auditing
+   */
+  app.fastify.post('/api/auth/sign-in/username-email', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.info({ identifier: (request.body as any)?.identifier }, 'Attempting sign-in with username or email');
+
+    try {
+      const body = UsernameEmailSignInSchema.parse(request.body);
+      const identifier = body.identifier.trim();
+
+      // Determine if identifier is email or username
+      const isEmail = identifier.includes('@');
+      const email = isEmail ? identifier.toLowerCase() : null;
+      const username = !isEmail ? identifier.toLowerCase() : null;
+
+      app.logger.info({ identifier, isEmail, type: isEmail ? 'email' : 'username' }, 'Identifier type determined');
+
+      // Step 1: Find user by username or email
+      let coinHubUser;
+      let authUser;
+
+      if (isEmail) {
+        // Look up by email in both auth user and CoinHub users tables
+        try {
+          authUser = await app.db.query.user.findFirst({
+            where: eq(authSchema.user.email, email),
+          });
+
+          if (authUser) {
+            coinHubUser = await app.db.query.users.findFirst({
+              where: eq(schema.users.id, authUser.id),
+              columns: {
+                id: true,
+                email: true,
+                username: true,
+                displayName: true,
+                avatarUrl: true,
+                bio: true,
+                location: true,
+                collectionPrivacy: true,
+                role: true,
+                inviteCodeUsed: true,
+                createdAt: true,
+                updatedAt: true,
+              },
+            });
+          }
+        } catch (lookupError) {
+          app.logger.error({ err: lookupError, email }, 'Error looking up user by email');
+          return reply.status(401).send({ error: 'Invalid username or password' });
+        }
+      } else {
+        // Look up by username in CoinHub users table first
+        try {
+          coinHubUser = await app.db.query.users.findFirst({
+            where: eq(schema.users.username, username),
+            columns: {
+              id: true,
+              email: true,
+              username: true,
+              displayName: true,
+              avatarUrl: true,
+              bio: true,
+              location: true,
+              collectionPrivacy: true,
+              role: true,
+              inviteCodeUsed: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          });
+
+          if (coinHubUser) {
+            // Now get the auth user with the resolved email
+            authUser = await app.db.query.user.findFirst({
+              where: eq(authSchema.user.id, coinHubUser.id),
+            });
+          }
+        } catch (lookupError) {
+          app.logger.error({ err: lookupError, username }, 'Error looking up user by username');
+          return reply.status(401).send({ error: 'Invalid username or password' });
+        }
+      }
+
+      // Step 2: Verify user exists
+      if (!authUser || !coinHubUser) {
+        app.logger.warn(
+          { identifier, identifierType: isEmail ? 'email' : 'username', found: false },
+          'Sign-in failed: user not found'
+        );
+        return reply.status(401).send({ error: 'Invalid username or password' });
+      }
+
+      // Step 3: Verify password
+      try {
+        const bcrypt = await import('bcryptjs') as any;
+        const passwordMatch = await bcrypt.compare(body.password, authUser.password || '');
+
+        if (!passwordMatch) {
+          app.logger.warn(
+            { userId: authUser.id, identifier, identifierType: isEmail ? 'email' : 'username' },
+            'Sign-in failed: incorrect password'
+          );
+          return reply.status(401).send({ error: 'Invalid username or password' });
+        }
+      } catch (bcryptError) {
+        app.logger.error(
+          { err: bcryptError, userId: authUser.id, identifier },
+          'Error comparing passwords'
+        );
+        return reply.status(500).send({ error: 'Authentication error' });
+      }
+
+      // Step 4: Create session
+      try {
+        const session = await app.db
+          .insert(authSchema.session)
+          .values({
+            id: crypto.randomUUID(),
+            userId: authUser.id,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+            token: crypto.randomUUID(),
+            ipAddress: request.ip,
+            userAgent: request.headers['user-agent'],
+          })
+          .returning();
+
+        app.logger.info(
+          { userId: authUser.id, identifier, identifierType: isEmail ? 'email' : 'username' },
+          'Sign-in successful: session created'
+        );
+
+        // Set secure HTTP-only cookie using native Fastify header
+        const cookieOptions = [
+          `session=${session[0].token}`,
+          'HttpOnly',
+          'Path=/',
+          'SameSite=Lax',
+          `Max-Age=${7 * 24 * 60 * 60}`, // 7 days
+        ];
+        if (process.env.NODE_ENV === 'production') {
+          cookieOptions.push('Secure');
+        }
+        reply.header('Set-Cookie', cookieOptions.join('; '));
+
+        return {
+          user: {
+            id: coinHubUser.id,
+            email: coinHubUser.email,
+            username: coinHubUser.username,
+            displayName: coinHubUser.displayName,
+            avatarUrl: coinHubUser.avatarUrl,
+            bio: coinHubUser.bio,
+            location: coinHubUser.location,
+            collectionPrivacy: coinHubUser.collectionPrivacy,
+            role: coinHubUser.role,
+            createdAt: coinHubUser.createdAt,
+            updatedAt: coinHubUser.updatedAt,
+          },
+          session: {
+            token: session[0].token,
+            expiresAt: session[0].expiresAt,
+          },
+        };
+      } catch (sessionError) {
+        app.logger.error(
+          { err: sessionError, userId: authUser.id, identifier },
+          'Failed to create session'
+        );
+        return reply.status(500).send({ error: 'Failed to create session' });
+      }
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        app.logger.warn({ error: error.issues }, 'Validation error during username/email sign-in');
+        return reply.status(400).send({ error: 'Validation failed', details: error.issues });
+      }
+      app.logger.error({ err: error }, 'Unexpected error during username/email sign-in');
+      return reply.status(500).send({ error: 'An error occurred during sign-in' });
     }
   });
 
