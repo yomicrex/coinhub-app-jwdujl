@@ -1,5 +1,5 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import * as authSchema from '../db/auth-schema.js';
 import type { App } from '../index.js';
@@ -995,10 +995,35 @@ export function registerAuthRoutes(app: App) {
         return reply.status(401).send({ error: 'Invalid username or password' });
       }
 
-      // Step 3: Verify password
+      // Step 3: Get account record with credential provider
+      let accountRecord;
+      try {
+        accountRecord = await app.db.query.account.findFirst({
+          where: and(
+            eq(authSchema.account.userId, authUser.id),
+            eq(authSchema.account.providerId, 'credential')
+          ),
+        });
+
+        if (!accountRecord || !accountRecord.password) {
+          app.logger.warn(
+            { userId: authUser.id, identifier, identifierType: isEmail ? 'email' : 'username' },
+            'Sign-in failed: no credential account found'
+          );
+          return reply.status(401).send({ error: 'Invalid username or password' });
+        }
+      } catch (accountError) {
+        app.logger.error(
+          { err: accountError, userId: authUser.id, identifier },
+          'Error looking up credential account'
+        );
+        return reply.status(500).send({ error: 'Authentication error' });
+      }
+
+      // Step 4: Verify password
       try {
         const bcrypt = await import('bcryptjs') as any;
-        const passwordMatch = await bcrypt.compare(body.password, authUser.password || '');
+        const passwordMatch = await bcrypt.compare(body.password, accountRecord.password);
 
         if (!passwordMatch) {
           app.logger.warn(
@@ -1015,7 +1040,7 @@ export function registerAuthRoutes(app: App) {
         return reply.status(500).send({ error: 'Authentication error' });
       }
 
-      // Step 4: Create session
+      // Step 5: Create session
       try {
         const session = await app.db
           .insert(authSchema.session)
