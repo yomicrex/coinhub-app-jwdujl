@@ -59,7 +59,7 @@ export default function AdminDeleteUserScreen() {
                 console.log('User deleted successfully:', data);
                 Alert.alert(
                   'Success',
-                  `Account "${username}" has been deleted successfully. You can now create a new account with this username.`,
+                  `Account "${username}" has been deleted successfully.\n\nYou can now create a new account with this username and email address.`,
                   [
                     {
                       text: 'OK',
@@ -71,7 +71,7 @@ export default function AdminDeleteUserScreen() {
                 );
               } else if (response.status === 404) {
                 console.log('User not found:', username);
-                Alert.alert('Error', `User "${username}" not found`);
+                Alert.alert('Not Found', `User "${username}" does not exist or has already been deleted.`);
               } else {
                 const errorData = await response.json().catch(() => ({}));
                 console.error('Failed to delete user:', errorData);
@@ -92,6 +92,10 @@ export default function AdminDeleteUserScreen() {
   const handleQuickDelete = (quickUsername: string) => {
     console.log('User tapped quick delete for:', quickUsername);
     setUsername(quickUsername);
+    // Auto-trigger delete after setting username
+    setTimeout(() => {
+      handleDeleteUser();
+    }, 100);
   };
 
   return (
@@ -116,80 +120,117 @@ export default function AdminDeleteUserScreen() {
             size={32}
             color="#ff9500"
           />
-          <Text style={styles.warningTitle}>Admin Tool</Text>
+          <Text style={styles.warningTitle}>Admin Tool - Delete Accounts</Text>
           <Text style={styles.warningText}>
-            This will permanently delete the user account and all associated data including coins, trades, comments, and likes.
+            This will permanently delete the user account and all associated data including coins, trades, comments, and likes. This action cannot be undone.
           </Text>
         </View>
 
+        <View style={styles.instructionsBox}>
+          <IconSymbol
+            ios_icon_name="info.circle.fill"
+            android_material_icon_name="info"
+            size={24}
+            color={colors.primary}
+          />
+          <View style={styles.instructionsContent}>
+            <Text style={styles.instructionsTitle}>How to Use:</Text>
+            <Text style={styles.instructionsText}>
+              1. Tap one of the Quick Action buttons below{'\n'}
+              2. Confirm the deletion{'\n'}
+              3. After deletion, you can create a new account with the same username
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.divider} />
+
         <View style={styles.section}>
-          <Text style={styles.label}>Username to Delete</Text>
+          <Text style={styles.sectionTitle}>Quick Actions - Tap to Delete</Text>
+          <Text style={styles.sectionDescription}>
+            These are the accounts you mentioned that need to be deleted:
+          </Text>
+
+          <TouchableOpacity
+            style={[styles.quickButton, styles.quickButtonDanger]}
+            onPress={() => handleQuickDelete('yomicrex')}
+            disabled={loading}
+          >
+            <IconSymbol
+              ios_icon_name="trash.fill"
+              android_material_icon_name="delete"
+              size={20}
+              color="#fff"
+            />
+            <View style={styles.quickButtonContent}>
+              <Text style={styles.quickButtonTextWhite}>Delete "yomicrex"</Text>
+              <Text style={styles.quickButtonSubtext}>Associated with yomicrex@gmail.com</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.quickButton, styles.quickButtonDanger]}
+            onPress={() => handleQuickDelete('JJ1981')}
+            disabled={loading}
+          >
+            <IconSymbol
+              ios_icon_name="trash.fill"
+              android_material_icon_name="delete"
+              size={20}
+              color="#fff"
+            />
+            <View style={styles.quickButtonContent}>
+              <Text style={styles.quickButtonTextWhite}>Delete "JJ1981"</Text>
+              <Text style={styles.quickButtonSubtext}>Associated with yomicrex@hotmail.com</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.divider} />
+
+        <View style={styles.section}>
+          <Text style={styles.label}>Or Enter Username Manually</Text>
           <TextInput
             style={styles.input}
             value={username}
             onChangeText={setUsername}
-            placeholder="Enter username"
+            placeholder="Enter username to delete"
             placeholderTextColor={colors.textSecondary}
             autoCapitalize="none"
             autoCorrect={false}
             editable={!loading}
           />
-        </View>
-
-        <TouchableOpacity
-          style={[styles.deleteButton, loading && styles.deleteButtonDisabled]}
-          onPress={handleDeleteUser}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <>
-              <IconSymbol
-                ios_icon_name="trash.fill"
-                android_material_icon_name="delete"
-                size={20}
-                color="#fff"
-              />
-              <Text style={styles.deleteButtonText}>Delete Account</Text>
-            </>
-          )}
-        </TouchableOpacity>
-
-        <View style={styles.divider} />
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
-          <Text style={styles.sectionDescription}>
-            Tap to quickly select accounts that need to be deleted:
-          </Text>
 
           <TouchableOpacity
-            style={styles.quickButton}
-            onPress={() => handleQuickDelete('yomicrex')}
+            style={[styles.deleteButton, loading && styles.deleteButtonDisabled]}
+            onPress={handleDeleteUser}
             disabled={loading}
           >
-            <Text style={styles.quickButtonText}>Delete "yomicrex"</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.quickButton}
-            onPress={() => handleQuickDelete('JJ1981')}
-            disabled={loading}
-          >
-            <Text style={styles.quickButtonText}>Delete "JJ1981"</Text>
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <React.Fragment>
+                <IconSymbol
+                  ios_icon_name="trash.fill"
+                  android_material_icon_name="delete"
+                  size={20}
+                  color="#fff"
+                />
+                <Text style={styles.deleteButtonText}>Delete Account</Text>
+              </React.Fragment>
+            )}
           </TouchableOpacity>
         </View>
 
-        <View style={styles.infoBox}>
+        <View style={styles.successBox}>
           <IconSymbol
-            ios_icon_name="info.circle.fill"
-            android_material_icon_name="info"
+            ios_icon_name="checkmark.circle.fill"
+            android_material_icon_name="check-circle"
             size={20}
-            color={colors.primary}
+            color="#34c759"
           />
-          <Text style={styles.infoText}>
-            After deleting an account, you can immediately create a new account with the same username.
+          <Text style={styles.successText}>
+            After deleting an account, you can immediately create a new account with the same username and email address. The password reset issue will be resolved.
           </Text>
         </View>
       </ScrollView>
@@ -230,6 +271,31 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
+  instructionsBox: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  instructionsContent: {
+    flex: 1,
+  },
+  instructionsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  instructionsText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
+  },
   section: {
     marginBottom: 24,
   },
@@ -259,6 +325,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     borderWidth: 1,
     borderColor: colors.border,
+    marginBottom: 16,
   },
   deleteButton: {
     backgroundColor: '#ff3b30',
@@ -268,7 +335,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    marginBottom: 24,
   },
   deleteButtonDisabled: {
     opacity: 0.5,
@@ -290,15 +356,29 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
-  quickButtonText: {
+  quickButtonDanger: {
+    backgroundColor: '#ff3b30',
+    borderColor: '#ff3b30',
+  },
+  quickButtonContent: {
+    flex: 1,
+  },
+  quickButtonTextWhite: {
     fontSize: 16,
-    color: colors.text,
-    fontWeight: '500',
-    textAlign: 'center',
+    color: '#fff',
+    fontWeight: '600',
+    marginBottom: 4,
   },
-  infoBox: {
-    backgroundColor: colors.card,
+  quickButtonSubtext: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  successBox: {
+    backgroundColor: 'rgba(52, 199, 89, 0.1)',
     borderRadius: 12,
     padding: 16,
     flexDirection: 'row',
@@ -306,12 +386,12 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 12,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'rgba(52, 199, 89, 0.3)',
   },
-  infoText: {
+  successText: {
     flex: 1,
     fontSize: 14,
-    color: colors.textSecondary,
+    color: colors.text,
     lineHeight: 20,
   },
 });
