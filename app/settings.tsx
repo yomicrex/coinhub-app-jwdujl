@@ -93,6 +93,28 @@ export default function SettingsScreen() {
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => {
+                console.log('Settings: User tapped Admin Tools - Fix Passwords');
+                router.push('/admin-fix-passwords');
+              }}
+            >
+              <IconSymbol
+                ios_icon_name="wrench.and.screwdriver.fill"
+                android_material_icon_name="build"
+                size={24}
+                color="#34c759"
+              />
+              <Text style={[styles.menuItemText, { fontWeight: '600' }]}>Fix Password Issues</Text>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron-right"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
                 console.log('Settings: User tapped Admin Tools - Reset Password');
                 router.push('/admin-reset-password');
               }}
