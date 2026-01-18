@@ -56,6 +56,11 @@ export default function SettingsScreen() {
     );
   };
 
+  const handleAdminResetAllPasswords = () => {
+    console.log('Admin navigating to Reset All Passwords screen');
+    router.push('/admin-reset-all-passwords');
+  };
+
   const handleAdminDeleteUser = () => {
     console.log('Admin navigating to Delete User screen');
     router.push('/admin-delete-user');
@@ -154,6 +159,33 @@ export default function SettingsScreen() {
           <Text style={styles.sectionSubtitle}>
             Development/Testing Tools - Not for production use
           </Text>
+
+          {/* PROMINENT: Reset All Passwords Button */}
+          <TouchableOpacity
+            style={[styles.option, styles.prominentOption]}
+            onPress={handleAdminResetAllPasswords}
+          >
+            <IconSymbol
+              ios_icon_name="arrow.clockwise.circle.fill"
+              android_material_icon_name="refresh"
+              size={28}
+              color="#FF3B30"
+            />
+            <View style={styles.prominentTextContainer}>
+              <Text style={[styles.optionText, { color: '#FF3B30', fontWeight: '700', fontSize: 17 }]}>
+                Reset All Passwords to 123456
+              </Text>
+              <Text style={styles.prominentSubtext}>
+                Fix login issues by resetting all account passwords
+              </Text>
+            </View>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="arrow-forward"
+              size={20}
+              color="#FF3B30"
+            />
+          </TouchableOpacity>
           
           <TouchableOpacity
             style={[styles.option, styles.adminOption]}
@@ -264,6 +296,22 @@ const styles = StyleSheet.create({
   adminOption: {
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  prominentOption: {
+    borderWidth: 2,
+    borderColor: '#FF3B30',
+    backgroundColor: '#FFF5F5',
+    padding: 16,
+    marginBottom: 16,
+  },
+  prominentTextContainer: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  prominentSubtext: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   optionText: {
     flex: 1,
