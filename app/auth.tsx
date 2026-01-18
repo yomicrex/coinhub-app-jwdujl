@@ -141,12 +141,18 @@ export default function AuthScreen() {
       }
 
       const data = await response.json();
-      console.log("AuthScreen: Sign in successful, user:", data.user?.id);
+      console.log("AuthScreen: Sign in successful, response data:", data);
       
-      // Refresh user data
+      // Wait a moment for the cookie to be set
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Refresh user data - this will fetch the session with the new cookie
+      console.log("AuthScreen: Fetching user session after login");
       await fetchUser();
       
-      Alert.alert("Success", "Signed in successfully!");
+      console.log("AuthScreen: Login complete, user should be set");
+      
+      // The useEffect will handle navigation once user is set
     } catch (error: any) {
       console.error("AuthScreen: Authentication error:", error);
       const errorMsg = error.message || "Authentication failed. Please try again.";
@@ -563,10 +569,13 @@ export default function AuthScreen() {
               onChangeText={(text) => {
                 console.log("AuthScreen: Email input changed:", text);
                 setEmail(text);
+                setErrorMessage(""); // Clear error when user types
               }}
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
+              onSubmitEditing={handleEmailSignIn}
+              returnKeyType="go"
             />
           </View>
 
