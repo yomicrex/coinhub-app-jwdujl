@@ -148,6 +148,9 @@ export default function AuthScreen() {
             } else if (errorMsg.toLowerCase().includes("incorrect password") || errorMsg.toLowerCase().includes("password")) {
               errorMsg = `Incorrect password for "${identifier}". Please try again or use "Forgot Password" to reset it.`;
             }
+          } else if (response.status === 500) {
+            // Server error - might be password hash issue
+            errorMsg = `There was an issue with your account. The system is attempting to fix it automatically. Please try logging in again in a moment, or use "Forgot Password" to reset your password.`;
           }
           
           throw new Error(errorMsg);
