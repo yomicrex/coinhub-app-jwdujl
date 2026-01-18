@@ -158,20 +158,44 @@ export default function AuthScreen() {
       const data = await response.json();
       console.log("AuthScreen: Sign in successful, response data:", data);
       
-      // Wait a moment for the cookie to be set and propagated
-      console.log("AuthScreen: Waiting for cookie to be set...");
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Wait longer for the cookie to be set and propagated
+      console.log("AuthScreen: Waiting for session to be established...");
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Fetch user profile to check if it's complete
+      // Try to fetch user profile with retries
       console.log("AuthScreen: Fetching user profile after login...");
-      await fetchUser();
+      let retries = 3;
+      let success = false;
       
-      console.log("AuthScreen: User profile fetched, navigation will be handled by useEffect");
+      while (retries > 0 && !success) {
+        try {
+          await fetchUser();
+          
+          // Check if user was successfully fetched
+          // We'll check this in the next render cycle via useEffect
+          success = true;
+          console.log("AuthScreen: User profile fetched successfully");
+        } catch (error) {
+          retries--;
+          console.log(`AuthScreen: Profile fetch failed, retries remaining: ${retries}`);
+          
+          if (retries > 0) {
+            // Wait before retrying
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          } else {
+            // All retries exhausted
+            console.error("AuthScreen: Failed to fetch profile after all retries");
+            throw new Error("Session established but profile fetch failed. Please refresh the page.");
+          }
+        }
+      }
+      
+      console.log("AuthScreen: Login process complete, navigation will be handled by useEffect");
     } catch (error: any) {
       console.error("AuthScreen: Authentication error:", error);
       const errorMsg = error.message || "Authentication failed. Please try again.";
       setErrorMessage(errorMsg);
-      Alert.alert("Error", errorMsg);
+      Alert.alert("Authentication Error", errorMsg);
     } finally {
       setLoading(false);
     }
