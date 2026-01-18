@@ -25,6 +25,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   completeProfile: (username: string, displayName: string) => Promise<void>;
   refreshUser: () => Promise<void>;
+  getToken: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -38,7 +39,7 @@ async function storeToken(token: string) {
   }
 }
 
-async function getToken(): Promise<string | null> {
+async function getTokenFromStorage(): Promise<string | null> {
   if (Platform.OS === 'web') {
     return localStorage.getItem('sessionToken');
   } else {
@@ -61,7 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchUser = async () => {
     try {
-      const token = await getToken();
+      const token = await getTokenFromStorage();
       if (!token) {
         console.log('No session token found');
         setUser(null);
@@ -145,7 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const completeProfile = async (username: string, displayName: string) => {
     console.log('Completing profile with username:', username);
-    const token = await getToken();
+    const token = await getTokenFromStorage();
     
     const response = await fetch(`${API_URL}/api/auth/complete-profile`, {
       method: 'POST',
@@ -176,8 +177,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await fetchUser();
   };
 
+  const getToken = async (): Promise<string | null> => {
+    return await getTokenFromStorage();
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut, completeProfile, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut, completeProfile, refreshUser, getToken }}>
       {children}
     </AuthContext.Provider>
   );

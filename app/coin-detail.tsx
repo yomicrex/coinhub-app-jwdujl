@@ -8,17 +8,17 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
-  Alert,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
+import { useAuth } from '@/contexts/AuthContext';
 import Constants from 'expo-constants';
-import * as SecureStore from 'expo-secure-store';
-import { Platform } from 'react-native';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
+const { width } = Dimensions.get('window');
 
 interface CoinDetail {
   id: string;
@@ -39,47 +39,50 @@ interface CoinDetail {
   tradeStatus: string;
 }
 
-async function getToken(): Promise<string | null> {
-  if (Platform.OS === 'web') {
-    return localStorage.getItem('sessionToken');
-  } else {
-    return await SecureStore.getItemAsync('sessionToken');
-  }
-}
-
 export default function CoinDetailScreen() {
-  const { id } = useLocalSearchParams();
+  const { coinId } = useLocalSearchParams<{ coinId: string }>();
   const [coin, setCoin] = useState<CoinDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const { getToken, user } = useAuth();
   const router = useRouter();
 
   const fetchCoinDetail = async () => {
+    if (!coinId) {
+      console.error('CoinDetailScreen: No coinId provided');
+      setLoading(false);
+      return;
+    }
+
     try {
-      console.log('Fetching coin detail:', id);
+      console.log('CoinDetailScreen: Fetching coin detail for coinId:', coinId);
       const token = await getToken();
-      const response = await fetch(`${API_URL}/api/coins/${id}`, {
+      const response = await fetch(`${API_URL}/api/coins/${coinId}`, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {},
       });
 
       if (response.ok) {
         const data = await response.json();
-        console.log('Coin detail fetched');
+        console.log('CoinDetailScreen: Coin detail fetched successfully');
         setCoin(data.coin);
+      } else {
+        console.error('CoinDetailScreen: Failed to fetch coin, status:', response.status);
       }
     } catch (error) {
-      console.error('Error fetching coin detail:', error);
+      console.error('CoinDetailScreen: Error fetching coin detail:', error);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    console.log('CoinDetailScreen: Component mounted, coinId:', coinId);
     fetchCoinDetail();
-  }, [id]);
+  }, [coinId]);
 
   const handleLike = async () => {
     if (!coin) return;
 
+    console.log('CoinDetailScreen: User tapped like/unlike button');
     try {
       const token = await getToken();
       const response = await fetch(`${API_URL}/api/coins/${coin.id}/like`, {
@@ -92,6 +95,7 @@ export default function CoinDetailScreen() {
       });
 
       if (response.ok) {
+        console.log('CoinDetailScreen: Like toggled successfully');
         setCoin({
           ...coin,
           isLiked: !coin.isLiked,
@@ -99,15 +103,23 @@ export default function CoinDetailScreen() {
         });
       }
     } catch (error) {
-      console.error('Error liking coin:', error);
+      console.error('CoinDetailScreen: Error liking coin:', error);
     }
   };
 
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            title: 'Coin Details',
+            headerBackTitle: 'Back',
+          }}
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading coin...</Text>
         </View>
       </SafeAreaView>
     );
@@ -116,8 +128,30 @@ export default function CoinDetailScreen() {
   if (!coin) {
     return (
       <SafeAreaView style={styles.container}>
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            title: 'Coin Details',
+            headerBackTitle: 'Back',
+          }}
+        />
         <View style={styles.loadingContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="error"
+            size={64}
+            color={colors.textSecondary}
+          />
           <Text style={styles.errorText}>Coin not found</Text>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => {
+              console.log('CoinDetailScreen: User tapped back button');
+              router.back();
+            }}
+          >
+            <Text style={styles.backButtonText}>Go Back</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -125,6 +159,13 @@ export default function CoinDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          title: coin.title,
+          headerBackTitle: 'Back',
+        }}
+      />
       <ScrollView>
         {coin.images && coin.images.length > 0 && (
           <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}>
@@ -146,7 +187,13 @@ export default function CoinDetailScreen() {
             style={styles.userInfo}
             onPress={() => {
               console.log('CoinDetailScreen: User tapped on profile:', coin.user.username);
-              router.push(`/user-profile?userId=${coin.user.username}`);
+              if (coin.user.id === user?.id) {
+                console.log('CoinDetailScreen: Navigating to own profile');
+                router.push('/(tabs)/profile');
+              } else {
+                console.log('CoinDetailScreen: Navigating to user profile:', coin.user.username);
+                router.push(`/user-profile?userId=${coin.user.username}`);
+              }
             }}
           >
             {coin.user.avatarUrl ? (
@@ -175,7 +222,10 @@ export default function CoinDetailScreen() {
 
             <TouchableOpacity
               style={styles.actionButton}
-              onPress={() => router.push(`/coin-comments?id=${coin.id}`)}
+              onPress={() => {
+                console.log('CoinDetailScreen: User tapped comments button');
+                router.push(`/coin-comments?coinId=${coin.id}`);
+              }}
             >
               <IconSymbol ios_icon_name="bubble.left" android_material_icon_name="chat-bubble-outline" size={24} color={colors.text} />
               <Text style={styles.actionText}>{coin.commentCount}</Text>
@@ -196,14 +246,34 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: colors.textSecondary,
   },
   errorText: {
-    color: colors.textSecondary,
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 24,
+  },
+  backButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 24,
+  },
+  backButtonText: {
+    color: '#FFFFFF',
     fontSize: 16,
+    fontWeight: '600',
   },
   image: {
-    width: 400,
-    height: 400,
+    width: width,
+    height: width,
     backgroundColor: colors.surfaceLight,
   },
   content: {

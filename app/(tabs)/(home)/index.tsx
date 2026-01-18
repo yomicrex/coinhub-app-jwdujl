@@ -16,8 +16,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import Constants from 'expo-constants';
-import * as SecureStore from 'expo-secure-store';
-import { Platform } from 'react-native';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 
@@ -39,24 +37,16 @@ interface Coin {
   isLiked?: boolean;
 }
 
-async function getToken(): Promise<string | null> {
-  if (Platform.OS === 'web') {
-    return localStorage.getItem('sessionToken');
-  } else {
-    return await SecureStore.getItemAsync('sessionToken');
-  }
-}
-
 export default function HomeScreen() {
   const [coins, setCoins] = useState<Coin[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const { user } = useAuth();
+  const { user, getToken } = useAuth();
   const router = useRouter();
 
   const fetchCoins = async () => {
     try {
-      console.log('Fetching coins feed');
+      console.log('HomeScreen: Fetching coins feed');
       const token = await getToken();
       const response = await fetch(`${API_URL}/api/coins/feed`, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {},
@@ -64,13 +54,13 @@ export default function HomeScreen() {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('Fetched', data.coins?.length || 0, 'coins');
+        console.log('HomeScreen: Fetched', data.coins?.length || 0, 'coins');
         setCoins(data.coins || []);
       } else {
-        console.error('Failed to fetch coins:', response.status);
+        console.error('HomeScreen: Failed to fetch coins:', response.status);
       }
     } catch (error) {
-      console.error('Error fetching coins:', error);
+      console.error('HomeScreen: Error fetching coins:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -78,15 +68,18 @@ export default function HomeScreen() {
   };
 
   useEffect(() => {
+    console.log('HomeScreen: Component mounted');
     fetchCoins();
   }, []);
 
   const onRefresh = () => {
+    console.log('HomeScreen: User pulled to refresh');
     setRefreshing(true);
     fetchCoins();
   };
 
   const handleLike = async (coinId: string) => {
+    console.log('HomeScreen: User tapped like/unlike on coin:', coinId);
     try {
       const token = await getToken();
       const coin = coins.find(c => c.id === coinId);
@@ -114,14 +107,17 @@ export default function HomeScreen() {
         }));
       }
     } catch (error) {
-      console.error('Error liking coin:', error);
+      console.error('HomeScreen: Error liking coin:', error);
     }
   };
 
   const renderCoin = ({ item }: { item: Coin }) => (
     <TouchableOpacity
       style={styles.coinCard}
-      onPress={() => router.push(`/coin-detail?id=${item.id}`)}
+      onPress={() => {
+        console.log('HomeScreen: User tapped on coin:', item.id);
+        router.push(`/coin-detail?coinId=${item.id}`);
+      }}
     >
       {item.images && item.images.length > 0 && (
         <Image source={{ uri: item.images[0].url }} style={styles.coinImage} />
@@ -172,7 +168,7 @@ export default function HomeScreen() {
 
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => router.push(`/coin-comments?id=${item.id}`)}
+            onPress={() => router.push(`/coin-comments?coinId=${item.id}`)}
           >
             <IconSymbol ios_icon_name="bubble.left" android_material_icon_name="chat-bubble-outline" size={20} color={colors.textSecondary} />
             <Text style={styles.actionText}>{item.commentCount || 0}</Text>
@@ -193,6 +189,7 @@ export default function HomeScreen() {
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading feed...</Text>
         </View>
       </SafeAreaView>
     );
@@ -214,15 +211,30 @@ export default function HomeScreen() {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
+            <IconSymbol
+              ios_icon_name="photo.on.rectangle"
+              android_material_icon_name="photo-library"
+              size={80}
+              color={colors.border}
+            />
             <Text style={styles.emptyText}>No coins yet</Text>
             <Text style={styles.emptySubtext}>Be the first to share a coin!</Text>
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => router.push('/add-coin')}
+            >
+              <Text style={styles.addButtonText}>Add Your First Coin</Text>
+            </TouchableOpacity>
           </View>
         }
       />
 
       <TouchableOpacity
         style={styles.fab}
-        onPress={() => router.push('/add-coin')}
+        onPress={() => {
+          console.log('HomeScreen: User tapped add coin button');
+          router.push('/add-coin');
+        }}
       >
         <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={28} color={colors.background} />
       </TouchableOpacity>
@@ -239,6 +251,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: colors.textSecondary,
   },
   list: {
     padding: 16,
@@ -319,17 +336,32 @@ const styles = StyleSheet.create({
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 64,
+    paddingVertical: 80,
+    paddingHorizontal: 40,
   },
   emptyText: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '600',
     color: colors.text,
+    marginTop: 20,
     marginBottom: 8,
   },
   emptySubtext: {
-    fontSize: 14,
+    fontSize: 16,
     color: colors.textSecondary,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  addButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 24,
+  },
+  addButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
   fab: {
     position: 'absolute',
