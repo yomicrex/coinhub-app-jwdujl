@@ -1417,18 +1417,24 @@ export function registerAuthRoutes(app: App) {
    * This is a temporary endpoint for beta testing that allows users to sign in
    * with ONLY their email address, bypassing password verification.
    *
+   * Properly integrates with Better Auth's session management so that:
+   * - Sessions are recognized by Better Auth's getSession() function
+   * - Cookies are set in the correct format for Better Auth
+   * - Frontend can retrieve the session after login
+   *
    * Request body: { email: string }
-   * Returns: { user: {...}, session: { token, expiresAt } }
+   * Returns: { success: true, user: { id, email, name } }
    *
    * TODO: Remove this endpoint after beta testing is complete
    */
   app.fastify.post('/api/auth/email/signin', async (request: FastifyRequest, reply: FastifyReply) => {
-    app.logger.info({ email: (request.body as any)?.email }, 'Email-only sign-in attempt (BETA)');
+    const email = (request.body as any)?.email;
+    app.logger.info({ email }, 'Email-only sign-in attempt (BETA)');
 
     try {
       // Validate request schema
-      const { email } = EmailOnlySignInSchema.parse(request.body);
-      const normalizedEmail = email.toLowerCase();
+      const { email: validatedEmail } = EmailOnlySignInSchema.parse(request.body);
+      const normalizedEmail = validatedEmail.toLowerCase();
 
       app.logger.debug({ email: normalizedEmail }, 'Looking up user by email');
 
@@ -1444,43 +1450,33 @@ export function registerAuthRoutes(app: App) {
 
       app.logger.info({ userId: authUser.id }, 'Email-only sign-in: user found');
 
-      // Look up CoinHub user profile
-      const coinHubUser = await app.db.query.users.findFirst({
-        where: eq(schema.users.id, authUser.id)
-      });
-
-      if (!coinHubUser) {
-        app.logger.warn(
-          { userId: authUser.id },
-          'Email-only sign-in: CoinHub profile not found (user authenticated but incomplete registration)'
-        );
-        return reply.status(403).send({
-          error: 'CoinHub profile not found. Please complete your profile setup.'
-        });
-      }
+      // Create session in Better Auth session table
+      const sessionToken = crypto.randomUUID();
+      const sessionId = crypto.randomUUID();
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
       try {
-        // Create session in Better Auth session table
         const session = await app.db
           .insert(authSchema.session)
           .values({
-            id: crypto.randomUUID(),
+            id: sessionId,
             userId: authUser.id,
-            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-            token: crypto.randomUUID(),
+            expiresAt,
+            token: sessionToken,
             ipAddress: request.ip,
             userAgent: request.headers['user-agent'],
           })
           .returning();
 
         app.logger.info(
-          { userId: authUser.id, email: normalizedEmail },
+          { userId: authUser.id, email: normalizedEmail, sessionId },
           'Email-only sign-in successful: session created'
         );
 
-        // Set secure HTTP-only cookie using native Fastify header
+        // Set Better Auth compatible session cookie
+        // The cookie must be named after the session token with proper HTTP-only settings
         const cookieOptions = [
-          `session=${session[0].token}`,
+          `better-auth.session_token=${sessionToken}`,
           'HttpOnly',
           'Path=/',
           'SameSite=Lax',
@@ -1491,23 +1487,13 @@ export function registerAuthRoutes(app: App) {
         }
         reply.header('Set-Cookie', cookieOptions.join('; '));
 
+        // Return standard Better Auth response format
         return {
+          success: true,
           user: {
-            id: coinHubUser.id,
-            email: coinHubUser.email,
-            username: coinHubUser.username,
-            displayName: coinHubUser.displayName,
-            avatarUrl: coinHubUser.avatarUrl,
-            bio: coinHubUser.bio,
-            location: coinHubUser.location,
-            collectionPrivacy: coinHubUser.collectionPrivacy,
-            role: coinHubUser.role,
-            createdAt: coinHubUser.createdAt,
-            updatedAt: coinHubUser.updatedAt,
-          },
-          session: {
-            token: session[0].token,
-            expiresAt: session[0].expiresAt,
+            id: authUser.id,
+            email: authUser.email,
+            name: authUser.name,
           },
         };
       } catch (sessionError) {
