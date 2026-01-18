@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -53,76 +53,63 @@ export default function UserProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [loadingCoins, setLoadingCoins] = useState(true);
   const [isFollowing, setIsFollowing] = useState(false);
-  const { user, getToken } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
-
-  const fetchProfile = useCallback(async () => {
-    if (!username) return;
-
-    try {
-      console.log('UserProfileScreen: Fetching profile for username:', username);
-      
-      // Use the /api/users/:username endpoint
-      const response = await fetch(`${API_URL}/api/users/${username}`, {
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        console.error('UserProfileScreen: Failed to fetch profile, status:', response.status);
-        throw new Error('Failed to fetch profile');
-      }
-
-      const data = await response.json();
-      console.log('UserProfileScreen: Profile data received:', data);
-      setProfile(data);
-      setIsFollowing(data.isFollowing || false);
-    } catch (error) {
-      console.error('UserProfileScreen: Error fetching profile:', error);
-      Alert.alert('Error', 'Failed to load user profile');
-    } finally {
-      setLoading(false);
-    }
-  }, [username]);
-
-  const fetchUserCoins = useCallback(async () => {
-    if (!profile) return;
-
-    try {
-      console.log('UserProfileScreen: Fetching coins for user ID:', profile.id);
-      
-      // Use the user ID from the profile to fetch coins
-      const response = await fetch(`${API_URL}/api/users/${profile.id}/coins`, {
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        console.error('UserProfileScreen: Failed to fetch coins, status:', response.status);
-        throw new Error('Failed to fetch coins');
-      }
-
-      const data = await response.json();
-      console.log('UserProfileScreen: Fetched', data.length, 'coins');
-      setCoins(data);
-    } catch (error) {
-      console.error('UserProfileScreen: Error fetching coins:', error);
-    } finally {
-      setLoadingCoins(false);
-    }
-  }, [profile]);
 
   useEffect(() => {
     console.log('UserProfileScreen: Component mounted, username:', username);
-    if (username) {
-      fetchProfile();
+    
+    if (!username) {
+      console.error('UserProfileScreen: No username provided');
+      setLoading(false);
+      return;
     }
-  }, [username]);
 
-  useEffect(() => {
-    if (profile) {
-      console.log('UserProfileScreen: Profile loaded, fetching coins for user ID:', profile.id);
-      fetchUserCoins();
-    }
-  }, [profile]);
+    const fetchProfileAndCoins = async () => {
+      try {
+        console.log('UserProfileScreen: Fetching profile for username:', username);
+        
+        // Fetch profile
+        const profileResponse = await fetch(`${API_URL}/api/users/${username}`, {
+          credentials: 'include',
+        });
+
+        if (!profileResponse.ok) {
+          console.error('UserProfileScreen: Failed to fetch profile, status:', profileResponse.status);
+          throw new Error('Failed to fetch profile');
+        }
+
+        const profileData = await profileResponse.json();
+        console.log('UserProfileScreen: Profile data received:', profileData);
+        setProfile(profileData);
+        setIsFollowing(profileData.isFollowing || false);
+        setLoading(false);
+
+        // Fetch coins for this user
+        console.log('UserProfileScreen: Fetching coins for user ID:', profileData.id);
+        const coinsResponse = await fetch(`${API_URL}/api/users/${profileData.id}/coins`, {
+          credentials: 'include',
+        });
+
+        if (!coinsResponse.ok) {
+          console.error('UserProfileScreen: Failed to fetch coins, status:', coinsResponse.status);
+          throw new Error('Failed to fetch coins');
+        }
+
+        const coinsData = await coinsResponse.json();
+        console.log('UserProfileScreen: Fetched', coinsData.length, 'coins');
+        setCoins(coinsData);
+        setLoadingCoins(false);
+      } catch (error) {
+        console.error('UserProfileScreen: Error fetching profile or coins:', error);
+        Alert.alert('Error', 'Failed to load user profile');
+        setLoading(false);
+        setLoadingCoins(false);
+      }
+    };
+
+    fetchProfileAndCoins();
+  }, [username]);
 
   const handleFollowToggle = async () => {
     if (!profile) return;
