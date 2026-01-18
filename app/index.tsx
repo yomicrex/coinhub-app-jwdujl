@@ -1,51 +1,33 @@
 
+import { useEffect } from 'react';
 import { Redirect } from 'expo-router';
+import { View, ActivityIndicator } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
-import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
-import React from 'react';
 import { colors } from '@/styles/commonStyles';
 
 export default function Index() {
   const { user, loading } = useAuth();
 
-  console.log('Index: Checking auth state, loading:', loading, 'user:', user);
+  console.log('Index screen - loading:', loading, 'user:', user?.username);
 
   if (loading) {
     return (
-      <View style={styles.container}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Loading...</Text>
       </View>
     );
   }
 
-  // Not authenticated - go to auth screen
   if (!user) {
-    console.log('Index: No user, redirecting to /auth');
+    console.log('No user, redirecting to auth');
     return <Redirect href="/auth" />;
   }
 
-  // Authenticated but profile not complete - go to auth screen for profile completion
-  if (!user.hasCompletedProfile || !user.username) {
-    console.log('Index: User needs to complete profile, redirecting to /auth');
+  if (user.needsProfileCompletion) {
+    console.log('User needs profile completion, staying on auth');
     return <Redirect href="/auth" />;
   }
 
-  // Fully authenticated with profile - go to main app
-  console.log('Index: User authenticated with profile, redirecting to home');
+  console.log('User authenticated, redirecting to home');
   return <Redirect href="/(tabs)/(home)" />;
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.background,
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: colors.textSecondary,
-  },
-});

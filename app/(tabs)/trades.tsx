@@ -1,6 +1,5 @@
 
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
 import {
   View,
   Text,
@@ -12,24 +11,24 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import Constants from 'expo-constants';
-import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
-import { createAuthenticatedFetchOptions } from '@/lib/cookieManager';
+import { colors } from '@/styles/commonStyles';
+import Constants from 'expo-constants';
+import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
+
+const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 
 interface Trade {
   id: string;
   coin: {
-    id: string;
     title: string;
   };
-  initiator: {
-    id: string;
+  requester: {
     username: string;
     displayName: string;
   };
-  coinOwner: {
-    id: string;
+  owner: {
     username: string;
     displayName: string;
   };
@@ -37,131 +36,48 @@ interface Trade {
   createdAt: string;
 }
 
-const API_URL = Constants.expoConfig?.extra?.backendUrl || "https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev";
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  header: {
-    backgroundColor: colors.card,
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginTop: 16,
-  },
-  tradeCard: {
-    backgroundColor: colors.card,
-    marginHorizontal: 16,
-    marginVertical: 8,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  tradeHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  coinTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    flex: 1,
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  tradeInfo: {
-    gap: 8,
-  },
-  tradeInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  tradeInfoText: {
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  tradeInfoLabel: {
-    fontWeight: '600',
-    color: colors.text,
-  },
-});
+async function getToken(): Promise<string | null> {
+  if (Platform.OS === 'web') {
+    return localStorage.getItem('sessionToken');
+  } else {
+    return await SecureStore.getItemAsync('sessionToken');
+  }
+}
 
 export default function TradesScreen() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  
-  const { user } = useAuth();
   const router = useRouter();
-
-  useEffect(() => {
-    console.log('TradesScreen: Component mounted');
-    fetchTrades();
-  }, []);
 
   const fetchTrades = async () => {
     try {
-      console.log('TradesScreen: Fetching trades');
-      
-      const fetchOptions = await createAuthenticatedFetchOptions({
-        method: 'GET',
+      console.log('Fetching trades');
+      const token = await getToken();
+      const response = await fetch(`${API_URL}/api/trades`, {
         headers: {
-          'Accept': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
       });
-      
-      const response = await fetch(`${API_URL}/api/trades`, fetchOptions);
-      
+
       if (response.ok) {
         const data = await response.json();
-        console.log('TradesScreen: Fetched', data.length, 'trades');
-        setTrades(data);
+        console.log('Fetched', data.trades?.length || 0, 'trades');
+        setTrades(data.trades || []);
       }
     } catch (error) {
-      console.error('TradesScreen: Error fetching trades:', error);
+      console.error('Error fetching trades:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
+  useEffect(() => {
+    fetchTrades();
+  }, []);
+
   const onRefresh = () => {
-    console.log('TradesScreen: Refreshing trades');
     setRefreshing(true);
     fetchTrades();
   };
@@ -176,109 +92,137 @@ export default function TradesScreen() {
         return colors.info;
       case 'cancelled':
       case 'rejected':
-        return colors.textSecondary;
+        return colors.textMuted;
       default:
-        return colors.primary;
+        return colors.textSecondary;
     }
   };
 
-  const getStatusLabel = (status: string) => {
-    return status.charAt(0).toUpperCase() + status.slice(1);
-  };
-
-  const handleTradePress = (tradeId: string) => {
-    console.log('TradesScreen: Navigating to trade detail:', tradeId);
-    router.push(`/trade-detail?id=${tradeId}`);
-  };
-
-  const renderTradeCard = ({ item }: { item: Trade }) => {
-    const otherUser = item.initiator.id === user?.id ? item.coinOwner : item.initiator;
-    
-    return (
-      <TouchableOpacity
-        style={styles.tradeCard}
-        onPress={() => handleTradePress(item.id)}
-      >
-        <View style={styles.tradeHeader}>
-          <Text style={styles.coinTitle} numberOfLines={1}>
-            {item.coin.title}
-          </Text>
-          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
-            <Text style={styles.statusText}>{getStatusLabel(item.status)}</Text>
-          </View>
+  const renderTrade = ({ item }: { item: Trade }) => (
+    <TouchableOpacity
+      style={styles.tradeCard}
+      onPress={() => router.push(`/trade-detail?id=${item.id}`)}
+    >
+      <View style={styles.tradeHeader}>
+        <Text style={styles.tradeTitle}>{item.coin.title}</Text>
+        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
+          <Text style={styles.statusText}>{item.status}</Text>
         </View>
-        
-        <View style={styles.tradeInfo}>
-          <View style={styles.tradeInfoRow}>
-            <IconSymbol
-              ios_icon_name="person.fill"
-              android_material_icon_name="person"
-              size={16}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.tradeInfoText}>
-              <Text style={styles.tradeInfoLabel}>With: </Text>
-              {otherUser.displayName}
-            </Text>
-          </View>
-          
-          <View style={styles.tradeInfoRow}>
-            <IconSymbol
-              ios_icon_name="calendar"
-              android_material_icon_name="calendar-today"
-              size={16}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.tradeInfoText}>
-              {new Date(item.createdAt).toLocaleDateString()}
-            </Text>
-          </View>
-        </View>
-      </TouchableOpacity>
-    );
-  };
+      </View>
+
+      <Text style={styles.tradeInfo}>
+        {item.requester.displayName || item.requester.username} → {item.owner.displayName || item.owner.username}
+      </Text>
+
+      <Text style={styles.tradeDate}>
+        {new Date(item.createdAt).toLocaleDateString()}
+      </Text>
+    </TouchableOpacity>
+  );
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Trades</Text>
-      </View>
-
-      {trades.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <IconSymbol
-            ios_icon_name="arrow.left.arrow.right"
-            android_material_icon_name="swap-horiz"
-            size={64}
-            color={colors.textSecondary}
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <FlatList
+        data={trades}
+        renderItem={renderTrade}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.list}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
           />
-          <Text style={styles.emptyText}>
-            No trades yet.{'\n'}Start trading coins with other collectors!
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={trades}
-          renderItem={renderTradeCard}
-          keyExtractor={(item) => item.id}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.primary}
-            />
-          }
-          contentContainerStyle={{ paddingBottom: 100 }}
-        />
-      )}
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <IconSymbol ios_icon_name="arrow.left.arrow.right" android_material_icon_name="swap-horiz" size={48} color={colors.textMuted} />
+            <Text style={styles.emptyText}>No trades yet</Text>
+            <Text style={styles.emptySubtext}>Start trading coins with the community!</Text>
+          </View>
+        }
+      />
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  list: {
+    padding: 16,
+  },
+  tradeCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  tradeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  tradeTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    flex: 1,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  statusText: {
+    fontSize: 12,
+    color: colors.background,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  tradeInfo: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  tradeDate: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 64,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+});
