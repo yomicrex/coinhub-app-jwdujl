@@ -63,6 +63,10 @@ const UsernameEmailSignInSchema = z.object({
   rememberMe: z.boolean().optional(),
 });
 
+const EmailOnlySignInSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});
+
 export function registerAuthRoutes(app: App) {
   const requireAuth = app.requireAuth();
 
@@ -1402,6 +1406,123 @@ export function registerAuthRoutes(app: App) {
         return reply.status(400).send({ error: 'Validation failed', details: error.issues });
       }
       app.logger.error({ err: error }, 'Unexpected error during username/email sign-in');
+      return reply.status(500).send({ error: 'An error occurred during sign-in' });
+    }
+  });
+
+  /**
+   * POST /api/auth/email/signin
+   * BETA TESTING ENDPOINT - Email-only authentication (no password required)
+   *
+   * This is a temporary endpoint for beta testing that allows users to sign in
+   * with ONLY their email address, bypassing password verification.
+   *
+   * Request body: { email: string }
+   * Returns: { user: {...}, session: { token, expiresAt } }
+   *
+   * TODO: Remove this endpoint after beta testing is complete
+   */
+  app.fastify.post('/api/auth/email/signin', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.info({ email: (request.body as any)?.email }, 'Email-only sign-in attempt (BETA)');
+
+    try {
+      // Validate request schema
+      const { email } = EmailOnlySignInSchema.parse(request.body);
+      const normalizedEmail = email.toLowerCase();
+
+      app.logger.debug({ email: normalizedEmail }, 'Looking up user by email');
+
+      // Look up user in Better Auth table using case-insensitive comparison
+      const authUser = await app.db.query.user.findFirst({
+        where: sql`LOWER(${authSchema.user.email}) = LOWER(${normalizedEmail})`
+      });
+
+      if (!authUser) {
+        app.logger.warn({ email: normalizedEmail }, 'Email-only sign-in: user not found');
+        return reply.status(404).send({ error: 'No account found with this email address' });
+      }
+
+      app.logger.info({ userId: authUser.id }, 'Email-only sign-in: user found');
+
+      // Look up CoinHub user profile
+      const coinHubUser = await app.db.query.users.findFirst({
+        where: eq(schema.users.id, authUser.id)
+      });
+
+      if (!coinHubUser) {
+        app.logger.warn(
+          { userId: authUser.id },
+          'Email-only sign-in: CoinHub profile not found (user authenticated but incomplete registration)'
+        );
+        return reply.status(403).send({
+          error: 'CoinHub profile not found. Please complete your profile setup.'
+        });
+      }
+
+      try {
+        // Create session in Better Auth session table
+        const session = await app.db
+          .insert(authSchema.session)
+          .values({
+            id: crypto.randomUUID(),
+            userId: authUser.id,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+            token: crypto.randomUUID(),
+            ipAddress: request.ip,
+            userAgent: request.headers['user-agent'],
+          })
+          .returning();
+
+        app.logger.info(
+          { userId: authUser.id, email: normalizedEmail },
+          'Email-only sign-in successful: session created'
+        );
+
+        // Set secure HTTP-only cookie using native Fastify header
+        const cookieOptions = [
+          `session=${session[0].token}`,
+          'HttpOnly',
+          'Path=/',
+          'SameSite=Lax',
+          `Max-Age=${7 * 24 * 60 * 60}`, // 7 days
+        ];
+        if (process.env.NODE_ENV === 'production') {
+          cookieOptions.push('Secure');
+        }
+        reply.header('Set-Cookie', cookieOptions.join('; '));
+
+        return {
+          user: {
+            id: coinHubUser.id,
+            email: coinHubUser.email,
+            username: coinHubUser.username,
+            displayName: coinHubUser.displayName,
+            avatarUrl: coinHubUser.avatarUrl,
+            bio: coinHubUser.bio,
+            location: coinHubUser.location,
+            collectionPrivacy: coinHubUser.collectionPrivacy,
+            role: coinHubUser.role,
+            createdAt: coinHubUser.createdAt,
+            updatedAt: coinHubUser.updatedAt,
+          },
+          session: {
+            token: session[0].token,
+            expiresAt: session[0].expiresAt,
+          },
+        };
+      } catch (sessionError) {
+        app.logger.error(
+          { err: sessionError, userId: authUser.id, email: normalizedEmail },
+          'Email-only sign-in: failed to create session'
+        );
+        return reply.status(500).send({ error: 'Failed to create session' });
+      }
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        app.logger.warn({ error: error.issues }, 'Email-only sign-in: validation error');
+        return reply.status(400).send({ error: 'Validation failed', details: error.issues });
+      }
+      app.logger.error({ err: error }, 'Email-only sign-in: unexpected error');
       return reply.status(500).send({ error: 'An error occurred during sign-in' });
     }
   });
