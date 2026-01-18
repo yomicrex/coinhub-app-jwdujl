@@ -15,6 +15,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { colors } from '@/styles/commonStyles';
 import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 type Mode = 'signin' | 'signup' | 'complete-profile';
 
@@ -31,6 +32,7 @@ export default function AuthScreen() {
   console.log('Auth screen - mode:', mode, 'user:', user?.username, 'needsCompletion:', user?.needsProfileCompletion);
 
   useEffect(() => {
+    console.log('Auth screen mounted');
     if (user && !user.needsProfileCompletion) {
       console.log('User authenticated and profile complete, navigating to home');
       router.replace('/(tabs)/(home)');
@@ -46,7 +48,7 @@ export default function AuthScreen() {
       return;
     }
 
-    console.log('Attempting sign in');
+    console.log('Attempting sign in with email:', email);
     setLoading(true);
     try {
       await signIn(email, password);
@@ -70,7 +72,7 @@ export default function AuthScreen() {
       return;
     }
 
-    console.log('Attempting sign up');
+    console.log('Attempting sign up with email:', email);
     setLoading(true);
     try {
       await signUp(email, password);
@@ -94,7 +96,7 @@ export default function AuthScreen() {
       return;
     }
 
-    console.log('Completing profile');
+    console.log('Completing profile with username:', username);
     setLoading(true);
     try {
       await completeProfile(username, displayName);
@@ -109,128 +111,141 @@ export default function AuthScreen() {
 
   if (mode === 'complete-profile') {
     return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <ScrollView contentContainerStyle={styles.scrollContent}>
+            <View style={styles.header}>
+              <Text style={styles.title}>Complete Your Profile</Text>
+              <Text style={styles.subtitle}>Choose a username to get started</Text>
+            </View>
+
+            <View style={styles.form}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Username</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="username"
+                  placeholderTextColor={colors.textMuted}
+                  value={username}
+                  onChangeText={setUsername}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Display Name</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Your Name"
+                  placeholderTextColor={colors.textMuted}
+                  value={displayName}
+                  onChangeText={setDisplayName}
+                  autoCapitalize="words"
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.button, loading && styles.buttonDisabled]}
+                onPress={handleCompleteProfile}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color={colors.background} />
+                ) : (
+                  <Text style={styles.buttonText}>Complete Profile</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <KeyboardAvoidingView
-        style={styles.container}
+        style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
-            <Text style={styles.title}>Complete Your Profile</Text>
-            <Text style={styles.subtitle}>Choose a username to get started</Text>
+            <Text style={styles.logo}>🪙</Text>
+            <Text style={styles.title}>CoinHub</Text>
+            <Text style={styles.subtitle}>
+              {mode === 'signin' ? 'Welcome back!' : 'Join the community'}
+            </Text>
           </View>
 
           <View style={styles.form}>
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Username</Text>
+              <Text style={styles.label}>Email</Text>
               <TextInput
                 style={styles.input}
-                placeholder="username"
+                placeholder="email@example.com"
                 placeholderTextColor={colors.textMuted}
-                value={username}
-                onChangeText={setUsername}
+                value={email}
+                onChangeText={setEmail}
                 autoCapitalize="none"
+                keyboardType="email-address"
                 autoCorrect={false}
               />
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Display Name</Text>
+              <Text style={styles.label}>Password</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Your Name"
+                placeholder="••••••••"
                 placeholderTextColor={colors.textMuted}
-                value={displayName}
-                onChangeText={setDisplayName}
-                autoCapitalize="words"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                autoCapitalize="none"
               />
             </View>
 
             <TouchableOpacity
               style={[styles.button, loading && styles.buttonDisabled]}
-              onPress={handleCompleteProfile}
+              onPress={mode === 'signin' ? handleSignIn : handleSignUp}
               disabled={loading}
             >
               {loading ? (
                 <ActivityIndicator color={colors.background} />
               ) : (
-                <Text style={styles.buttonText}>Complete Profile</Text>
+                <Text style={styles.buttonText}>
+                  {mode === 'signin' ? 'Sign In' : 'Sign Up'}
+                </Text>
               )}
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.switchButton}
+              onPress={() => {
+                console.log('Switching mode from', mode, 'to', mode === 'signin' ? 'signup' : 'signin');
+                setMode(mode === 'signin' ? 'signup' : 'signin');
+              }}
+            >
+              <Text style={styles.switchText}>
+                {mode === 'signin'
+                  ? "Don't have an account? Sign Up"
+                  : 'Already have an account? Sign In'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>
+              CoinHub - Community-driven coin collecting
+            </Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    );
-  }
-
-  return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
-          <Text style={styles.logo}>🪙</Text>
-          <Text style={styles.title}>CoinHub</Text>
-          <Text style={styles.subtitle}>
-            {mode === 'signin' ? 'Welcome back!' : 'Join the community'}
-          </Text>
-        </View>
-
-        <View style={styles.form}>
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="email@example.com"
-              placeholderTextColor={colors.textMuted}
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              autoCorrect={false}
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Password</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="••••••••"
-              placeholderTextColor={colors.textMuted}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              autoCapitalize="none"
-            />
-          </View>
-
-          <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={mode === 'signin' ? handleSignIn : handleSignUp}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color={colors.background} />
-            ) : (
-              <Text style={styles.buttonText}>
-                {mode === 'signin' ? 'Sign In' : 'Sign Up'}
-              </Text>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.switchButton}
-            onPress={() => setMode(mode === 'signin' ? 'signup' : 'signin')}
-          >
-            <Text style={styles.switchText}>
-              {mode === 'signin'
-                ? "Don't have an account? Sign Up"
-                : 'Already have an account? Sign In'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -243,6 +258,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     padding: 24,
+    paddingTop: Platform.OS === 'android' ? 48 : 24,
   },
   header: {
     alignItems: 'center',
@@ -261,6 +277,7 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: colors.textSecondary,
+    textAlign: 'center',
   },
   form: {
     width: '100%',
@@ -306,5 +323,14 @@ const styles = StyleSheet.create({
   switchText: {
     color: colors.primary,
     fontSize: 14,
+  },
+  footer: {
+    marginTop: 48,
+    alignItems: 'center',
+  },
+  footerText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    textAlign: 'center',
   },
 });
