@@ -40,7 +40,7 @@ export default function AuthScreen() {
       console.log('User needs profile completion');
       setMode('complete-profile');
     }
-  }, [user, router]);
+  }, [user]);
 
   const handleSignIn = async () => {
     if (!email || !password) {

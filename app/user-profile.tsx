@@ -115,14 +115,14 @@ export default function UserProfileScreen() {
     if (username) {
       fetchProfile();
     }
-  }, [username, fetchProfile]);
+  }, [username]);
 
   useEffect(() => {
     if (profile) {
       console.log('UserProfileScreen: Profile loaded, fetching coins for user ID:', profile.id);
       fetchUserCoins();
     }
-  }, [profile, fetchUserCoins]);
+  }, [profile]);
 
   const handleFollowToggle = async () => {
     if (!profile) return;

@@ -102,7 +102,7 @@ export default function ProfileScreen() {
       fetchUserCoins();
       fetchFollowCounts();
     }
-  }, [user, fetchUserCoins, fetchFollowCounts]);
+  }, [user]);
 
   const handleLogout = async () => {
     console.log('ProfileScreen: User tapped logout');

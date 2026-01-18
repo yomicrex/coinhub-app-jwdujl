@@ -102,6 +102,7 @@ export default function TradeDetailScreen() {
       setError('No trade ID provided');
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const fetchTradeDetail = async () => {

@@ -213,7 +213,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const error = await response.json();
       console.error('CompleteProfile: Failed with error:', error);
       throw new Error(error.message || 'Profile completion failed');
-      }
+    }
 
     const profile = await response.json();
     console.log('CompleteProfile: Successful, refreshing user data');

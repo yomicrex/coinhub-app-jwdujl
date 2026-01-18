@@ -76,7 +76,7 @@ export default function CoinDetailScreen() {
   useEffect(() => {
     console.log('CoinDetailScreen: Component mounted, coinId:', coinId);
     fetchCoinDetail();
-  }, [coinId, fetchCoinDetail]);
+  }, [coinId]);
 
   const handleLike = async () => {
     if (!coin) return;

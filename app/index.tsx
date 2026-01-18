@@ -24,7 +24,7 @@ export default function Index() {
     }, 1000);
     
     return () => clearTimeout(timer);
-  }, []);
+  }, [loading]);
 
   useEffect(() => {
     console.log('Index screen - Auth state changed:', { loading, hasUser: !!user, username: user?.username });

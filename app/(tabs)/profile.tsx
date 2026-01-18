@@ -72,8 +72,10 @@ export default function ProfileScreen() {
   }, [user]);
 
   useEffect(() => {
-    fetchUserCoins();
-  }, [fetchUserCoins]);
+    if (user) {
+      fetchUserCoins();
+    }
+  }, [user]);
 
   const handleLogout = () => {
     Alert.alert(

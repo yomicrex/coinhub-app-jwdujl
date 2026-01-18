@@ -119,7 +119,7 @@ export default function FeedScreen() {
     console.log('FeedScreen: Component mounted, user:', user?.username);
     fetchCoins();
     fetchTradeCoins();
-  }, [fetchCoins, fetchTradeCoins, user?.username]);
+  }, [fetchCoins, fetchTradeCoins]);
 
   const onRefresh = () => {
     console.log('FeedScreen: User pulled to refresh');
