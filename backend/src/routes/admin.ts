@@ -108,12 +108,18 @@ export function registerAdminRoutes(app: App) {
    * Admin endpoint to directly reset a user's password
    *
    * Path parameter: username (string) - The username of the account to reset password for
-   * Request body: { password: string } - New password (must be at least 8 characters)
+   * Request body: { password: string } OR { newPassword: string } - New password (must be at least 8 characters)
+   *
+   * Behavior:
+   * 1. Hashes password with bcrypt (10 rounds)
+   * 2. Updates or creates credential account with hashed password
+   * 3. Invalidates all existing sessions for the user (forces re-login)
+   * 4. Verifies password was stored correctly in database
    *
    * Returns: { success: true, message: "Password reset successfully for user {username}" }
    * Returns 404 if user not found: { error: "User not found" }
    * Returns 400 if password validation fails
-   * Returns 500 if database error occurs
+   * Returns 500 if database error occurs or hash generation fails
    */
   app.fastify.post('/api/admin/users/:username/reset-password', async (request: FastifyRequest, reply: FastifyReply) => {
     const { username } = request.params as { username: string };
@@ -121,12 +127,23 @@ export function registerAdminRoutes(app: App) {
 
     app.logger.info({ username }, 'Admin: Password reset requested for user');
 
+    // Accept both 'password' and 'newPassword' field names
     const ResetPasswordSchema = z.object({
-      password: z.string().min(8, 'Password must be at least 8 characters'),
-    });
+      password: z.string().min(8, 'Password must be at least 8 characters').optional(),
+      newPassword: z.string().min(8, 'Password must be at least 8 characters').optional(),
+    }).refine(
+      (data) => data.password || data.newPassword,
+      { message: 'Either password or newPassword must be provided' }
+    );
 
     try {
       const body = ResetPasswordSchema.parse(requestBody);
+      const newPasswordValue = body.password || body.newPassword;
+
+      if (!newPasswordValue) {
+        app.logger.warn({ username }, 'Admin: No password provided in request');
+        return reply.status(400).send({ error: 'Password or newPassword field is required' });
+      }
 
       // Step 1: Find the user by username
       const coinHubUser = await app.db.query.users.findFirst({
@@ -140,9 +157,25 @@ export function registerAdminRoutes(app: App) {
 
       app.logger.info({ userId: coinHubUser.id, username }, 'Admin: User found, resetting password');
 
-      // Step 2: Hash the new password
+      // Step 2: Hash the new password with bcrypt (rounds: 10)
+      // This matches the standard bcrypt configuration used by authentication systems
       const bcrypt = await import('bcryptjs') as any;
-      const hashedPassword = await bcrypt.hash(body.password, 10);
+      app.logger.debug({ username, userId: coinHubUser.id }, 'Admin: Hashing new password with bcrypt');
+      const hashedPassword = await bcrypt.hash(newPasswordValue, 10);
+
+      // Validate the hash format
+      if (!hashedPassword || !/^\$2[aby]\$\d+\$/.test(hashedPassword)) {
+        app.logger.error(
+          { username, userId: coinHubUser.id, hashStart: hashedPassword?.substring(0, 20) },
+          'Admin: Generated hash has invalid format'
+        );
+        return reply.status(500).send({ error: 'Failed to generate password hash' });
+      }
+
+      app.logger.debug(
+        { username, userId: coinHubUser.id, hashLength: hashedPassword.length },
+        'Admin: Password hash generated successfully'
+      );
 
       // Step 3: Find or create the credential account
       let credentialAccount = await app.db.query.account.findFirst({
@@ -179,19 +212,37 @@ export function registerAdminRoutes(app: App) {
 
       if (credentialAccount) {
         // Update existing account with new password
-        await app.db
+        const updateResult = await app.db
           .update(authSchema.account)
-          .set({ password: hashedPassword })
-          .where(eq(authSchema.account.id, credentialAccount.id));
+          .set({ password: hashedPassword, updatedAt: new Date() })
+          .where(eq(authSchema.account.id, credentialAccount.id))
+          .returning();
 
         app.logger.info(
-          { userId: coinHubUser.id, username, accountId: credentialAccount.id, providerId: credentialAccount.providerId },
+          { userId: coinHubUser.id, username, accountId: credentialAccount.id, providerId: credentialAccount.providerId, updated: !!updateResult.length },
           'Admin: Password updated in account'
         );
+
+        // Verify the password was stored correctly
+        const verifyAccount = await app.db.query.account.findFirst({
+          where: eq(authSchema.account.id, credentialAccount.id)
+        });
+        if (verifyAccount && verifyAccount.password) {
+          app.logger.debug(
+            { userId: coinHubUser.id, username, storedHashLength: verifyAccount.password.length, isValidBcrypt: /^\$2[aby]\$\d+\$/.test(verifyAccount.password) },
+            'Admin: Password verification - stored hash is valid'
+          );
+        } else {
+          app.logger.error(
+            { userId: coinHubUser.id, username },
+            'Admin: Password verification failed - hash not stored'
+          );
+        }
       } else {
         // Create new credential account as fallback
+        const newAccountId = crypto.randomUUID();
         await app.db.insert(authSchema.account).values({
-          id: crypto.randomUUID(),
+          id: newAccountId,
           userId: coinHubUser.id,
           accountId: `credential-${coinHubUser.id}`,
           providerId: 'credential',
@@ -199,9 +250,25 @@ export function registerAdminRoutes(app: App) {
         });
 
         app.logger.info(
-          { userId: coinHubUser.id, username },
+          { userId: coinHubUser.id, username, newAccountId },
           'Admin: Created new credential account with password'
         );
+
+        // Verify the password was stored correctly
+        const verifyNewAccount = await app.db.query.account.findFirst({
+          where: eq(authSchema.account.id, newAccountId)
+        });
+        if (verifyNewAccount && verifyNewAccount.password) {
+          app.logger.debug(
+            { userId: coinHubUser.id, username, storedHashLength: verifyNewAccount.password.length, isValidBcrypt: /^\$2[aby]\$\d+\$/.test(verifyNewAccount.password) },
+            'Admin: New account password verification - stored hash is valid'
+          );
+        } else {
+          app.logger.error(
+            { userId: coinHubUser.id, username, newAccountId },
+            'Admin: New account password verification failed - hash not stored'
+          );
+        }
       }
 
       // Step 4: Invalidate all existing sessions for security
@@ -236,6 +303,113 @@ export function registerAdminRoutes(app: App) {
         'Admin: Failed to reset user password'
       );
       return reply.status(500).send({ error: 'Failed to reset password' });
+    }
+  });
+
+  /**
+   * POST /api/admin/verify-password/:username
+   * Admin endpoint to verify that a user's password is working correctly
+   * Useful for testing after password resets
+   *
+   * Path parameter: username (string) - The username to verify
+   * Request body: { password: string } - The password to test
+   *
+   * Returns: { verified: true, message: "Password verified successfully" }
+   * Returns: { verified: false, message: "Password verification failed" }
+   * Returns 404 if user not found
+   */
+  app.fastify.post('/api/admin/verify-password/:username', async (request: FastifyRequest, reply: FastifyReply) => {
+    const { username } = request.params as { username: string };
+    const { password } = request.body as { password?: string };
+
+    app.logger.info({ username }, 'Admin: Password verification requested');
+
+    try {
+      if (!password) {
+        app.logger.warn({ username }, 'Admin: No password provided for verification');
+        return reply.status(400).send({ error: 'Password is required' });
+      }
+
+      // Find the user by username
+      const coinHubUser = await app.db.query.users.findFirst({
+        where: eq(schema.users.username, username),
+      });
+
+      if (!coinHubUser) {
+        app.logger.warn({ username }, 'Admin: User not found for password verification');
+        return reply.status(404).send({ error: 'User not found' });
+      }
+
+      // Get all accounts for this user
+      const allAccounts = await app.db.query.account.findMany({
+        where: eq(authSchema.account.userId, coinHubUser.id)
+      });
+
+      // Find accounts with passwords
+      const accountsWithPassword = allAccounts.filter(a => a.password);
+
+      if (accountsWithPassword.length === 0) {
+        app.logger.warn({ username, userId: coinHubUser.id }, 'Admin: No accounts with passwords found');
+        return {
+          verified: false,
+          message: 'No password accounts found for this user',
+          accountsWithPassword: 0,
+          totalAccounts: allAccounts.length
+        };
+      }
+
+      // Test password against each account
+      const bcrypt = await import('bcryptjs') as any;
+      const verificationResults = [];
+
+      for (const account of accountsWithPassword) {
+        try {
+          const isValid = /^\$2[aby]\$\d+\$/.test(account.password);
+          const match = await bcrypt.compare(password, account.password);
+
+          verificationResults.push({
+            accountId: account.id,
+            providerId: account.providerId,
+            hashValid: isValid,
+            passwordMatch: match
+          });
+
+          app.logger.debug(
+            { username, userId: coinHubUser.id, providerId: account.providerId, match },
+            `Admin: Password test for ${account.providerId} account`
+          );
+        } catch (e) {
+          verificationResults.push({
+            accountId: account.id,
+            providerId: account.providerId,
+            error: String(e).substring(0, 100)
+          });
+
+          app.logger.error(
+            { username, userId: coinHubUser.id, providerId: account.providerId, err: e },
+            'Admin: Error verifying password'
+          );
+        }
+      }
+
+      const successfulMatches = verificationResults.filter(r => r.passwordMatch).length;
+      const verified = successfulMatches > 0;
+
+      return {
+        verified,
+        message: verified ? 'Password verified successfully' : 'Password verification failed',
+        username,
+        userId: coinHubUser.id,
+        accountsWithPassword: accountsWithPassword.length,
+        verificationResults,
+        successfulMatches
+      };
+    } catch (error) {
+      app.logger.error(
+        { err: error, username },
+        'Admin: Password verification error'
+      );
+      return reply.status(500).send({ error: 'Password verification error' });
     }
   });
 }
