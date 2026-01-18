@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -37,7 +37,7 @@ interface Coin {
     avatar_url?: string;
     avatarUrl?: string;
   };
-  images: Array<{ url: string; order_index?: number; orderIndex?: number }>;
+  images: { url: string; order_index?: number; orderIndex?: number }[];
   like_count?: number;
   likeCount?: number;
   comment_count?: number;
@@ -59,13 +59,7 @@ export default function FeedScreen() {
   const { user } = useAuth();
   const router = useRouter();
 
-  useEffect(() => {
-    console.log('FeedScreen: Component mounted, user:', user?.username);
-    fetchCoins();
-    fetchTradeCoins();
-  }, []);
-
-  const fetchCoins = async () => {
+  const fetchCoins = useCallback(async () => {
     try {
       console.log('FeedScreen: Fetching coins from /api/coins/feed');
       const response = await authClient.$fetch(`${API_URL}/api/coins/feed?limit=20&offset=0`);
@@ -98,9 +92,9 @@ export default function FeedScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
 
-  const fetchTradeCoins = async () => {
+  const fetchTradeCoins = useCallback(async () => {
     try {
       console.log('FeedScreen: Fetching trade coins from /api/coins/feed/trade');
       const response = await authClient.$fetch(`${API_URL}/api/coins/feed/trade?limit=20&offset=0`);
@@ -119,7 +113,13 @@ export default function FeedScreen() {
     } finally {
       setLoadingTrade(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    console.log('FeedScreen: Component mounted, user:', user?.username);
+    fetchCoins();
+    fetchTradeCoins();
+  }, [fetchCoins, fetchTradeCoins, user?.username]);
 
   const onRefresh = () => {
     console.log('FeedScreen: User pulled to refresh');

@@ -40,7 +40,7 @@ export default function AuthScreen() {
       console.log('User needs profile completion');
       setMode('complete-profile');
     }
-  }, [user]);
+  }, [user, router]);
 
   const handleSignIn = async () => {
     if (!email || !password) {
@@ -171,7 +171,7 @@ export default function AuthScreen() {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
+        >
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
             <Text style={styles.logo}>🪙</Text>

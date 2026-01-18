@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -31,12 +31,7 @@ export default function UserListScreen() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  useEffect(() => {
-    console.log('UserListScreen: Fetching', type, 'for user:', userId);
-    fetchUsers();
-  }, [userId, type]);
-
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       const endpoint = type === 'followers' 
         ? `${API_URL}/api/users/${userId}/followers?limit=100`
@@ -60,7 +55,12 @@ export default function UserListScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId, type]);
+
+  useEffect(() => {
+    console.log('UserListScreen: Fetching', type, 'for user:', userId);
+    fetchUsers();
+  }, [userId, type, fetchUsers]);
 
   const handleUserPress = (user: User) => {
     console.log('UserListScreen: User tapped on:', user.username, 'userId:', user.id);

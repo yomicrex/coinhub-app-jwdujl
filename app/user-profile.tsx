@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -40,7 +40,7 @@ interface UserCoin {
   title: string;
   country: string;
   year: number;
-  images: Array<{ url: string; orderIndex?: number }>;
+  images: { url: string; orderIndex?: number }[];
   likeCount?: number;
   commentCount?: number;
   tradeStatus?: string;
@@ -56,21 +56,7 @@ export default function UserProfileScreen() {
   const { user, getToken } = useAuth();
   const router = useRouter();
 
-  useEffect(() => {
-    console.log('UserProfileScreen: Component mounted, username:', username);
-    if (username) {
-      fetchProfile();
-    }
-  }, [username]);
-
-  useEffect(() => {
-    if (profile) {
-      console.log('UserProfileScreen: Profile loaded, fetching coins for user ID:', profile.id);
-      fetchUserCoins();
-    }
-  }, [profile]);
-
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     if (!username) return;
 
     try {
@@ -96,9 +82,9 @@ export default function UserProfileScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [username]);
 
-  const fetchUserCoins = async () => {
+  const fetchUserCoins = useCallback(async () => {
     if (!profile) return;
 
     try {
@@ -122,7 +108,21 @@ export default function UserProfileScreen() {
     } finally {
       setLoadingCoins(false);
     }
-  };
+  }, [profile]);
+
+  useEffect(() => {
+    console.log('UserProfileScreen: Component mounted, username:', username);
+    if (username) {
+      fetchProfile();
+    }
+  }, [username, fetchProfile]);
+
+  useEffect(() => {
+    if (profile) {
+      console.log('UserProfileScreen: Profile loaded, fetching coins for user ID:', profile.id);
+      fetchUserCoins();
+    }
+  }, [profile, fetchUserCoins]);
 
   const handleFollowToggle = async () => {
     if (!profile) return;

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -30,7 +30,7 @@ interface Coin {
     displayName: string;
     avatarUrl?: string;
   };
-  images: Array<{ url: string }>;
+  images: { url: string }[];
   likeCount?: number;
   commentCount?: number;
   tradeStatus?: string;
@@ -44,7 +44,7 @@ export default function HomeScreen() {
   const { user, getToken } = useAuth();
   const router = useRouter();
 
-  const fetchCoins = async () => {
+  const fetchCoins = useCallback(async () => {
     try {
       console.log('HomeScreen: Fetching coins feed');
       const response = await fetch(`${API_URL}/api/coins/feed`, {
@@ -64,12 +64,12 @@ export default function HomeScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     console.log('HomeScreen: Component mounted');
     fetchCoins();
-  }, []);
+  }, [fetchCoins]);
 
   const onRefresh = () => {
     console.log('HomeScreen: User pulled to refresh');

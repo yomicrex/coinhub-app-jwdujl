@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -28,7 +28,7 @@ interface UserCoin {
   title: string;
   country: string;
   year: number;
-  images: Array<{ url: string }>;
+  images: { url: string }[];
   like_count?: number;
   likeCount?: number;
   comment_count?: number;
@@ -39,21 +39,13 @@ interface UserCoin {
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, signOut } = useAuth();
   const [coins, setCoins] = useState<UserCoin[]>([]);
   const [loading, setLoading] = useState(true);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
 
-  useEffect(() => {
-    if (user) {
-      console.log('ProfileScreen: User loaded, fetching coins for:', user.username);
-      fetchUserCoins();
-      fetchFollowCounts();
-    }
-  }, [user]);
-
-  const fetchUserCoins = async () => {
+  const fetchUserCoins = useCallback(async () => {
     if (!user) return;
 
     console.log('ProfileScreen: Fetching coins for user:', user.id);
@@ -74,9 +66,9 @@ export default function ProfileScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
-  const fetchFollowCounts = async () => {
+  const fetchFollowCounts = useCallback(async () => {
     if (!user) return;
 
     try {
@@ -102,7 +94,15 @@ export default function ProfileScreen() {
     } catch (error) {
       console.error('ProfileScreen: Error fetching follow counts:', error);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      console.log('ProfileScreen: User loaded, fetching coins for:', user.username);
+      fetchUserCoins();
+      fetchFollowCounts();
+    }
+  }, [user, fetchUserCoins, fetchFollowCounts]);
 
   const handleLogout = async () => {
     console.log('ProfileScreen: User tapped logout');
@@ -116,7 +116,7 @@ export default function ProfileScreen() {
           style: 'destructive',
           onPress: async () => {
             console.log('ProfileScreen: User confirmed logout');
-            await logout();
+            await signOut();
             console.log('ProfileScreen: Logout complete, navigating to auth');
             router.replace('/auth');
           },
@@ -217,15 +217,15 @@ export default function ProfileScreen() {
         <View style={styles.profileSection}>
           <View style={styles.profileHeader}>
             <View style={styles.avatarContainer}>
-              {user.avatar_url ? (
+              {user.avatarUrl ? (
                 <Image 
-                  source={{ uri: user.avatar_url }} 
+                  source={{ uri: user.avatarUrl }} 
                   style={styles.avatar}
                   onError={(error) => {
-                    console.error('ProfileScreen: Avatar failed to load:', user.avatar_url, error.nativeEvent.error);
+                    console.error('ProfileScreen: Avatar failed to load:', user.avatarUrl, error.nativeEvent.error);
                   }}
                   onLoad={() => {
-                    console.log('ProfileScreen: Avatar loaded successfully:', user.avatar_url);
+                    console.log('ProfileScreen: Avatar loaded successfully:', user.avatarUrl);
                   }}
                 />
               ) : (

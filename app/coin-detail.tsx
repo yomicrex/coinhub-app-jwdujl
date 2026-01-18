@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -32,7 +32,7 @@ interface CoinDetail {
     displayName: string;
     avatarUrl?: string;
   };
-  images: Array<{ url: string }>;
+  images: { url: string }[];
   likeCount: number;
   commentCount: number;
   isLiked: boolean;
@@ -46,7 +46,7 @@ export default function CoinDetailScreen() {
   const { getToken, user } = useAuth();
   const router = useRouter();
 
-  const fetchCoinDetail = async () => {
+  const fetchCoinDetail = useCallback(async () => {
     if (!coinId) {
       console.error('CoinDetailScreen: No coinId provided');
       setLoading(false);
@@ -71,12 +71,12 @@ export default function CoinDetailScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [coinId]);
 
   useEffect(() => {
     console.log('CoinDetailScreen: Component mounted, coinId:', coinId);
     fetchCoinDetail();
-  }, [coinId]);
+  }, [coinId, fetchCoinDetail]);
 
   const handleLike = async () => {
     if (!coin) return;

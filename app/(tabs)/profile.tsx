@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -27,7 +27,7 @@ interface UserCoin {
   title: string;
   country: string;
   year: number;
-  images: Array<{ url: string }>;
+  images: { url: string }[];
   likeCount?: number;
   commentCount?: number;
   tradeStatus?: string;
@@ -47,7 +47,7 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  const fetchUserCoins = async () => {
+  const fetchUserCoins = useCallback(async () => {
     if (!user) return;
 
     try {
@@ -69,11 +69,11 @@ export default function ProfileScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     fetchUserCoins();
-  }, [user]);
+  }, [fetchUserCoins]);
 
   const handleLogout = () => {
     Alert.alert(
