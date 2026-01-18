@@ -1,62 +1,57 @@
 
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  RefreshControl,
   ActivityIndicator,
-  Image,
-  Platform,
+  RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { colors } from '@/styles/commonStyles';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { authClient } from '@/lib/auth';
-import { useRouter } from 'expo-router';
-import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
-import React, { useState, useEffect } from 'react';
+import { createAuthenticatedFetchOptions } from '@/lib/cookieManager';
 
 interface Trade {
   id: string;
   coin: {
     id: string;
     title: string;
-    images: Array<{ url: string }>;
   };
-  requester: {
+  initiator: {
     id: string;
     username: string;
     displayName: string;
-    avatarUrl?: string;
   };
-  owner: {
+  coinOwner: {
     id: string;
     username: string;
     displayName: string;
-    avatarUrl?: string;
   };
   status: string;
-  lastMessage?: string;
   createdAt: string;
-  updatedAt: string;
 }
 
-const API_URL = Constants.expoConfig?.extra?.backendUrl || 'http://localhost:3000';
+const API_URL = Constants.expoConfig?.extra?.backendUrl || "https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev";
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+  },
+  header: {
+    backgroundColor: colors.card,
+    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
@@ -69,7 +64,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 40,
+    padding: 32,
   },
   emptyText: {
     fontSize: 16,
@@ -77,101 +72,86 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 16,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   tradeCard: {
-    flexDirection: 'row',
+    backgroundColor: colors.card,
+    marginHorizontal: 16,
+    marginVertical: 8,
     padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.background,
-  },
-  coinImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    backgroundColor: colors.border,
-  },
-  tradeContent: {
-    flex: 1,
-    marginLeft: 12,
-    justifyContent: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   tradeHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 12,
   },
   coinTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
     color: colors.text,
     flex: 1,
   },
   statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 12,
-    marginLeft: 8,
   },
   statusText: {
     fontSize: 12,
     fontWeight: '600',
-    color: colors.background,
+    color: '#FFFFFF',
   },
   tradeInfo: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginBottom: 4,
+    gap: 8,
   },
-  lastMessage: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    fontStyle: 'italic',
-  },
-  userInfo: {
+  tradeInfoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
+    gap: 8,
   },
-  avatar: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: colors.border,
-    marginRight: 6,
-  },
-  username: {
-    fontSize: 13,
+  tradeInfoText: {
+    fontSize: 14,
     color: colors.textSecondary,
+  },
+  tradeInfoLabel: {
+    fontWeight: '600',
+    color: colors.text,
   },
 });
 
 export default function TradesScreen() {
-  const router = useRouter();
-  const { user } = useAuth();
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  
+  const { user } = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
-    console.log('TradesScreen: Component mounted, fetching trades');
+    console.log('TradesScreen: Component mounted');
     fetchTrades();
   }, []);
 
   const fetchTrades = async () => {
     try {
-      console.log('TradesScreen: Fetching trades from API');
+      console.log('TradesScreen: Fetching trades');
       
-      // Use authClient.$fetch which handles authentication automatically
-      const data = await authClient.$fetch(`${API_URL}/api/trades`);
+      const fetchOptions = await createAuthenticatedFetchOptions({
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
       
-      console.log('TradesScreen: Fetched trades:', data);
-      setTrades(data.trades || []);
+      const response = await fetch(`${API_URL}/api/trades`, fetchOptions);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('TradesScreen: Fetched', data.length, 'trades');
+        setTrades(data);
+      }
     } catch (error) {
       console.error('TradesScreen: Error fetching trades:', error);
     } finally {
@@ -181,7 +161,7 @@ export default function TradesScreen() {
   };
 
   const onRefresh = () => {
-    console.log('TradesScreen: User initiated refresh');
+    console.log('TradesScreen: Refreshing trades');
     setRefreshing(true);
     fetchTrades();
   };
@@ -189,15 +169,14 @@ export default function TradesScreen() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending':
-        return '#FFA500';
+        return colors.warning;
       case 'accepted':
-        return '#4CAF50';
-      case 'rejected':
-        return '#F44336';
+        return colors.success;
       case 'completed':
-        return '#2196F3';
+        return colors.info;
       case 'cancelled':
-        return '#9E9E9E';
+      case 'rejected':
+        return colors.textSecondary;
       default:
         return colors.primary;
     }
@@ -208,56 +187,51 @@ export default function TradesScreen() {
   };
 
   const handleTradePress = (tradeId: string) => {
-    console.log('TradesScreen: User tapped trade:', tradeId);
+    console.log('TradesScreen: Navigating to trade detail:', tradeId);
     router.push(`/trade-detail?id=${tradeId}`);
   };
 
   const renderTradeCard = ({ item }: { item: Trade }) => {
-    const isRequester = item.requester.id === user?.id;
-    const otherUser = isRequester ? item.owner : item.requester;
-
+    const otherUser = item.initiator.id === user?.id ? item.coinOwner : item.initiator;
+    
     return (
       <TouchableOpacity
-        key={item.id}
         style={styles.tradeCard}
         onPress={() => handleTradePress(item.id)}
-        activeOpacity={0.7}
       >
-        <Image
-          source={{ uri: item.coin.images[0]?.url }}
-          style={styles.coinImage}
-          resizeMode="cover"
-        />
-        <View style={styles.tradeContent}>
-          <View style={styles.tradeHeader}>
-            <Text style={styles.coinTitle} numberOfLines={1}>
-              {item.coin.title}
-            </Text>
-            <View
-              style={[
-                styles.statusBadge,
-                { backgroundColor: getStatusColor(item.status) },
-              ]}
-            >
-              <Text style={styles.statusText}>{getStatusLabel(item.status)}</Text>
-            </View>
-          </View>
-          <Text style={styles.tradeInfo}>
-            {isRequester ? 'You requested' : 'Requested by'} {otherUser.displayName}
+        <View style={styles.tradeHeader}>
+          <Text style={styles.coinTitle} numberOfLines={1}>
+            {item.coin.title}
           </Text>
-          {item.lastMessage && (
-            <Text style={styles.lastMessage} numberOfLines={1}>
-              {item.lastMessage}
+          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
+            <Text style={styles.statusText}>{getStatusLabel(item.status)}</Text>
+          </View>
+        </View>
+        
+        <View style={styles.tradeInfo}>
+          <View style={styles.tradeInfoRow}>
+            <IconSymbol
+              ios_icon_name="person.fill"
+              android_material_icon_name="person"
+              size={16}
+              color={colors.textSecondary}
+            />
+            <Text style={styles.tradeInfoText}>
+              <Text style={styles.tradeInfoLabel}>With: </Text>
+              {otherUser.displayName}
             </Text>
-          )}
-          <View style={styles.userInfo}>
-            {otherUser.avatarUrl && (
-              <Image
-                source={{ uri: otherUser.avatarUrl }}
-                style={styles.avatar}
-              />
-            )}
-            <Text style={styles.username}>@{otherUser.username}</Text>
+          </View>
+          
+          <View style={styles.tradeInfoRow}>
+            <IconSymbol
+              ios_icon_name="calendar"
+              android_material_icon_name="calendar-today"
+              size={16}
+              color={colors.textSecondary}
+            />
+            <Text style={styles.tradeInfoText}>
+              {new Date(item.createdAt).toLocaleDateString()}
+            </Text>
           </View>
         </View>
       </TouchableOpacity>
@@ -266,22 +240,18 @@ export default function TradesScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Trades</Text>
-        </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      </SafeAreaView>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
     );
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Trades</Text>
+        <Text style={styles.headerTitle}>My Trades</Text>
       </View>
+
       {trades.length === 0 ? (
         <View style={styles.emptyContainer}>
           <IconSymbol
@@ -291,7 +261,7 @@ export default function TradesScreen() {
             color={colors.textSecondary}
           />
           <Text style={styles.emptyText}>
-            No trades yet. Find coins marked "Open to Trade" to start trading!
+            No trades yet.{'\n'}Start trading coins with other collectors!
           </Text>
         </View>
       ) : (
@@ -306,6 +276,7 @@ export default function TradesScreen() {
               tintColor={colors.primary}
             />
           }
+          contentContainerStyle={{ paddingBottom: 100 }}
         />
       )}
     </SafeAreaView>

@@ -1,66 +1,34 @@
 
-import * as SecureStore from "expo-secure-store";
-import { Platform } from "react-native";
+import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
-const SESSION_COOKIE_KEY = "coinhub_session_cookie";
-
-/**
- * Cookie Manager for React Native
- * 
- * React Native's fetch API doesn't automatically handle cookies like browsers do.
- * This module manually extracts, stores, and sends cookies with requests.
- */
-
-// Platform-specific storage
-const storage = Platform.OS === "web"
-  ? {
-      getItem: (key: string) => localStorage.getItem(key),
-      setItem: (key: string, value: string) => localStorage.setItem(key, value),
-      deleteItem: (key: string) => localStorage.removeItem(key),
-    }
-  : SecureStore;
+const API_URL = Constants.expoConfig?.extra?.backendUrl || "https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev";
+const SESSION_COOKIE_KEY = 'coinhub_session_cookie';
 
 /**
- * Extract session cookie from Set-Cookie header
+ * Store session cookie from Set-Cookie header
  */
-export function extractSessionCookie(setCookieHeader: string | null): string | null {
+export async function storeSessionCookie(setCookieHeader: string | null): Promise<void> {
   if (!setCookieHeader) {
-    console.log("CookieManager: No Set-Cookie header found");
-    return null;
+    console.log('cookieManager: No Set-Cookie header to store');
+    return;
   }
 
-  console.log("CookieManager: Extracting cookie from Set-Cookie header:", setCookieHeader.substring(0, 100));
-
-  // Parse Set-Cookie header to extract session token
-  // Format: "session=<token>; HttpOnly; Path=/; SameSite=Lax; Max-Age=604800"
-  const sessionMatch = setCookieHeader.match(/session=([^;]+)/);
-  
-  if (sessionMatch && sessionMatch[1]) {
-    const sessionToken = sessionMatch[1];
-    console.log("CookieManager: Extracted session token:", sessionToken.substring(0, 20) + "...");
-    return sessionToken;
-  }
-
-  console.log("CookieManager: No session cookie found in Set-Cookie header");
-  return null;
-}
-
-/**
- * Store session cookie
- */
-export async function storeSessionCookie(sessionToken: string): Promise<void> {
-  console.log("CookieManager: Storing session cookie:", sessionToken.substring(0, 20) + "...");
+  console.log('cookieManager: Storing session cookie from Set-Cookie header');
   
   try {
-    if (Platform.OS === "web") {
-      localStorage.setItem(SESSION_COOKIE_KEY, sessionToken);
+    if (Platform.OS === 'web') {
+      // On web, cookies are handled automatically by the browser
+      console.log('cookieManager: Web platform - cookies handled by browser');
+      return;
     } else {
-      await SecureStore.setItemAsync(SESSION_COOKIE_KEY, sessionToken);
+      // On native, store the cookie string
+      await SecureStore.setItemAsync(SESSION_COOKIE_KEY, setCookieHeader);
+      console.log('cookieManager: Session cookie stored in SecureStore');
     }
-    console.log("CookieManager: Session cookie stored successfully");
   } catch (error) {
-    console.error("CookieManager: Error storing session cookie:", error);
-    throw error;
+    console.error('cookieManager: Error storing session cookie:', error);
   }
 }
 
@@ -69,64 +37,59 @@ export async function storeSessionCookie(sessionToken: string): Promise<void> {
  */
 export async function getSessionCookie(): Promise<string | null> {
   try {
-    let sessionToken: string | null = null;
-    
-    if (Platform.OS === "web") {
-      sessionToken = localStorage.getItem(SESSION_COOKIE_KEY);
+    if (Platform.OS === 'web') {
+      // On web, cookies are sent automatically
+      return null;
     } else {
-      sessionToken = await SecureStore.getItemAsync(SESSION_COOKIE_KEY);
+      const cookie = await SecureStore.getItemAsync(SESSION_COOKIE_KEY);
+      console.log('cookieManager: Retrieved session cookie:', cookie ? 'present' : 'not found');
+      return cookie;
     }
-    
-    if (sessionToken) {
-      console.log("CookieManager: Retrieved session cookie:", sessionToken.substring(0, 20) + "...");
-    } else {
-      console.log("CookieManager: No session cookie found in storage");
-    }
-    
-    return sessionToken;
   } catch (error) {
-    console.error("CookieManager: Error retrieving session cookie:", error);
+    console.error('cookieManager: Error retrieving session cookie:', error);
     return null;
   }
 }
 
 /**
- * Clear session cookie
+ * Clear stored session cookie
  */
 export async function clearSessionCookie(): Promise<void> {
-  console.log("CookieManager: Clearing session cookie");
+  console.log('cookieManager: Clearing session cookie');
   
   try {
-    if (Platform.OS === "web") {
-      localStorage.removeItem(SESSION_COOKIE_KEY);
+    if (Platform.OS === 'web') {
+      // On web, clear cookies by setting them to expire
+      document.cookie = '__Secure-better-auth.session_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      console.log('cookieManager: Web cookies cleared');
     } else {
       await SecureStore.deleteItemAsync(SESSION_COOKIE_KEY);
+      console.log('cookieManager: Native session cookie cleared');
     }
-    console.log("CookieManager: Session cookie cleared");
   } catch (error) {
-    console.error("CookieManager: Error clearing session cookie:", error);
+    console.error('cookieManager: Error clearing session cookie:', error);
   }
 }
 
 /**
- * Create fetch options with session cookie
+ * Create fetch options with authentication (session cookie)
  */
 export async function createAuthenticatedFetchOptions(options: RequestInit = {}): Promise<RequestInit> {
-  const sessionToken = await getSessionCookie();
+  const sessionCookie = await getSessionCookie();
   
-  const headers = new Headers(options.headers || {});
-  
-  if (sessionToken) {
-    // Add Cookie header with session token
-    headers.set("Cookie", `session=${sessionToken}`);
-    console.log("CookieManager: Added session cookie to request headers");
-  } else {
-    console.log("CookieManager: No session cookie available for request");
-  }
-  
-  return {
+  const fetchOptions: RequestInit = {
     ...options,
-    headers,
-    credentials: "include", // Always include credentials
+    credentials: 'include', // Always include credentials for cookies
+    headers: {
+      ...options.headers,
+    },
   };
+
+  // On native platforms, manually add the Cookie header
+  if (Platform.OS !== 'web' && sessionCookie) {
+    console.log('cookieManager: Adding Cookie header to request');
+    (fetchOptions.headers as Record<string, string>)['Cookie'] = sessionCookie;
+  }
+
+  return fetchOptions;
 }

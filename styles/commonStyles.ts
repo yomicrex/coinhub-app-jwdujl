@@ -1,96 +1,65 @@
 
-import { StyleSheet, ViewStyle, TextStyle } from 'react-native';
-
-// CoinHub color scheme - gold and trust-focused colors
 export const colors = {
-  primary: '#D4AF37',      // Gold (coin color)
-  secondary: '#B8860B',    // Dark goldenrod
-  accent: '#FFD700',       // Bright gold
-  background: '#FFFFFF',   // Clean white background
-  backgroundAlt: '#F5F5F5', // Light gray
-  text: '#1A1A1A',         // Dark text
-  textSecondary: '#666666', // Gray text
-  card: '#FFFFFF',         // White cards
-  border: '#E0E0E0',       // Light border
-  success: '#4CAF50',      // Green for success
-  error: '#F44336',        // Red for errors
-  highlight: '#FFF8DC',    // Cornsilk highlight
-  tradeBadge: '#2196F3',   // Blue for trade badge
+  // Primary brand colors
+  primary: "#007AFF", // iOS Blue
+  primaryDark: "#0051D5",
+  
+  // Background colors
+  background: "#F2F2F7", // Light gray background
+  backgroundDark: "#000000", // True black for dark mode
+  card: "#FFFFFF",
+  cardDark: "#1C1C1E",
+  
+  // Text colors
+  text: "#000000",
+  textDark: "#FFFFFF",
+  textSecondary: "#8E8E93",
+  textSecondaryDark: "#98989D",
+  
+  // Border colors
+  border: "#D8D8DC",
+  borderDark: "#2C2C2E",
+  
+  // Status colors
+  success: "#34C759",
+  error: "#FF3B30",
+  warning: "#FF9500",
+  info: "#007AFF",
+  
+  // Additional UI colors
+  separator: "#C6C6C8",
+  separatorDark: "#38383A",
+  overlay: "rgba(0, 0, 0, 0.4)",
+  
+  // Trade status colors
+  tradeOpen: "#34C759",
+  tradePending: "#FF9500",
+  tradeCompleted: "#007AFF",
+  tradeCancelled: "#8E8E93",
 };
 
-export const buttonStyles = StyleSheet.create({
-  instructionsButton: {
-    backgroundColor: colors.primary,
-    alignSelf: 'center',
-    width: '100%',
-  },
-  backButton: {
-    backgroundColor: colors.backgroundAlt,
-    alignSelf: 'center',
-    width: '100%',
-  },
-});
+export const spacing = {
+  xs: 4,
+  sm: 8,
+  md: 16,
+  lg: 24,
+  xl: 32,
+};
 
-export const commonStyles = StyleSheet.create({
-  wrapper: {
-    backgroundColor: colors.background,
-    width: '100%',
-    height: '100%',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  content: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    maxWidth: 800,
-    width: '100%',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '800',
-    textAlign: 'center',
-    color: colors.text,
-    marginBottom: 10
-  },
-  text: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: colors.text,
-    marginBottom: 8,
-    lineHeight: 24,
-    textAlign: 'center',
-  },
-  section: {
-    width: '100%',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  buttonContainer: {
-    width: '100%',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  card: {
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    marginVertical: 8,
-    width: '100%',
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
-    elevation: 3,
-  },
-  icon: {
-    width: 60,
-    height: 60,
-    tintColor: colors.primary,
-  },
-});
+export const borderRadius = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 24,
+  full: 9999,
+};
+
+export const fontSize = {
+  xs: 12,
+  sm: 14,
+  md: 16,
+  lg: 18,
+  xl: 20,
+  xxl: 24,
+  xxxl: 32,
+};
