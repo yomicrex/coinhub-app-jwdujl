@@ -135,7 +135,16 @@ export default function HomeScreen() {
         
         <TouchableOpacity
           style={styles.userInfo}
-          onPress={() => router.push(`/user-profile?userId=${item.user.id}&username=${item.user.username}`)}
+          onPress={() => {
+            console.log('HomeScreen: User tapped on profile:', item.user.username);
+            if (item.user.id === user?.id) {
+              console.log('HomeScreen: Navigating to own profile');
+              router.push('/(tabs)/profile');
+            } else {
+              console.log('HomeScreen: Navigating to user profile:', item.user.username);
+              router.push(`/user-profile?userId=${item.user.username}`);
+            }
+          }}
         >
           {item.user.avatarUrl ? (
             <Image source={{ uri: item.user.avatarUrl }} style={styles.avatar} />

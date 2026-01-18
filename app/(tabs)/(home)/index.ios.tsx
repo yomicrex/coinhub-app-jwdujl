@@ -216,11 +216,13 @@ export default function FeedScreen() {
   };
 
   const handleUserPress = (userId: string, username: string) => {
-    console.log('FeedScreen: User tapped on profile:', username);
+    console.log('FeedScreen: User tapped on profile:', username, 'userId:', userId);
     if (userId === user?.id) {
+      console.log('FeedScreen: Navigating to own profile');
       router.push('/(tabs)/profile');
     } else {
-      router.push(`/user-profile?userId=${userId}`);
+      console.log('FeedScreen: Navigating to user profile:', username);
+      router.push(`/user-profile?userId=${username}`);
     }
   };
 

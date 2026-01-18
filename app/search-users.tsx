@@ -274,7 +274,13 @@ export default function SearchUsersScreen() {
 
   const handleUserPress = (userId: string, username: string) => {
     console.log('SearchUsersScreen: Navigating to user profile:', username);
-    router.push(`/user-profile?userId=${userId}&username=${username}`);
+    if (userId === user?.id) {
+      console.log('SearchUsersScreen: Navigating to own profile');
+      router.push('/(tabs)/profile');
+    } else {
+      console.log('SearchUsersScreen: Navigating to user profile:', username);
+      router.push(`/user-profile?userId=${username}`);
+    }
   };
 
   const handleClearSearch = () => {

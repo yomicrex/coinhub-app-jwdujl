@@ -144,7 +144,10 @@ export default function CoinDetailScreen() {
 
           <TouchableOpacity
             style={styles.userInfo}
-            onPress={() => router.push(`/user-profile?userId=${coin.user.id}&username=${coin.user.username}`)}
+            onPress={() => {
+              console.log('CoinDetailScreen: User tapped on profile:', coin.user.username);
+              router.push(`/user-profile?userId=${coin.user.username}`);
+            }}
           >
             {coin.user.avatarUrl ? (
               <Image source={{ uri: coin.user.avatarUrl }} style={styles.avatar} />

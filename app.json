@@ -1,8 +1,7 @@
-
 {
   "expo": {
     "name": "CoinHub",
-    "slug": "coinhub",
+    "slug": "CoinHub",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/final_quest_240x240.png",
@@ -48,5 +47,6 @@
       },
       "backendUrl": "https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev"
     }
-  }
+  },
+  "scheme": "CoinHub"
 }
