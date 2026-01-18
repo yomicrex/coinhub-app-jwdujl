@@ -1,8 +1,10 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { eq, and, count, or } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
+import * as authSchema from '../db/auth-schema.js';
 import type { App } from '../index.js';
 import { z } from 'zod';
+import { extractSessionToken } from '../utils/auth-utils.js';
 
 const CreateCoinSchema = z.object({
   title: z.string().min(1).max(255),
@@ -137,15 +139,29 @@ export function registerCoinsRoutes(app: App) {
       }
 
       // Check visibility (allow viewing private coins only if owner)
-      let session: any = null;
+      let userId: string | null = null;
       try {
-        session = await app.requireAuth()(request, reply);
+        const sessionToken = extractSessionToken(request);
+        if (sessionToken) {
+          const sessionRecord = await app.db.query.session.findFirst({
+            where: eq(authSchema.session.token, sessionToken),
+          });
+
+          if (sessionRecord && new Date(sessionRecord.expiresAt) > new Date()) {
+            const userRecord = await app.db.query.user.findFirst({
+              where: eq(authSchema.user.id, sessionRecord.userId),
+            });
+            if (userRecord) {
+              userId = userRecord.id;
+            }
+          }
+        }
       } catch {
         // Not authenticated
       }
 
-      if (coin.visibility === 'private' && coin.userId !== session?.user.id) {
-        app.logger.warn({ coinId: id, userId: session?.user.id }, 'Coin is private');
+      if (coin.visibility === 'private' && coin.userId !== userId) {
+        app.logger.warn({ coinId: id, userId }, 'Coin is private');
         return reply.status(403).send({ error: 'Coin is private' });
       }
 
@@ -361,9 +377,23 @@ export function registerCoinsRoutes(app: App) {
 
       try {
         // Get current user session if authenticated
-        let session: any = null;
+        let currentUserId: string | null = null;
         try {
-          session = await app.requireAuth()(request, reply);
+          const sessionToken = extractSessionToken(request);
+          if (sessionToken) {
+            const sessionRecord = await app.db.query.session.findFirst({
+              where: eq(authSchema.session.token, sessionToken),
+            });
+
+            if (sessionRecord && new Date(sessionRecord.expiresAt) > new Date()) {
+              const userRecord = await app.db.query.user.findFirst({
+                where: eq(authSchema.user.id, sessionRecord.userId),
+              });
+              if (userRecord) {
+                currentUserId = userRecord.id;
+              }
+            }
+          }
         } catch {
           // Not authenticated
         }
@@ -372,7 +402,7 @@ export function registerCoinsRoutes(app: App) {
         const whereConditions: any[] = [];
 
         // Visibility filter: public coins, or if user_id specified and matches current user, include their private coins
-        if (user_id && session?.user.id === user_id) {
+        if (user_id && currentUserId === user_id) {
           // Own profile - show all coins for this user
           whereConditions.push(eq(schema.coins.userId, user_id));
         } else {
@@ -490,14 +520,28 @@ export function registerCoinsRoutes(app: App) {
 
     try {
       // Try to get current user session to check if viewing own profile
-      let session: any = null;
+      let currentUserId: string | null = null;
       try {
-        session = await app.requireAuth()(request, reply);
+        const sessionToken = extractSessionToken(request);
+        if (sessionToken) {
+          const sessionRecord = await app.db.query.session.findFirst({
+            where: eq(authSchema.session.token, sessionToken),
+          });
+
+          if (sessionRecord && new Date(sessionRecord.expiresAt) > new Date()) {
+            const userRecord = await app.db.query.user.findFirst({
+              where: eq(authSchema.user.id, sessionRecord.userId),
+            });
+            if (userRecord) {
+              currentUserId = userRecord.id;
+            }
+          }
+        }
       } catch {
         // Not authenticated
       }
 
-      const isOwnProfile = session?.user.id === id;
+      const isOwnProfile = currentUserId === id;
 
       // If viewing own profile, show all coins; otherwise show only public
       const whereClause = isOwnProfile

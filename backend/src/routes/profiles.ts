@@ -1,8 +1,10 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { eq, and } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
+import * as authSchema from '../db/auth-schema.js';
 import type { App } from '../index.js';
 import { z } from 'zod';
+import { extractSessionToken } from '../utils/auth-utils.js';
 
 const UpdateProfileSchema = z.object({
   displayName: z.string().min(1).max(100).optional(),
@@ -166,18 +168,28 @@ export function registerProfileRoutes(app: App) {
         followingCount = following.length;
 
         // Check if authenticated user is following
-        const authHeader = request.headers.authorization;
-        if (authHeader) {
+        // Use extractSessionToken instead of requireAuth to avoid sending 401 response on public endpoint
+        const sessionToken = extractSessionToken(request);
+        if (sessionToken) {
           try {
-            const session = await app.requireAuth()(request, reply);
-            if (session) {
-              const follow = await app.db.query.follows.findFirst({
-                where: and(
-                  eq(schema.follows.followerId, session.user.id),
-                  eq(schema.follows.followingId, profile.id)
-                ),
+            const sessionRecord = await app.db.query.session.findFirst({
+              where: eq(authSchema.session.token, sessionToken),
+            });
+
+            if (sessionRecord && new Date(sessionRecord.expiresAt) > new Date()) {
+              const userRecord = await app.db.query.user.findFirst({
+                where: eq(authSchema.user.id, sessionRecord.userId),
               });
-              isFollowing = !!follow;
+
+              if (userRecord) {
+                const follow = await app.db.query.follows.findFirst({
+                  where: and(
+                    eq(schema.follows.followerId, userRecord.id),
+                    eq(schema.follows.followingId, profile.id)
+                  ),
+                });
+                isFollowing = !!follow;
+              }
             }
           } catch {
             // Not authenticated, that's fine
