@@ -4,6 +4,7 @@ import * as schema from '../db/schema.js';
 import * as authSchema from '../db/auth-schema.js';
 import type { App } from '../index.js';
 import { z } from 'zod';
+import { randomUUID } from 'crypto';
 
 /**
  * CoinHub Auth Routes
@@ -859,13 +860,13 @@ export function registerAuthRoutes(app: App) {
       app.logger.info({ userId: user.id, email: normalizedEmail }, 'Password reset token generation started');
 
       // Generate reset token (random string)
-      const resetToken = crypto.randomUUID();
+      const resetToken = randomUUID();
       const expiresAt = new Date(Date.now() + 3600000); // 1 hour from now
 
       try {
         // Store reset token in verification table (Better Auth convention)
         await app.db.insert(authSchema.verification).values({
-          id: crypto.randomUUID(),
+          id: randomUUID(),
           identifier: normalizedEmail,
           value: resetToken,
           expiresAt: expiresAt,
@@ -1087,7 +1088,7 @@ export function registerAuthRoutes(app: App) {
           // This shouldn't happen if user did sign up with password
           app.logger.warn({ userId: user.id }, 'No account with password found for user, creating credential account');
           await app.db.insert(authSchema.account).values({
-            id: crypto.randomUUID(),
+            id: randomUUID(),
             userId: user.id,
             accountId: `credential-${user.id}`,
             providerId: 'credential',
@@ -1349,10 +1350,10 @@ export function registerAuthRoutes(app: App) {
         const session = await app.db
           .insert(authSchema.session)
           .values({
-            id: crypto.randomUUID(),
+            id: randomUUID(),
             userId: authUser.id,
             expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-            token: crypto.randomUUID(),
+            token: randomUUID(),
             ipAddress: request.ip,
             userAgent: request.headers['user-agent'],
           })
@@ -1419,13 +1420,15 @@ export function registerAuthRoutes(app: App) {
    * This is a temporary endpoint for beta testing that allows users to sign in
    * with ONLY their email address, bypassing password verification.
    *
-   * Properly integrates with Better Auth's session management so that:
-   * - Sessions are recognized by Better Auth's getSession() function
-   * - Cookies are set in the correct format for Better Auth
-   * - Frontend can retrieve the session after login
+   * Session Management:
+   * - Creates session in database with 7-day expiration
+   * - Sets HTTP-only secure cookie with session token
+   * - Uses same cookie format as other signin endpoints (session=token)
+   * - Session is validated by requireAuth() middleware on protected endpoints
    *
    * Request body: { email: string }
-   * Returns: { success: true, user: { id, email, name } }
+   * Returns: { user: { id, email, name } }
+   * Cookie: session=<token> (HTTP-only, Secure in production)
    *
    * TODO: Remove this endpoint after beta testing is complete
    */
@@ -1453,8 +1456,8 @@ export function registerAuthRoutes(app: App) {
       app.logger.info({ userId: authUser.id }, 'Email-only sign-in: user found');
 
       // Create session in Better Auth session table
-      const sessionToken = crypto.randomUUID();
-      const sessionId = crypto.randomUUID();
+      const sessionToken = randomUUID();
+      const sessionId = randomUUID();
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
       try {
@@ -1475,10 +1478,10 @@ export function registerAuthRoutes(app: App) {
           'Email-only sign-in successful: session created'
         );
 
-        // Set Better Auth compatible session cookie
-        // The cookie must be named after the session token with proper HTTP-only settings
+        // Set secure HTTP-only cookie using native Fastify header
+        // Use same cookie format as other signin endpoints for consistency
         const cookieOptions = [
-          `better-auth.session_token=${sessionToken}`,
+          `session=${sessionToken}`,
           'HttpOnly',
           'Path=/',
           'SameSite=Lax',
@@ -1489,9 +1492,8 @@ export function registerAuthRoutes(app: App) {
         }
         reply.header('Set-Cookie', cookieOptions.join('; '));
 
-        // Return standard Better Auth response format
+        // Return user data - session handled via cookie
         return {
-          success: true,
           user: {
             id: authUser.id,
             email: authUser.email,

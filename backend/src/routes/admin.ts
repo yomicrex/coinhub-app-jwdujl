@@ -4,6 +4,7 @@ import * as schema from '../db/schema.js';
 import * as authSchema from '../db/auth-schema.js';
 import type { App } from '../index.js';
 import { z } from 'zod';
+import { randomUUID } from 'crypto';
 
 export function registerAdminRoutes(app: App) {
   /**
@@ -328,7 +329,7 @@ export function registerAdminRoutes(app: App) {
         }
       } else {
         // Create new credential account as fallback
-        const newAccountId = crypto.randomUUID();
+        const newAccountId = randomUUID();
         await app.db.insert(authSchema.account).values({
           id: newAccountId,
           userId: coinHubUser.id,
@@ -566,7 +567,7 @@ export function registerAdminRoutes(app: App) {
 
           // If still no account, create a credential account
           if (!targetAccount) {
-            const newAccountId = crypto.randomUUID();
+            const newAccountId = randomUUID();
             await app.db.insert(authSchema.account).values({
               id: newAccountId,
               userId,
@@ -770,7 +771,7 @@ export function registerAdminRoutes(app: App) {
 
               if (!targetAccount) {
                 // Create new credential account
-                const newAccountId = crypto.randomUUID();
+                const newAccountId = randomUUID();
                 await app.db.insert(authSchema.account).values({
                   id: newAccountId,
                   userId,
