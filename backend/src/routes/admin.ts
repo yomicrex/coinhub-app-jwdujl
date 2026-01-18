@@ -412,4 +412,211 @@ export function registerAdminRoutes(app: App) {
       return reply.status(500).send({ error: 'Password verification error' });
     }
   });
+
+  /**
+   * POST /api/admin/fix-all-passwords
+   * Admin utility to find and fix all accounts with corrupted/invalid password data
+   *
+   * Identifies accounts where:
+   * - Password hash is empty/null
+   * - Password hash is not in valid bcrypt format
+   * - Password verification fails
+   *
+   * Resets all affected accounts to: "TempPass123!"
+   *
+   * Returns: { fixed: ["username1", "username2"], count: 2, details: [...] }
+   */
+  app.fastify.post('/api/admin/fix-all-passwords', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.warn('Admin: Fix-all-passwords utility started - scanning for corrupted accounts');
+
+    try {
+      const bcrypt = await import('bcryptjs') as any;
+      const tempPassword = 'TempPass123!';
+      const fixedUsernames = [];
+      const fixDetails = [];
+
+      // Step 1: Get all CoinHub users
+      const allUsers = await app.db.query.users.findMany();
+      app.logger.info({ totalUsers: allUsers.length }, 'Admin: Scanning all users for corrupted passwords');
+
+      // Step 2: For each user, check their accounts
+      for (const coinHubUser of allUsers) {
+        const userId = String(coinHubUser.id);
+        const username = String(coinHubUser.username);
+
+        try {
+
+          // Get the Better Auth user
+          const authUser = await app.db.query.user.findFirst({
+            where: eq(authSchema.user.id, userId)
+          });
+
+          if (!authUser) {
+            app.logger.debug(
+              { userId, username },
+              'Admin: Auth user not found'
+            );
+            continue;
+          }
+
+          // Get all accounts for this user
+          const allAccounts = await app.db.query.account.findMany({
+            where: eq(authSchema.account.userId, userId)
+          });
+
+          let isCorrupted = false;
+          let corruptionReason = '';
+
+          // Check if accounts have password issues
+          const accountsWithPassword = allAccounts.filter(a => a.password);
+
+          if (accountsWithPassword.length === 0) {
+            isCorrupted = true;
+            corruptionReason = 'No accounts with passwords found';
+          } else {
+            // Check if any password hash is invalid
+            for (const account of accountsWithPassword) {
+              const isValidBcrypt = /^\$2[aby]\$\d+\$/.test(account.password);
+
+              if (!isValidBcrypt) {
+                isCorrupted = true;
+                corruptionReason = `Account ${account.id} has invalid bcrypt format`;
+                break;
+              }
+
+              // Try to compare with a test password to verify hash integrity
+              try {
+                await bcrypt.compare('test', account.password);
+              } catch (e) {
+                isCorrupted = true;
+                corruptionReason = `Account ${account.id} hash comparison failed: ${String(e).substring(0, 50)}`;
+                break;
+              }
+            }
+          }
+
+          // If corrupted, reset the password
+          if (isCorrupted) {
+            app.logger.info(
+              { userId, username, reason: corruptionReason },
+              'Admin: Found corrupted password account, resetting'
+            );
+
+            // Hash the temporary password
+            const hashedTempPassword = await bcrypt.hash(tempPassword, 10);
+
+            // Validate hash format
+            if (!/^\$2[aby]\$\d+\$/.test(hashedTempPassword)) {
+              app.logger.error(
+                { username },
+                'Admin: Failed to generate valid hash for temporary password'
+              );
+              fixDetails.push({
+                username,
+                status: 'failed',
+                reason: 'Failed to generate password hash'
+              });
+              continue;
+            }
+
+            // Find credential account or create one
+            let targetAccount = allAccounts.find(a => a.providerId === 'credential');
+
+            if (!targetAccount) {
+              // Find any account with password
+              targetAccount = accountsWithPassword[0];
+
+              if (!targetAccount) {
+                // Create new credential account
+                const newAccountId = crypto.randomUUID();
+                await app.db.insert(authSchema.account).values({
+                  id: newAccountId,
+                  userId,
+                  accountId: `credential-${userId}`,
+                  providerId: 'credential',
+                  password: hashedTempPassword,
+                });
+
+                app.logger.info(
+                  { username, newAccountId },
+                  'Admin: Created new credential account with temp password'
+                );
+
+                fixedUsernames.push(username);
+                fixDetails.push({
+                  username,
+                  status: 'fixed',
+                  action: 'created_new_account',
+                  tempPassword
+                });
+                continue;
+              }
+            }
+
+            // Update the target account with temporary password
+            await app.db
+              .update(authSchema.account)
+              .set({ password: hashedTempPassword, updatedAt: new Date() })
+              .where(eq(authSchema.account.id, targetAccount.id));
+
+            app.logger.info(
+              { username, accountId: targetAccount.id },
+              'Admin: Password reset to temporary password'
+            );
+
+            // Invalidate all sessions
+            try {
+              await app.db
+                .delete(authSchema.session)
+                .where(eq(authSchema.session.userId, userId));
+            } catch (e) {
+              app.logger.warn(
+                { username, err: e },
+                'Admin: Failed to invalidate sessions'
+              );
+            }
+
+            fixedUsernames.push(username);
+            fixDetails.push({
+              username,
+              status: 'fixed',
+              action: 'reset_password',
+              tempPassword,
+              corruptionReason
+            });
+          }
+        } catch (userError) {
+          app.logger.error(
+            { err: userError, username },
+            'Admin: Error processing user during fix-all-passwords'
+          );
+          fixDetails.push({
+            username,
+            status: 'error',
+            reason: String(userError).substring(0, 100)
+          });
+        }
+      }
+
+      app.logger.info(
+        { fixedCount: fixedUsernames.length, usernames: fixedUsernames },
+        'Admin: Fix-all-passwords completed'
+      );
+
+      return {
+        success: true,
+        fixed: fixedUsernames,
+        count: fixedUsernames.length,
+        details: fixDetails,
+        tempPassword: 'TempPass123!',
+        message: `Fixed ${fixedUsernames.length} accounts with corrupted passwords. Users must change these temporary passwords on next login.`
+      };
+    } catch (error) {
+      app.logger.error(
+        { err: error },
+        'Admin: Fix-all-passwords utility failed'
+      );
+      return reply.status(500).send({ error: 'Fix-all-passwords utility failed', details: String(error) });
+    }
+  });
 }
