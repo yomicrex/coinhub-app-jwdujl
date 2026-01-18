@@ -152,19 +152,44 @@ export function registerAdminRoutes(app: App) {
         ),
       });
 
+      // If credential account not found, look for any account with a password
+      if (!credentialAccount) {
+        app.logger.debug(
+          { userId: coinHubUser.id, username },
+          'Admin: No credential account found, checking for any account with password'
+        );
+        const allAccounts = await app.db.query.account.findMany({
+          where: eq(authSchema.account.userId, coinHubUser.id)
+        });
+
+        app.logger.info(
+          { userId: coinHubUser.id, username, totalAccounts: allAccounts.length, providers: allAccounts.map(a => a.providerId) },
+          'Admin: All accounts for user'
+        );
+
+        // Find the first account with a password
+        credentialAccount = allAccounts.find(a => a.password) || null;
+        if (credentialAccount) {
+          app.logger.info(
+            { userId: coinHubUser.id, username, providerId: credentialAccount.providerId },
+            'Admin: Found account with password using provider: ' + credentialAccount.providerId
+          );
+        }
+      }
+
       if (credentialAccount) {
-        // Update existing credential account
+        // Update existing account with new password
         await app.db
           .update(authSchema.account)
           .set({ password: hashedPassword })
           .where(eq(authSchema.account.id, credentialAccount.id));
 
         app.logger.info(
-          { userId: coinHubUser.id, username, accountId: credentialAccount.id },
-          'Admin: Password updated in existing credential account'
+          { userId: coinHubUser.id, username, accountId: credentialAccount.id, providerId: credentialAccount.providerId },
+          'Admin: Password updated in account'
         );
       } else {
-        // Create new credential account
+        // Create new credential account as fallback
         await app.db.insert(authSchema.account).values({
           id: crypto.randomUUID(),
           userId: coinHubUser.id,

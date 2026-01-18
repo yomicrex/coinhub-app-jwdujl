@@ -148,6 +148,169 @@ export function registerAuthRoutes(app: App) {
   });
 
   /**
+   * GET /api/auth/debug/accounts/:userId
+   * DEBUG ENDPOINT - Check account records for a user (by Better Auth user ID)
+   * Shows which provider_id values are stored and if password exists
+   * REMOVE IN PRODUCTION
+   */
+  app.fastify.get('/api/auth/debug/accounts/:userId', async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = String((request.params as any).userId);
+    app.logger.warn({ userId }, 'DEBUG: Checking accounts for user - this endpoint should be disabled in production');
+    try {
+      const accounts = await app.db.query.account.findMany({
+        where: eq(authSchema.account.userId, userId)
+      });
+
+      app.logger.info({ userId, count: accounts.length }, 'DEBUG: Retrieved accounts for user');
+      return {
+        userId,
+        accountCount: accounts.length,
+        accounts: accounts.map(a => ({
+          id: a.id,
+          accountId: a.accountId,
+          providerId: a.providerId,
+          hasPassword: !!a.password,
+          passwordLength: a.password ? a.password.length : 0,
+          passwordFirst50Chars: a.password ? a.password.substring(0, 50) : null,
+          createdAt: a.createdAt
+        }))
+      };
+    } catch (error) {
+      app.logger.error({ err: error, userId }, 'DEBUG: Failed to check accounts');
+      return reply.status(500).send({ error: 'Failed to check accounts' });
+    }
+  });
+
+  /**
+   * POST /api/auth/debug/test-password
+   * DEBUG ENDPOINT - Test password hashing and comparison
+   * Helps diagnose bcrypt issues
+   * REMOVE IN PRODUCTION
+   */
+  app.fastify.post('/api/auth/debug/test-password', async (request: FastifyRequest, reply: FastifyReply) => {
+    const { password, hash } = request.body as { password?: string; hash?: string };
+    app.logger.warn('DEBUG: Testing password hashing - this endpoint should be disabled in production');
+
+    try {
+      const bcrypt = await import('bcryptjs') as any;
+
+      if (!password) {
+        return reply.status(400).send({ error: 'Password required' });
+      }
+
+      if (!hash) {
+        // Hash the password and return it
+        const newHash = await bcrypt.hash(password, 10);
+        return {
+          action: 'hash',
+          passwordLength: password.length,
+          hashLength: newHash.length,
+          hash: newHash.substring(0, 50) + '...',
+          note: 'Use this hash in subsequent test calls'
+        };
+      } else {
+        // Compare password to hash
+        const match = await bcrypt.compare(password, hash);
+        return {
+          action: 'compare',
+          passwordLength: password.length,
+          hashLength: hash.length,
+          match,
+          hashFirst50: hash.substring(0, 50),
+          note: match ? 'Password matches hash' : 'Password does NOT match hash'
+        };
+      }
+    } catch (error) {
+      app.logger.error({ err: error }, 'DEBUG: Password test failed');
+      return reply.status(500).send({ error: 'Password test failed', details: String(error) });
+    }
+  });
+
+  /**
+   * POST /api/auth/debug/diagnose/:userId
+   * DEBUG ENDPOINT - Complete password authentication diagnosis
+   * Test if a specific user can authenticate with a password
+   * Body: { password: string }
+   * REMOVE IN PRODUCTION
+   */
+  app.fastify.post('/api/auth/debug/diagnose/:userId', async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = String((request.params as any).userId);
+    const { password } = request.body as { password?: string };
+
+    app.logger.warn({ userId }, 'DEBUG: Running full auth diagnosis - this endpoint should be disabled in production');
+
+    try {
+      if (!password) {
+        return reply.status(400).send({ error: 'Password required' });
+      }
+
+      // Step 1: Get auth user
+      const authUser = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, userId)
+      });
+
+      if (!authUser) {
+        return {
+          step: 'user_lookup',
+          status: 'failed',
+          message: 'Auth user not found'
+        };
+      }
+
+      // Step 2: Get all accounts for this user
+      const allAccounts = await app.db.query.account.findMany({
+        where: eq(authSchema.account.userId, userId)
+      });
+
+      // Step 3: Find accounts with passwords
+      const accountsWithPassword = allAccounts.filter(a => a.password);
+
+      // Step 4: Try to verify with each account
+      const bcrypt = await import('bcryptjs') as any;
+      const results = [];
+
+      for (const account of accountsWithPassword) {
+        try {
+          const match = await bcrypt.compare(password, account.password);
+          results.push({
+            accountId: account.id,
+            providerId: account.providerId,
+            passwordHashLength: account.password.length,
+            match,
+            bcryptValid: true
+          });
+        } catch (e) {
+          results.push({
+            accountId: account.id,
+            providerId: account.providerId,
+            passwordHashLength: account.password.length,
+            match: false,
+            bcryptValid: false,
+            error: String(e).substring(0, 100)
+          });
+        }
+      }
+
+      const successfulMatches = results.filter(r => r.match).length;
+
+      return {
+        diagnosis: 'complete',
+        userId,
+        authUserFound: true,
+        totalAccounts: allAccounts.length,
+        accountsWithPassword: accountsWithPassword.length,
+        providers: allAccounts.map(a => a.providerId),
+        passwordVerificationResults: results,
+        successfulMatches,
+        note: successfulMatches > 0 ? 'Password verified successfully' : 'Password failed to verify with all accounts'
+      };
+    } catch (error) {
+      app.logger.error({ err: error, userId }, 'DEBUG: Diagnosis failed');
+      return reply.status(500).send({ error: 'Diagnosis failed', details: String(error) });
+    }
+  });
+
+  /**
    * IMPORTANT: Sign-in and Sign-up endpoints are automatically provided by Better Auth
    *
    * POST /api/auth/sign-in/email
@@ -818,24 +981,52 @@ export function registerAuthRoutes(app: App) {
         const hashedPassword = await bcrypt.hash(body.password, 10);
 
         // Find the credential account record
-        const credentialAccount = await app.db.query.account.findFirst({
+        let credentialAccount = await app.db.query.account.findFirst({
           where: and(
             eq(authSchema.account.userId, user.id),
             eq(authSchema.account.providerId, 'credential')
           )
         });
 
+        // If credential account not found, look for any account with a password
+        if (!credentialAccount) {
+          app.logger.debug(
+            { userId: user.id },
+            'No credential account found for reset, checking for any account with password'
+          );
+          const allAccounts = await app.db.query.account.findMany({
+            where: eq(authSchema.account.userId, user.id)
+          });
+
+          app.logger.info(
+            { userId: user.id, totalAccounts: allAccounts.length, providers: allAccounts.map(a => a.providerId) },
+            'All accounts for password reset user'
+          );
+
+          // Find the first account with a password
+          credentialAccount = allAccounts.find(a => a.password) || null;
+          if (credentialAccount) {
+            app.logger.info(
+              { userId: user.id, providerId: credentialAccount.providerId },
+              'Found account with password using provider: ' + credentialAccount.providerId
+            );
+          }
+        }
+
         if (credentialAccount) {
-          // Update existing credential account with new password
+          // Update existing account with new password
           await app.db
             .update(authSchema.account)
             .set({ password: hashedPassword })
             .where(eq(authSchema.account.id, credentialAccount.id));
 
-          app.logger.info({ userId: user.id, accountId: credentialAccount.id }, 'Password updated in credential account');
+          app.logger.info(
+            { userId: user.id, accountId: credentialAccount.id, providerId: credentialAccount.providerId },
+            'Password updated in account'
+          );
         } else {
           // This shouldn't happen if user did sign up with password
-          app.logger.warn({ userId: user.id }, 'No credential account found for user, creating one');
+          app.logger.warn({ userId: user.id }, 'No account with password found for user, creating credential account');
           await app.db.insert(authSchema.account).values({
             id: crypto.randomUUID(),
             userId: user.id,
@@ -1002,6 +1193,7 @@ export function registerAuthRoutes(app: App) {
       // Step 3: Get account record with credential provider
       let accountRecord;
       try {
+        // First try credential provider
         accountRecord = await app.db.query.account.findFirst({
           where: and(
             eq(authSchema.account.userId, authUser.id),
@@ -1009,10 +1201,36 @@ export function registerAuthRoutes(app: App) {
           ),
         });
 
+        // If not found, try to find ANY account with password for this user
+        if (!accountRecord) {
+          app.logger.debug(
+            { userId: authUser.id },
+            'No credential account found, checking for any account with password'
+          );
+          const allAccounts = await app.db.query.account.findMany({
+            where: eq(authSchema.account.userId, authUser.id)
+          });
+
+          app.logger.info(
+            { userId: authUser.id, totalAccounts: allAccounts.length, providers: allAccounts.map(a => a.providerId) },
+            'Debug: All accounts for user'
+          );
+
+          // Find the first account with a password
+          accountRecord = allAccounts.find(a => a.password);
+
+          if (accountRecord) {
+            app.logger.info(
+              { userId: authUser.id, providerId: accountRecord.providerId },
+              'Found account with password using provider: ' + accountRecord.providerId
+            );
+          }
+        }
+
         if (!accountRecord || !accountRecord.password) {
           app.logger.warn(
             { userId: authUser.id, identifier, identifierType: isEmail ? 'email' : 'username' },
-            'Sign-in failed: no credential account found'
+            'Sign-in failed: no account with password found'
           );
           return reply.status(401).send({ error: 'Invalid username or password' });
         }
@@ -1027,19 +1245,42 @@ export function registerAuthRoutes(app: App) {
       // Step 4: Verify password
       try {
         const bcrypt = await import('bcryptjs') as any;
+
+        // Validate the hash format first (bcrypt hashes start with $2a$, $2b$, or $2y$)
+        const isBcryptHash = /^\$2[aby]\$\d+\$/.test(accountRecord.password);
+
+        // Log the hash format to diagnose issues
+        app.logger.debug(
+          { userId: authUser.id, hashLength: accountRecord.password?.length, isBcryptHash },
+          'Password hash info for comparison'
+        );
+
+        if (!isBcryptHash) {
+          app.logger.error(
+            { userId: authUser.id, identifier, hashLength: accountRecord.password?.length, hashStart: accountRecord.password?.substring(0, 20) },
+            'Password hash format is invalid - not a valid bcrypt hash'
+          );
+          return reply.status(500).send({ error: 'Authentication error' });
+        }
+
         const passwordMatch = await bcrypt.compare(body.password, accountRecord.password);
 
         if (!passwordMatch) {
           app.logger.warn(
-            { userId: authUser.id, identifier, identifierType: isEmail ? 'email' : 'username' },
+            { userId: authUser.id, identifier, identifierType: isEmail ? 'email' : 'username', hashLength: accountRecord.password?.length },
             'Sign-in failed: incorrect password'
           );
           return reply.status(401).send({ error: 'Invalid username or password' });
         }
+
+        app.logger.debug(
+          { userId: authUser.id, identifier },
+          'Password verified successfully'
+        );
       } catch (bcryptError) {
         app.logger.error(
-          { err: bcryptError, userId: authUser.id, identifier },
-          'Error comparing passwords'
+          { err: bcryptError, userId: authUser.id, identifier, hashLength: accountRecord.password?.length },
+          'Error comparing passwords - hash may be corrupted'
         );
         return reply.status(500).send({ error: 'Authentication error' });
       }
