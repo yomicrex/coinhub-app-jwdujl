@@ -1,7 +1,7 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
 import { Platform } from "react-native";
-import { authClient, storeWebBearerToken, clearAuthTokens, API_URL } from "@/lib/auth";
+import { authClient, storeWebBearerToken, clearAuthTokens, API_URL, storeUserData, getUserData } from "@/lib/auth";
 
 interface User {
   id: string;
@@ -78,23 +78,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    console.log("AuthProvider: Initializing, fetching user");
-    fetchUser();
-  }, []);
-
-  const fetchUser = async () => {
+  const fetchUser = useCallback(async () => {
     try {
       console.log("AuthProvider: Fetching user session");
-      setLoading(true);
-      const session = await authClient.getSession();
-      console.log("AuthProvider: Session data:", session);
       
-      if (session?.data?.user) {
-        console.log("AuthProvider: User found in session:", session.data.user);
+      // First, try to get stored user data as a fallback
+      const storedUserData = await getUserData();
+      console.log("AuthProvider: Stored user data:", storedUserData);
+      
+      // Use direct fetch to /api/auth/get-session instead of authClient.getSession()
+      // This ensures cookies are properly included
+      const sessionResponse = await fetch(`${API_URL}/api/auth/get-session`, {
+        method: "GET",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+      
+      console.log("AuthProvider: Session response status:", sessionResponse.status);
+      
+      if (!sessionResponse.ok) {
+        console.log("AuthProvider: No valid session from server");
+        
+        // If we have stored user data, use it as a fallback
+        if (storedUserData) {
+          console.log("AuthProvider: Using stored user data as fallback");
+          setUser(storedUserData);
+          return;
+        }
+        
+        setUser(null);
+        return;
+      }
+      
+      const sessionData = await sessionResponse.json();
+      console.log("AuthProvider: Session data:", sessionData);
+      
+      // Better Auth returns session in { session: {...}, user: {...} } format
+      const sessionUser = sessionData.user;
+      
+      if (sessionUser) {
+        console.log("AuthProvider: User found in session:", sessionUser);
         
         // Fetch the full profile from /api/auth/me to get CoinHub profile data
-        // Use fetch directly instead of authClient.$fetch to avoid path duplication
         try {
           const response = await fetch(`${API_URL}/api/auth/me`, {
             method: "GET",
@@ -120,7 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (hasCompletedProfile) {
               // User has completed profile - merge session user with profile
               const mergedUser = {
-                ...session.data.user,
+                ...sessionUser,
                 username: profileData.username,
                 displayName: profileData.displayName,
                 avatar_url: profileData.avatarUrl,
@@ -129,14 +156,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 hasCompletedProfile: true,
               };
               console.log("AuthProvider: Profile complete, merged user:", mergedUser);
+              
+              // Store user data for future use
+              await storeUserData(mergedUser);
+              
               setUser(mergedUser as User);
             } else {
               // User has NOT completed profile - set user with flag
               const userWithFlag = {
-                ...session.data.user,
+                ...sessionUser,
                 hasCompletedProfile: false,
               };
               console.log("AuthProvider: Profile incomplete, user needs to complete profile:", userWithFlag);
+              
+              // Store user data for future use
+              await storeUserData(userWithFlag);
+              
               setUser(userWithFlag as User);
             }
           } else if (response.status === 401) {
@@ -148,33 +183,73 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.log("AuthProvider: Profile fetch returned non-OK status:", response.status);
             // Profile doesn't exist - user needs to complete profile
             const userWithFlag = {
-              ...session.data.user,
+              ...sessionUser,
               hasCompletedProfile: false,
             };
+            
+            // Store user data for future use
+            await storeUserData(userWithFlag);
+            
             setUser(userWithFlag as User);
           }
         } catch (error) {
           console.error("AuthProvider: Error fetching profile:", error);
           // If profile fetch fails, assume profile is incomplete
           const userWithFlag = {
-            ...session.data.user,
+            ...sessionUser,
             hasCompletedProfile: false,
           };
+          
+          // Store user data for future use
+          await storeUserData(userWithFlag);
+          
           setUser(userWithFlag as User);
         }
       } else {
-        console.log("AuthProvider: No user session found");
+        console.log("AuthProvider: No user in session data");
+        
+        // If we have stored user data, use it as a fallback
+        if (storedUserData) {
+          console.log("AuthProvider: Using stored user data as fallback");
+          setUser(storedUserData);
+          return;
+        }
+        
         setUser(null);
       }
     } catch (error) {
       console.error("AuthProvider: Failed to fetch user:", error);
-      // Clear any stale auth state
-      await clearAuthTokens();
-      setUser(null);
-    } finally {
-      setLoading(false);
+      
+      // Try to use stored user data as a fallback
+      const storedUserData = await getUserData();
+      if (storedUserData) {
+        console.log("AuthProvider: Using stored user data after error");
+        setUser(storedUserData);
+      } else {
+        // Clear any stale auth state
+        await clearAuthTokens();
+        setUser(null);
+      }
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    console.log("AuthProvider: Initializing, fetching user");
+    let mounted = true;
+    
+    const initAuth = async () => {
+      await fetchUser();
+      if (mounted) {
+        setLoading(false);
+      }
+    };
+    
+    initAuth();
+    
+    return () => {
+      mounted = false;
+    };
+  }, [fetchUser]);
 
   const signInWithEmail = async (email: string, password: string) => {
     try {

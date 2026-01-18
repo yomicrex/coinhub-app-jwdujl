@@ -1,10 +1,6 @@
 
-import { useRouter } from "expo-router";
-import { IconSymbol } from "@/components/IconSymbol";
 import { colors } from "@/styles/commonStyles";
-import Constants from "expo-constants";
-import React, { useState, useEffect } from "react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useRouter } from "expo-router";
 import {
   View,
   Text,
@@ -17,6 +13,10 @@ import {
   KeyboardAvoidingView,
   ScrollView,
 } from "react-native";
+import { useAuth } from "@/contexts/AuthContext";
+import React, { useState, useEffect, useRef } from "react";
+import Constants from "expo-constants";
+import { IconSymbol } from "@/components/IconSymbol";
 
 type Mode = "signin" | "complete-profile" | "create-new-profile";
 
@@ -25,6 +25,7 @@ const API_URL = Constants.expoConfig?.extra?.backendUrl || "https://qjj7hh75bj9r
 export default function AuthScreen() {
   const router = useRouter();
   const { user, loading: authLoading, fetchUser } = useAuth();
+  const hasNavigated = useRef(false);
 
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
@@ -39,11 +40,17 @@ export default function AuthScreen() {
   // Check if user needs to complete profile
   useEffect(() => {
     const checkProfile = async () => {
-      console.log("AuthScreen: Checking user state, user:", user, "authLoading:", authLoading);
+      console.log("AuthScreen: Checking user state, user:", user, "authLoading:", authLoading, "hasNavigated:", hasNavigated.current);
       
       // Don't do anything while auth is loading
       if (authLoading) {
         console.log("AuthScreen: Auth still loading, waiting...");
+        return;
+      }
+      
+      // Don't navigate if we already have
+      if (hasNavigated.current) {
+        console.log("AuthScreen: Already navigated, skipping");
         return;
       }
       
@@ -60,6 +67,7 @@ export default function AuthScreen() {
       // If user has completed profile, redirect to home
       if (user.hasCompletedProfile && user.username) {
         console.log("AuthScreen: Profile complete, redirecting to home");
+        hasNavigated.current = true;
         router.replace("/(tabs)/(home)");
         return;
       }
@@ -74,7 +82,7 @@ export default function AuthScreen() {
     };
 
     checkProfile();
-  }, [user, authLoading]);
+  }, [user, authLoading, router]);
 
   if (authLoading) {
     return (
@@ -112,6 +120,8 @@ export default function AuthScreen() {
     
     try {
       console.log("AuthScreen: Attempting email-only sign in with:", email);
+      console.log("AuthScreen: API URL:", API_URL);
+      console.log("AuthScreen: Full endpoint:", `${API_URL}/api/auth/email/signin`);
       
       const response = await fetch(`${API_URL}/api/auth/email/signin`, {
         method: "POST",
@@ -125,9 +135,10 @@ export default function AuthScreen() {
       });
 
       console.log("AuthScreen: Sign in response status:", response.status);
+      console.log("AuthScreen: Sign in response headers:", JSON.stringify(Object.fromEntries(response.headers.entries())));
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
         console.error("AuthScreen: Sign in error response:", errorData);
         
         // Provide helpful error messages
@@ -135,6 +146,10 @@ export default function AuthScreen() {
         
         if (response.status === 404) {
           errorMsg = `No account found with email "${email}". Please check your email address or create a new profile.`;
+        } else if (response.status === 401) {
+          errorMsg = "Invalid credentials. Please check your email and try again.";
+        } else if (response.status === 500) {
+          errorMsg = "Server error. Please try again in a few moments.";
         }
         
         throw new Error(errorMsg);
@@ -143,20 +158,54 @@ export default function AuthScreen() {
       const data = await response.json();
       console.log("AuthScreen: Sign in successful, response data:", data);
       
-      // Wait a moment for the cookie to be set
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Refresh user data - this will fetch the session with the new cookie
-      console.log("AuthScreen: Fetching user session after login");
-      await fetchUser();
-      
-      console.log("AuthScreen: Login complete, checking user state");
-      
-      // Wait a bit more and check if user was set
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // The useEffect will handle navigation once user is set
-      console.log("AuthScreen: Waiting for useEffect to handle navigation");
+      // The backend returns the user data directly in the response
+      // Check if the user has a profile (username exists)
+      if (data.user) {
+        console.log("AuthScreen: User data received from login:", data.user);
+        
+        // Fetch the full profile to check if it's complete
+        try {
+          const profileResponse = await fetch(`${API_URL}/api/auth/me`, {
+            method: "GET",
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          });
+          
+          console.log("AuthScreen: Profile check response status:", profileResponse.status);
+          
+          if (profileResponse.ok) {
+            const profileData = await profileResponse.json();
+            console.log("AuthScreen: Profile data:", profileData);
+            
+            const profile = profileData.profile || profileData.data?.profile || profileData;
+            
+            if (profile && profile.username) {
+              // Profile is complete - refresh user and navigate to home
+              console.log("AuthScreen: Profile complete, refreshing user state");
+              await fetchUser();
+              // Navigation will be handled by useEffect
+            } else {
+              // Profile is incomplete - refresh user state (will show profile completion)
+              console.log("AuthScreen: Profile incomplete, refreshing user state");
+              await fetchUser();
+              // Navigation will be handled by useEffect
+            }
+          } else {
+            // No profile found - refresh user state (will show profile completion)
+            console.log("AuthScreen: No profile found, refreshing user state");
+            await fetchUser();
+          }
+        } catch (profileError) {
+          console.error("AuthScreen: Error checking profile:", profileError);
+          // Refresh user state anyway
+          await fetchUser();
+        }
+      } else {
+        console.log("AuthScreen: No user data in response, refreshing user state");
+        await fetchUser();
+      }
     } catch (error: any) {
       console.error("AuthScreen: Authentication error:", error);
       const errorMsg = error.message || "Authentication failed. Please try again.";
@@ -219,7 +268,7 @@ export default function AuthScreen() {
       console.log("AuthScreen: Complete profile response status:", response.status);
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
         console.error("AuthScreen: Profile completion error response:", errorData);
         throw new Error(errorData.error || errorData.message || "Failed to complete profile");
       }
@@ -233,6 +282,7 @@ export default function AuthScreen() {
       await fetchUser();
       
       // Navigate to home
+      hasNavigated.current = true;
       router.replace("/(tabs)/(home)");
     } catch (error: any) {
       console.error("AuthScreen: Profile completion error:", error);
