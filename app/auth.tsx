@@ -6,129 +6,126 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
-  ScrollView,
-  Platform,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { colors } from '@/styles/commonStyles';
-import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-type Mode = 'signin' | 'signup' | 'complete-profile';
+import { IconSymbol } from '@/components/IconSymbol';
 
 export default function AuthScreen() {
-  const [mode, setMode] = useState<Mode>('signin');
+  const router = useRouter();
+  const { user, loading, signIn, signUp, completeProfile } = useAuth();
+  const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [loading, setLoading] = useState(false);
-  const { user, signIn, signUp, completeProfile } = useAuth();
-  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
+  const [showProfileCompletion, setShowProfileCompletion] = useState(false);
 
-  console.log('Auth screen - mode:', mode, 'user:', user?.username, 'needsCompletion:', user?.needsProfileCompletion);
+  console.log('AuthScreen: Rendered with user:', user?.email, 'needsCompletion:', user?.needsProfileCompletion);
 
   useEffect(() => {
-    console.log('Auth screen mounted');
-    if (user && !user.needsProfileCompletion) {
-      console.log('User authenticated and profile complete, navigating to home');
-      router.replace('/(tabs)/(home)');
-    } else if (user && user.needsProfileCompletion) {
-      console.log('User needs profile completion');
-      setMode('complete-profile');
+    console.log('AuthScreen: Auth state changed - loading:', loading, 'user:', user?.email, 'needsCompletion:', user?.needsProfileCompletion);
+    
+    if (!loading && user) {
+      if (user.needsProfileCompletion) {
+        console.log('AuthScreen: User needs profile completion, showing form');
+        setShowProfileCompletion(true);
+      } else {
+        console.log('AuthScreen: User authenticated and profile complete, redirecting to home');
+        router.replace('/(tabs)/(home)');
+      }
     }
-  }, [user]);
+  }, [loading, user, router]);
 
-  const handleSignIn = async () => {
+  const handleAuth = async () => {
+    console.log('AuthScreen: User tapped', isSignUp ? 'Sign Up' : 'Sign In', 'button');
+    
     if (!email || !password) {
-      Alert.alert('Error', 'Please enter email and password');
+      Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
-    console.log('Attempting sign in with email:', email);
-    setLoading(true);
+    setIsLoading(true);
     try {
-      await signIn(email, password);
-      console.log('Sign in successful');
+      if (isSignUp) {
+        console.log('AuthScreen: Attempting sign up');
+        await signUp(email, password);
+        console.log('AuthScreen: Sign up successful');
+      } else {
+        console.log('AuthScreen: Attempting sign in');
+        await signIn(email, password);
+        console.log('AuthScreen: Sign in successful');
+      }
     } catch (error: any) {
-      console.error('Sign in error:', error);
-      Alert.alert('Sign In Failed', error.message || 'Please check your credentials');
+      console.error('AuthScreen: Auth error:', error);
+      Alert.alert('Error', error.message || 'Authentication failed');
     } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSignUp = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please enter email and password');
-      return;
-    }
-
-    if (password.length < 8) {
-      Alert.alert('Error', 'Password must be at least 8 characters');
-      return;
-    }
-
-    console.log('Attempting sign up with email:', email);
-    setLoading(true);
-    try {
-      await signUp(email, password);
-      console.log('Sign up successful');
-    } catch (error: any) {
-      console.error('Sign up error:', error);
-      Alert.alert('Sign Up Failed', error.message || 'Please try again');
-    } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   const handleCompleteProfile = async () => {
+    console.log('AuthScreen: User tapped Complete Profile button');
+    
     if (!username || !displayName) {
-      Alert.alert('Error', 'Please enter username and display name');
+      Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
-    if (username.length < 3) {
-      Alert.alert('Error', 'Username must be at least 3 characters');
-      return;
-    }
-
-    console.log('Completing profile with username:', username);
-    setLoading(true);
+    setIsLoading(true);
     try {
+      console.log('AuthScreen: Completing profile with username:', username);
       await completeProfile(username, displayName);
-      console.log('Profile completion successful');
+      console.log('AuthScreen: Profile completion successful, redirecting to home');
+      router.replace('/(tabs)/(home)');
     } catch (error: any) {
-      console.error('Profile completion error:', error);
-      Alert.alert('Profile Completion Failed', error.message || 'Please try again');
+      console.error('AuthScreen: Profile completion error:', error);
+      Alert.alert('Error', error.message || 'Profile completion failed');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  if (mode === 'complete-profile') {
+  if (loading) {
     return (
-      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (showProfileCompletion) {
+    return (
+      <SafeAreaView style={styles.container}>
         <KeyboardAvoidingView
-          style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.keyboardView}
         >
           <ScrollView contentContainerStyle={styles.scrollContent}>
             <View style={styles.header}>
+              <Text style={styles.logo}>🪙</Text>
               <Text style={styles.title}>Complete Your Profile</Text>
-              <Text style={styles.subtitle}>Choose a username to get started</Text>
+              <Text style={styles.subtitle}>Choose a username and display name</Text>
             </View>
 
             <View style={styles.form}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Username</Text>
+              <View style={styles.inputContainer}>
+                <IconSymbol ios_icon_name="at" android_material_icon_name="alternate-email" size={20} color={colors.textSecondary} />
                 <TextInput
                   style={styles.input}
-                  placeholder="username"
-                  placeholderTextColor={colors.textMuted}
+                  placeholder="Username"
+                  placeholderTextColor={colors.textSecondary}
                   value={username}
                   onChangeText={setUsername}
                   autoCapitalize="none"
@@ -136,12 +133,12 @@ export default function AuthScreen() {
                 />
               </View>
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Display Name</Text>
+              <View style={styles.inputContainer}>
+                <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={20} color={colors.textSecondary} />
                 <TextInput
                   style={styles.input}
-                  placeholder="Your Name"
-                  placeholderTextColor={colors.textMuted}
+                  placeholder="Display Name"
+                  placeholderTextColor={colors.textSecondary}
                   value={displayName}
                   onChangeText={setDisplayName}
                   autoCapitalize="words"
@@ -149,11 +146,11 @@ export default function AuthScreen() {
               </View>
 
               <TouchableOpacity
-                style={[styles.button, loading && styles.buttonDisabled]}
+                style={[styles.button, isLoading && styles.buttonDisabled]}
                 onPress={handleCompleteProfile}
-                disabled={loading}
+                disabled={isLoading}
               >
-                {loading ? (
+                {isLoading ? (
                   <ActivityIndicator color={colors.background} />
                 ) : (
                   <Text style={styles.buttonText}>Complete Profile</Text>
@@ -167,41 +164,41 @@ export default function AuthScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
+        style={styles.keyboardView}
+      >
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
             <Text style={styles.logo}>🪙</Text>
-            <Text style={styles.title}>CoinHub</Text>
+            <Text style={styles.title}>Welcome to CoinHub</Text>
             <Text style={styles.subtitle}>
-              {mode === 'signin' ? 'Welcome back!' : 'Join the community'}
+              {isSignUp ? 'Create an account to get started' : 'Sign in to continue'}
             </Text>
           </View>
 
           <View style={styles.form}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email</Text>
+            <View style={styles.inputContainer}>
+              <IconSymbol ios_icon_name="envelope.fill" android_material_icon_name="email" size={20} color={colors.textSecondary} />
               <TextInput
                 style={styles.input}
-                placeholder="email@example.com"
-                placeholderTextColor={colors.textMuted}
+                placeholder="Email"
+                placeholderTextColor={colors.textSecondary}
                 value={email}
                 onChangeText={setEmail}
-                autoCapitalize="none"
                 keyboardType="email-address"
+                autoCapitalize="none"
                 autoCorrect={false}
               />
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Password</Text>
+            <View style={styles.inputContainer}>
+              <IconSymbol ios_icon_name="lock.fill" android_material_icon_name="lock" size={20} color={colors.textSecondary} />
               <TextInput
                 style={styles.input}
-                placeholder="••••••••"
-                placeholderTextColor={colors.textMuted}
+                placeholder="Password"
+                placeholderTextColor={colors.textSecondary}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry
@@ -210,38 +207,28 @@ export default function AuthScreen() {
             </View>
 
             <TouchableOpacity
-              style={[styles.button, loading && styles.buttonDisabled]}
-              onPress={mode === 'signin' ? handleSignIn : handleSignUp}
-              disabled={loading}
+              style={[styles.button, isLoading && styles.buttonDisabled]}
+              onPress={handleAuth}
+              disabled={isLoading}
             >
-              {loading ? (
+              {isLoading ? (
                 <ActivityIndicator color={colors.background} />
               ) : (
-                <Text style={styles.buttonText}>
-                  {mode === 'signin' ? 'Sign In' : 'Sign Up'}
-                </Text>
+                <Text style={styles.buttonText}>{isSignUp ? 'Sign Up' : 'Sign In'}</Text>
               )}
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.switchButton}
               onPress={() => {
-                console.log('Switching mode from', mode, 'to', mode === 'signin' ? 'signup' : 'signin');
-                setMode(mode === 'signin' ? 'signup' : 'signin');
+                console.log('AuthScreen: User toggled between sign in and sign up');
+                setIsSignUp(!isSignUp);
               }}
             >
-              <Text style={styles.switchText}>
-                {mode === 'signin'
-                  ? "Don't have an account? Sign Up"
-                  : 'Already have an account? Sign In'}
+              <Text style={styles.switchButtonText}>
+                {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
               </Text>
             </TouchableOpacity>
-          </View>
-
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>
-              CoinHub - Community-driven coin collecting
-            </Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -254,11 +241,23 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  keyboardView: {
+    flex: 1,
+  },
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
     padding: 24,
-    paddingTop: Platform.OS === 'android' ? 48 : 24,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: colors.textSecondary,
   },
   header: {
     alignItems: 'center',
@@ -269,7 +268,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   title: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: 'bold',
     color: colors.text,
     marginBottom: 8,
@@ -282,29 +281,28 @@ const styles = StyleSheet.create({
   form: {
     width: '100%',
   },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: colors.surfaceLight,
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    color: colors.text,
+  },
+  input: {
+    flex: 1,
+    height: 50,
+    marginLeft: 12,
     fontSize: 16,
+    color: colors.text,
   },
   button: {
     backgroundColor: colors.primary,
-    paddingVertical: 16,
-    borderRadius: 8,
+    borderRadius: 12,
+    height: 50,
+    justifyContent: 'center',
     alignItems: 'center',
     marginTop: 8,
   },
@@ -320,17 +318,9 @@ const styles = StyleSheet.create({
     marginTop: 24,
     alignItems: 'center',
   },
-  switchText: {
+  switchButtonText: {
     color: colors.primary,
     fontSize: 14,
-  },
-  footer: {
-    marginTop: 48,
-    alignItems: 'center',
-  },
-  footerText: {
-    color: colors.textMuted,
-    fontSize: 12,
-    textAlign: 'center',
+    fontWeight: '600',
   },
 });

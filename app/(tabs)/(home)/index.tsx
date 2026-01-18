@@ -1,5 +1,11 @@
 
+import { useAuth } from '@/contexts/AuthContext';
+import { IconSymbol } from '@/components/IconSymbol';
+import { useRouter } from 'expo-router';
+import { colors } from '@/styles/commonStyles';
 import React, { useState, useEffect, useCallback } from 'react';
+import Constants from 'expo-constants';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -10,14 +16,6 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { useAuth } from '@/contexts/AuthContext';
-import { IconSymbol } from '@/components/IconSymbol';
-import { colors } from '@/styles/commonStyles';
-import Constants from 'expo-constants';
-
-const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 
 interface Coin {
   id: string;
@@ -37,17 +35,19 @@ interface Coin {
   isLiked?: boolean;
 }
 
+const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
+
 export default function HomeScreen() {
-  const [coins, setCoins] = useState<Coin[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const { user, getToken } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
+  const [coins, setCoins] = useState<Coin[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const fetchCoins = useCallback(async () => {
+    console.log('HomeScreen: Fetching public coins feed');
     try {
-      console.log('HomeScreen: Fetching coins feed');
-      const response = await fetch(`${API_URL}/api/coins/feed`, {
+      const response = await fetch(`${API_URL}/api/feed/public`, {
         credentials: 'include',
       });
 
@@ -56,53 +56,44 @@ export default function HomeScreen() {
         console.log('HomeScreen: Fetched', data.coins?.length || 0, 'coins');
         setCoins(data.coins || []);
       } else {
-        console.error('HomeScreen: Failed to fetch coins:', response.status);
+        console.error('HomeScreen: Failed to fetch coins, status:', response.status);
       }
     } catch (error) {
       console.error('HomeScreen: Error fetching coins:', error);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    console.log('HomeScreen: Component mounted');
+    console.log('HomeScreen: Component mounted, user:', user?.username);
     fetchCoins();
   }, [fetchCoins]);
 
-  const onRefresh = () => {
-    console.log('HomeScreen: User pulled to refresh');
+  const onRefresh = async () => {
+    console.log('HomeScreen: Refreshing feed');
     setRefreshing(true);
-    fetchCoins();
+    await fetchCoins();
+    setRefreshing(false);
   };
 
   const handleLike = async (coinId: string) => {
-    console.log('HomeScreen: User tapped like/unlike on coin:', coinId);
+    console.log('HomeScreen: User tapped like button for coin:', coinId);
     try {
-      const coin = coins.find(c => c.id === coinId);
-      const isLiked = coin?.isLiked;
-
       const response = await fetch(`${API_URL}/api/coins/${coinId}/like`, {
-        method: isLiked ? 'DELETE' : 'POST',
+        method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
         body: JSON.stringify({}),
       });
 
       if (response.ok) {
-        setCoins(coins.map(c => {
-          if (c.id === coinId) {
-            return {
-              ...c,
-              isLiked: !isLiked,
-              likeCount: (c.likeCount || 0) + (isLiked ? -1 : 1),
-            };
-          }
-          return c;
-        }));
+        console.log('HomeScreen: Like successful, refreshing feed');
+        fetchCoins();
+      } else {
+        console.error('HomeScreen: Failed to like coin, status:', response.status);
       }
     } catch (error) {
       console.error('HomeScreen: Error liking coin:', error);
@@ -114,77 +105,62 @@ export default function HomeScreen() {
       style={styles.coinCard}
       onPress={() => {
         console.log('HomeScreen: User tapped on coin:', item.id);
-        router.push(`/coin-detail?coinId=${item.id}`);
+        router.push(`/coin-detail?id=${item.id}`);
       }}
     >
-      {item.images && item.images.length > 0 && (
+      <View style={styles.userInfo}>
+        <View style={styles.avatar}>
+          <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={20} color={colors.textSecondary} />
+        </View>
+        <View>
+          <Text style={styles.displayName}>{item.user.displayName}</Text>
+          <Text style={styles.username}>@{item.user.username}</Text>
+        </View>
+      </View>
+
+      {item.images && item.images.length > 0 ? (
         <Image source={{ uri: item.images[0].url }} style={styles.coinImage} />
+      ) : (
+        <View style={[styles.coinImage, styles.imagePlaceholder]}>
+          <IconSymbol ios_icon_name="photo" android_material_icon_name="image" size={48} color={colors.textSecondary} />
+        </View>
       )}
-      
+
       <View style={styles.coinInfo}>
         <Text style={styles.coinTitle}>{item.title}</Text>
         <Text style={styles.coinMeta}>
           {item.country} • {item.year}
         </Text>
-        
+      </View>
+
+      <View style={styles.actions}>
         <TouchableOpacity
-          style={styles.userInfo}
-          onPress={() => {
-            console.log('HomeScreen: User tapped on profile:', item.user.username);
-            if (item.user.id === user?.id) {
-              console.log('HomeScreen: Navigating to own profile');
-              router.push('/(tabs)/profile');
-            } else {
-              console.log('HomeScreen: Navigating to user profile:', item.user.username);
-              router.push(`/user-profile?userId=${item.user.username}`);
-            }
+          style={styles.actionButton}
+          onPress={(e) => {
+            e.stopPropagation();
+            handleLike(item.id);
           }}
         >
-          {item.user.avatarUrl ? (
-            <Image source={{ uri: item.user.avatarUrl }} style={styles.avatar} />
-          ) : (
-            <View style={[styles.avatar, styles.avatarPlaceholder]}>
-              <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={16} color={colors.textMuted} />
-            </View>
-          )}
-          <Text style={styles.username}>{item.user.displayName || item.user.username}</Text>
+          <IconSymbol
+            ios_icon_name={item.isLiked ? 'heart.fill' : 'heart'}
+            android_material_icon_name={item.isLiked ? 'favorite' : 'favorite-border'}
+            size={24}
+            color={item.isLiked ? colors.error : colors.text}
+          />
+          <Text style={styles.actionText}>{item.likeCount || 0}</Text>
         </TouchableOpacity>
 
-        <View style={styles.actions}>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => handleLike(item.id)}
-          >
-            <IconSymbol
-              ios_icon_name={item.isLiked ? "heart.fill" : "heart"}
-              android_material_icon_name={item.isLiked ? "favorite" : "favorite-border"}
-              size={20}
-              color={item.isLiked ? colors.error : colors.textSecondary}
-            />
-            <Text style={styles.actionText}>{item.likeCount || 0}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => router.push(`/coin-comments?coinId=${item.id}`)}
-          >
-            <IconSymbol ios_icon_name="bubble.left" android_material_icon_name="chat-bubble-outline" size={20} color={colors.textSecondary} />
-            <Text style={styles.actionText}>{item.commentCount || 0}</Text>
-          </TouchableOpacity>
-
-          {item.tradeStatus === 'open' && (
-            <View style={styles.tradeBadge}>
-              <Text style={styles.tradeBadgeText}>Open to Trade</Text>
-            </View>
-          )}
-        </View>
+        <TouchableOpacity style={styles.actionButton}>
+          <IconSymbol ios_icon_name="bubble.left" android_material_icon_name="chat-bubble-outline" size={24} color={colors.text} />
+          <Text style={styles.actionText}>{item.commentCount || 0}</Text>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading feed...</Text>
@@ -194,48 +170,22 @@ export default function HomeScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <FlatList
         data={coins}
         renderItem={renderCoin}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <IconSymbol
-              ios_icon_name="photo.on.rectangle"
-              android_material_icon_name="photo-library"
-              size={80}
-              color={colors.border}
-            />
+            <IconSymbol ios_icon_name="tray" android_material_icon_name="inbox" size={64} color={colors.textSecondary} />
             <Text style={styles.emptyText}>No coins yet</Text>
             <Text style={styles.emptySubtext}>Be the first to share a coin!</Text>
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={() => router.push('/add-coin')}
-            >
-              <Text style={styles.addButtonText}>Add Your First Coin</Text>
-            </TouchableOpacity>
           </View>
         }
       />
-
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => {
-          console.log('HomeScreen: User tapped add coin button');
-          router.push('/add-coin');
-        }}
-      >
-        <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={28} color={colors.background} />
-      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -251,28 +201,50 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    marginTop: 12,
+    marginTop: 16,
     fontSize: 16,
     color: colors.textSecondary,
   },
-  list: {
-    padding: 16,
-  },
   coinCard: {
     backgroundColor: colors.surface,
-    borderRadius: 12,
     marginBottom: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  userInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  displayName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  username: {
+    fontSize: 14,
+    color: colors.textSecondary,
   },
   coinImage: {
     width: '100%',
-    height: 250,
-    backgroundColor: colors.surfaceLight,
+    height: 300,
+  },
+  imagePlaceholder: {
+    backgroundColor: colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   coinInfo: {
-    padding: 16,
+    padding: 12,
   },
   coinTitle: {
     fontSize: 18,
@@ -283,98 +255,37 @@ const styles = StyleSheet.create({
   coinMeta: {
     fontSize: 14,
     color: colors.textSecondary,
-    marginBottom: 12,
-  },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  avatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    marginRight: 8,
-  },
-  avatarPlaceholder: {
-    backgroundColor: colors.surfaceLight,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  username: {
-    fontSize: 14,
-    color: colors.textSecondary,
   },
   actions: {
     flexDirection: 'row',
-    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingBottom: 12,
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: 24,
   },
   actionText: {
     fontSize: 14,
-    color: colors.textSecondary,
-    marginLeft: 4,
-  },
-  tradeBadge: {
-    backgroundColor: colors.tradeOpen,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-    marginLeft: 'auto',
-  },
-  tradeBadgeText: {
-    fontSize: 12,
-    color: colors.background,
-    fontWeight: '600',
+    color: colors.text,
+    marginLeft: 6,
   },
   emptyContainer: {
-    alignItems: 'center',
+    flex: 1,
     justifyContent: 'center',
-    paddingVertical: 80,
-    paddingHorizontal: 40,
+    alignItems: 'center',
+    paddingVertical: 60,
   },
   emptyText: {
     fontSize: 20,
     fontWeight: '600',
     color: colors.text,
-    marginTop: 20,
-    marginBottom: 8,
+    marginTop: 16,
   },
   emptySubtext: {
-    fontSize: 16,
+    fontSize: 14,
     color: colors.textSecondary,
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  addButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 32,
-    paddingVertical: 14,
-    borderRadius: 24,
-  },
-  addButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  fab: {
-    position: 'absolute',
-    right: 24,
-    bottom: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    marginTop: 8,
   },
 });
