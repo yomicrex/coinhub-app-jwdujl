@@ -4,7 +4,6 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { colors } from '@/styles/commonStyles';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useEffect } from 'react';
-import { View, Text, ActivityIndicator } from 'react-native';
 
 export default function RootLayout() {
   useEffect(() => {
@@ -30,6 +29,7 @@ export default function RootLayout() {
         >
           <Stack.Screen name="index" options={{ headerShown: false }} />
           <Stack.Screen name="auth" options={{ headerShown: false }} />
+          <Stack.Screen name="test-screen" options={{ title: 'App Status Test' }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="add-coin" options={{ title: 'Add Coin', presentation: 'modal' }} />
           <Stack.Screen name="edit-coin" options={{ title: 'Edit Coin', presentation: 'modal' }} />
