@@ -144,15 +144,19 @@ export default function AuthScreen() {
       console.log("AuthScreen: Sign in successful, response data:", data);
       
       // Wait a moment for the cookie to be set
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Refresh user data - this will fetch the session with the new cookie
       console.log("AuthScreen: Fetching user session after login");
       await fetchUser();
       
-      console.log("AuthScreen: Login complete, user should be set");
+      console.log("AuthScreen: Login complete, checking user state");
+      
+      // Wait a bit more and check if user was set
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       // The useEffect will handle navigation once user is set
+      console.log("AuthScreen: Waiting for useEffect to handle navigation");
     } catch (error: any) {
       console.error("AuthScreen: Authentication error:", error);
       const errorMsg = error.message || "Authentication failed. Please try again.";
