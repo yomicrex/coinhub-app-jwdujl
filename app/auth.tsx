@@ -16,28 +16,22 @@ import {
   Platform,
   KeyboardAvoidingView,
   ScrollView,
-  Image,
 } from "react-native";
 
-type Mode = "signin" | "signup" | "complete-profile" | "forgot-password" | "reset-password";
+type Mode = "signin" | "complete-profile";
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || "https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev";
 
 export default function AuthScreen() {
   const router = useRouter();
-  const { user, signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, signInWithGitHub, loading: authLoading, fetchUser } =
-    useAuth();
+  const { user, loading: authLoading, fetchUser } = useAuth();
 
   const [mode, setMode] = useState<Mode>("signin");
-  const [identifier, setIdentifier] = useState(""); // Can be email or username
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [profileEmail, setProfileEmail] = useState("");
   const [inviteCode, setInviteCode] = useState("");
-  const [resetToken, setResetToken] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
@@ -72,7 +66,7 @@ export default function AuthScreen() {
       
       // User is authenticated but hasn't completed profile
       console.log("AuthScreen: Profile incomplete, showing profile completion");
-      // Pre-fill email if available from OAuth or email signup
+      // Pre-fill email if available
       if (user.email) {
         setProfileEmail(user.email);
       }
@@ -91,22 +85,22 @@ export default function AuthScreen() {
     );
   }
 
-  const handleEmailAuth = async () => {
-    console.log("AuthScreen: handleEmailAuth called, mode:", mode, "identifier:", identifier);
+  const handleEmailSignIn = async () => {
+    console.log("AuthScreen: handleEmailSignIn called, email:", email);
     
-    if (!identifier || !password) {
-      const msg = mode === "signin" 
-        ? "Please enter username/email and password"
-        : "Please enter email and password";
+    if (!email) {
+      const msg = "Please enter your email address";
       console.log("AuthScreen: Validation error:", msg);
       setErrorMessage(msg);
       Alert.alert("Error", msg);
       return;
     }
 
-    if (password.length < 6) {
-      const msg = "Password must be at least 6 characters";
-      console.log("AuthScreen: Password validation error:", msg);
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      const msg = "Please enter a valid email address";
+      console.log("AuthScreen: Email validation error:", msg);
       setErrorMessage(msg);
       Alert.alert("Error", msg);
       return;
@@ -117,71 +111,42 @@ export default function AuthScreen() {
     setSuccessMessage("");
     
     try {
-      if (mode === "signin") {
-        console.log("AuthScreen: Attempting sign in with identifier:", identifier);
+      console.log("AuthScreen: Attempting email-only sign in with:", email);
+      
+      const response = await fetch(`${API_URL}/api/auth/email/signin`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+        }),
+      });
+
+      console.log("AuthScreen: Sign in response status:", response.status);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("AuthScreen: Sign in error response:", errorData);
         
-        // Use the new username-or-email endpoint
-        const response = await fetch(`${API_URL}/api/auth/sign-in/username-email`, {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            identifier: identifier.trim(),
-            password: password,
-          }),
-        });
-
-        console.log("AuthScreen: Sign in response status:", response.status);
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          console.error("AuthScreen: Sign in error response:", errorData);
-          
-          // Provide more helpful error messages
-          let errorMsg = errorData.error || errorData.message || "Sign in failed";
-          
-          if (response.status === 401) {
-            if (errorMsg.toLowerCase().includes("user not found") || errorMsg.toLowerCase().includes("not found")) {
-              errorMsg = `Account "${identifier}" not found. Please check your username/email or create a new account.`;
-            } else if (errorMsg.toLowerCase().includes("incorrect password") || errorMsg.toLowerCase().includes("password")) {
-              errorMsg = `Incorrect password for "${identifier}". Please try again or use "Forgot Password" to reset it.`;
-            }
-          } else if (response.status === 500) {
-            // Server error - might be password hash issue
-            errorMsg = `There was an issue with your account. The system is attempting to fix it automatically. Please try logging in again in a moment, or use "Forgot Password" to reset your password.`;
-          }
-          
-          throw new Error(errorMsg);
+        // Provide helpful error messages
+        let errorMsg = errorData.error || errorData.message || "Sign in failed";
+        
+        if (response.status === 404) {
+          errorMsg = `No account found with email "${email}". Please check your email address.`;
         }
-
-        const data = await response.json();
-        console.log("AuthScreen: Sign in successful, user:", data.user?.id);
         
-        // Refresh user data
-        await fetchUser();
-        
-        Alert.alert("Success", "Signed in successfully!");
-      } else {
-        // For signup, identifier must be an email
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(identifier)) {
-          const msg = "Please enter a valid email address for signup";
-          console.log("AuthScreen: Email validation error:", msg);
-          setErrorMessage(msg);
-          Alert.alert("Error", msg);
-          setLoading(false);
-          return;
-        }
-
-        console.log("AuthScreen: Attempting sign up with email:", identifier);
-        await signUpWithEmail(identifier, password, displayName || identifier.split('@')[0]);
-        console.log("AuthScreen: Sign up successful");
-        Alert.alert("Success", "Account created successfully! Please complete your profile.");
+        throw new Error(errorMsg);
       }
-      // fetchUser is called automatically in signUpWithEmail
-      // The useEffect will handle navigation based on profile status
+
+      const data = await response.json();
+      console.log("AuthScreen: Sign in successful, user:", data.user?.id);
+      
+      // Refresh user data
+      await fetchUser();
+      
+      Alert.alert("Success", "Signed in successfully!");
     } catch (error: any) {
       console.error("AuthScreen: Authentication error:", error);
       const errorMsg = error.message || "Authentication failed. Please try again.";
@@ -227,10 +192,9 @@ export default function AuthScreen() {
     console.log("AuthScreen: Completing profile with username:", username, "displayName:", displayName, "email:", profileEmail);
     
     try {
-      // Use authClient.$fetch to ensure authentication cookies are sent
       const response = await fetch(`${API_URL}/api/auth/complete-profile`, {
         method: "POST",
-        credentials: "include", // This is critical - ensures cookies are sent
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },
@@ -269,477 +233,6 @@ export default function AuthScreen() {
       setLoading(false);
     }
   };
-
-  const handleForgotPassword = async () => {
-    console.log("AuthScreen: handleForgotPassword called, identifier:", identifier);
-    
-    if (!identifier) {
-      const msg = "Please enter your email address";
-      console.log("AuthScreen: Validation error:", msg);
-      setErrorMessage(msg);
-      Alert.alert("Error", msg);
-      return;
-    }
-
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(identifier)) {
-      const msg = "Please enter a valid email address for password reset";
-      console.log("AuthScreen: Email validation error:", msg);
-      setErrorMessage(msg);
-      Alert.alert("Error", msg);
-      return;
-    }
-
-    setLoading(true);
-    setErrorMessage("");
-    setSuccessMessage("");
-    
-    try {
-      console.log("AuthScreen: Sending password reset request for email:", identifier);
-      const response = await fetch(`${API_URL}/api/auth/request-password-reset`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email: identifier.trim().toLowerCase() }),
-      });
-
-      console.log("AuthScreen: Forgot password response status:", response.status);
-
-      const data = await response.json();
-      console.log("AuthScreen: Forgot password response data:", data);
-
-      if (!response.ok) {
-        console.error("AuthScreen: Forgot password error response:", data);
-        
-        // Check if this is an email service configuration error
-        if (data.error && data.error.includes("Email service is not configured")) {
-          throw new Error(
-            "The email service is currently being configured. " +
-            "In the meantime, please contact support at support@coinhub.app for password reset assistance. " +
-            "We apologize for the inconvenience."
-          );
-        }
-        
-        throw new Error(data.error || data.message || "Failed to send reset email");
-      }
-
-      // Check if the backend actually sent the email or just logged it
-      if (data.success === false) {
-        // Check if this is an email service configuration error
-        if (data.error && data.error.includes("Email service is not configured")) {
-          throw new Error(
-            "The email service is currently being configured. " +
-            "In the meantime, please contact support at support@coinhub.app for password reset assistance. " +
-            "We apologize for the inconvenience."
-          );
-        }
-        
-        throw new Error(data.error || "Failed to send password reset email. Please try again later.");
-      }
-
-      const successMsg = data.message || "Password reset email sent! Please check your inbox and spam folder.";
-      setSuccessMessage(successMsg);
-      Alert.alert(
-        "Email Sent", 
-        successMsg + "\n\nIf you don't receive the email within a few minutes, please check your spam folder or contact support at support@coinhub.app.",
-        [
-          {
-            text: "OK",
-            onPress: () => {
-              // Switch to reset password mode
-              setMode("reset-password");
-            }
-          }
-        ]
-      );
-    } catch (error: any) {
-      console.error("AuthScreen: Forgot password error:", error);
-      const errorMsg = error.message || "Failed to send reset email. Please contact support at support@coinhub.app for assistance.";
-      setErrorMessage(errorMsg);
-      Alert.alert("Password Reset", errorMsg);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleResetPassword = async () => {
-    console.log("AuthScreen: handleResetPassword called");
-    
-    if (!resetToken || !newPassword || !confirmPassword) {
-      const msg = "Please fill in all fields";
-      console.log("AuthScreen: Validation error:", msg);
-      setErrorMessage(msg);
-      Alert.alert("Error", msg);
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      const msg = "Password must be at least 6 characters";
-      console.log("AuthScreen: Password validation error:", msg);
-      setErrorMessage(msg);
-      Alert.alert("Error", msg);
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      const msg = "Passwords do not match";
-      console.log("AuthScreen: Password mismatch error:", msg);
-      setErrorMessage(msg);
-      Alert.alert("Error", msg);
-      return;
-    }
-
-    setLoading(true);
-    setErrorMessage("");
-    setSuccessMessage("");
-    
-    try {
-      console.log("AuthScreen: Resetting password with token");
-      const response = await fetch(`${API_URL}/api/auth/reset-password`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ 
-          token: resetToken.trim(), 
-          newPassword 
-        }),
-      });
-
-      console.log("AuthScreen: Reset password response status:", response.status);
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error("AuthScreen: Reset password error response:", errorData);
-        throw new Error(errorData.error || errorData.message || "Failed to reset password");
-      }
-
-      const data = await response.json();
-      console.log("AuthScreen: Reset password response data:", data);
-
-      Alert.alert("Success", "Password reset successful! You can now sign in with your new password.");
-      
-      // Clear fields and switch to sign in mode
-      setResetToken("");
-      setNewPassword("");
-      setConfirmPassword("");
-      setMode("signin");
-    } catch (error: any) {
-      console.error("AuthScreen: Reset password error:", error);
-      const errorMsg = error.message || "Failed to reset password. Please try again or contact support at support@coinhub.app.";
-      setErrorMessage(errorMsg);
-      Alert.alert("Error", errorMsg);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSocialAuth = async (provider: "google" | "apple" | "github") => {
-    setLoading(true);
-    setErrorMessage("");
-    setSuccessMessage("");
-    console.log("AuthScreen: Attempting social auth with:", provider);
-    
-    try {
-      if (provider === "google") {
-        await signInWithGoogle();
-      } else if (provider === "apple") {
-        await signInWithApple();
-      } else if (provider === "github") {
-        await signInWithGitHub();
-      }
-      console.log("AuthScreen: Social auth successful");
-      Alert.alert("Success", "Signed in successfully!");
-      // fetchUser is called automatically in the social auth methods
-      // The useEffect will handle navigation based on profile status
-    } catch (error: any) {
-      console.error("AuthScreen: Social auth error:", error);
-      const errorMsg = error.message || "Authentication failed. Please try again.";
-      setErrorMessage(errorMsg);
-      Alert.alert("Error", errorMsg);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Forgot password screen
-  if (mode === "forgot-password") {
-    return (
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-      >
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={styles.content}>
-            {/* Back button */}
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => {
-                console.log("AuthScreen: Back to sign in");
-                setMode("signin");
-                setErrorMessage("");
-                setSuccessMessage("");
-              }}
-            >
-              <IconSymbol
-                ios_icon_name="chevron.left"
-                android_material_icon_name="arrow-back"
-                size={24}
-                color={colors.text}
-              />
-              <Text style={styles.backButtonText}>Back to Sign In</Text>
-            </TouchableOpacity>
-
-            {/* Logo/Icon */}
-            <View style={styles.logoContainer}>
-              <View style={styles.logoCircle}>
-                <IconSymbol
-                  ios_icon_name="lock.fill"
-                  android_material_icon_name="lock"
-                  size={80}
-                  color={colors.primary}
-                />
-              </View>
-            </View>
-
-            <Text style={styles.title}>Forgot Password?</Text>
-            <Text style={styles.subtitle}>
-              Enter your email address and we&apos;ll send you a link to reset your password.
-            </Text>
-
-            {errorMessage ? (
-              <View style={styles.errorContainer}>
-                <Text style={styles.errorText}>{errorMessage}</Text>
-              </View>
-            ) : null}
-
-            {successMessage ? (
-              <View style={styles.successContainer}>
-                <Text style={styles.successText}>{successMessage}</Text>
-              </View>
-            ) : null}
-
-            <View style={styles.inputContainer}>
-              <IconSymbol
-                ios_icon_name="envelope"
-                android_material_icon_name="email"
-                size={20}
-                color={colors.textSecondary}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Email Address"
-                placeholderTextColor={colors.textSecondary}
-                value={identifier}
-                onChangeText={setIdentifier}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-
-            <TouchableOpacity
-              style={[styles.primaryButton, loading && styles.buttonDisabled]}
-              onPress={handleForgotPassword}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.primaryButtonText}>Send Reset Link</Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.switchModeButton}
-              onPress={() => {
-                console.log("AuthScreen: Switching to reset password mode");
-                setMode("reset-password");
-                setErrorMessage("");
-                setSuccessMessage("");
-              }}
-            >
-              <Text style={styles.switchModeText}>
-                Already have a reset code? Enter it here
-              </Text>
-            </TouchableOpacity>
-
-            {/* Support contact info */}
-            <View style={styles.supportBox}>
-              <IconSymbol
-                ios_icon_name="info.circle"
-                android_material_icon_name="info"
-                size={20}
-                color={colors.textSecondary}
-              />
-              <Text style={styles.supportText}>
-                Need help? Contact us at{"\n"}
-                <Text style={styles.supportEmail}>support@coinhub.app</Text>
-              </Text>
-            </View>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    );
-  }
-
-  // Reset password screen
-  if (mode === "reset-password") {
-    return (
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-      >
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={styles.content}>
-            {/* Back button */}
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => {
-                console.log("AuthScreen: Back to sign in");
-                setMode("signin");
-                setErrorMessage("");
-                setSuccessMessage("");
-              }}
-            >
-              <IconSymbol
-                ios_icon_name="chevron.left"
-                android_material_icon_name="arrow-back"
-                size={24}
-                color={colors.text}
-              />
-              <Text style={styles.backButtonText}>Back to Sign In</Text>
-            </TouchableOpacity>
-
-            {/* Logo/Icon */}
-            <View style={styles.logoContainer}>
-              <View style={styles.logoCircle}>
-                <IconSymbol
-                  ios_icon_name="key.fill"
-                  android_material_icon_name="vpn-key"
-                  size={80}
-                  color={colors.primary}
-                />
-              </View>
-            </View>
-
-            <Text style={styles.title}>Reset Password</Text>
-            <Text style={styles.subtitle}>
-              Enter the reset code from your email and your new password.
-            </Text>
-
-            {errorMessage ? (
-              <View style={styles.errorContainer}>
-                <Text style={styles.errorText}>{errorMessage}</Text>
-              </View>
-            ) : null}
-
-            {successMessage ? (
-              <View style={styles.successContainer}>
-                <Text style={styles.successText}>{successMessage}</Text>
-              </View>
-            ) : null}
-
-            <View style={styles.inputContainer}>
-              <IconSymbol
-                ios_icon_name="key.fill"
-                android_material_icon_name="vpn-key"
-                size={20}
-                color={colors.textSecondary}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Reset Code"
-                placeholderTextColor={colors.textSecondary}
-                value={resetToken}
-                onChangeText={setResetToken}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-
-            <View style={styles.inputContainer}>
-              <IconSymbol
-                ios_icon_name="lock.fill"
-                android_material_icon_name="lock"
-                size={20}
-                color={colors.textSecondary}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="New Password (min 6 characters)"
-                placeholderTextColor={colors.textSecondary}
-                value={newPassword}
-                onChangeText={setNewPassword}
-                secureTextEntry
-                autoCapitalize="none"
-              />
-            </View>
-
-            <View style={styles.inputContainer}>
-              <IconSymbol
-                ios_icon_name="lock.fill"
-                android_material_icon_name="lock"
-                size={20}
-                color={colors.textSecondary}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Confirm New Password"
-                placeholderTextColor={colors.textSecondary}
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                secureTextEntry
-                autoCapitalize="none"
-              />
-            </View>
-
-            <TouchableOpacity
-              style={[styles.primaryButton, loading && styles.buttonDisabled]}
-              onPress={handleResetPassword}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.primaryButtonText}>Reset Password</Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.switchModeButton}
-              onPress={() => {
-                console.log("AuthScreen: Switching to forgot password mode");
-                setMode("forgot-password");
-                setErrorMessage("");
-                setSuccessMessage("");
-              }}
-            >
-              <Text style={styles.switchModeText}>
-                Need a new reset code? Request one here
-              </Text>
-            </TouchableOpacity>
-
-            {/* Support contact info */}
-            <View style={styles.supportBox}>
-              <IconSymbol
-                ios_icon_name="info.circle"
-                android_material_icon_name="info"
-                size={20}
-                color={colors.textSecondary}
-              />
-              <Text style={styles.supportText}>
-                Need help? Contact us at{"\n"}
-                <Text style={styles.supportEmail}>support@coinhub.app</Text>
-              </Text>
-            </View>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    );
-  }
 
   // Profile completion screen (only shown when user is authenticated but has no username)
   if (mode === "complete-profile" && user && !user.hasCompletedProfile) {
@@ -868,7 +361,7 @@ export default function AuthScreen() {
     );
   }
 
-  // Sign in / Sign up screen (shown when no user is authenticated)
+  // Email-only sign in screen
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -890,9 +383,7 @@ export default function AuthScreen() {
 
           <Text style={styles.title}>CoinHub</Text>
           <Text style={styles.subtitle}>
-            {mode === "signin"
-              ? "Sign in to your account"
-              : "Create your account"}
+            Enter your email to access your account
           </Text>
 
           {errorMessage ? (
@@ -907,126 +398,45 @@ export default function AuthScreen() {
             </View>
           ) : null}
 
-          {/* Account creation instructions for signup */}
-          {mode === "signup" && (
-            <View style={styles.instructionsBox}>
-              <IconSymbol
-                ios_icon_name="info.circle"
-                android_material_icon_name="info"
-                size={20}
-                color={colors.primary}
-              />
-              <View style={styles.instructionsContent}>
-                <Text style={styles.instructionsTitle}>Creating Your Account:</Text>
-                <Text style={styles.instructionsText}>
-                  1. Enter your email and password{"\n"}
-                  2. Complete your profile with username{"\n"}
-                  3. Use invite code: <Text style={styles.boldText}>BETA2026</Text>
-                </Text>
-              </View>
-            </View>
-          )}
-
-          {/* Updated info box for sign in */}
-          {mode === "signin" && (
-            <View style={styles.infoBox}>
-              <IconSymbol
-                ios_icon_name="info.circle"
-                android_material_icon_name="info"
-                size={20}
-                color={colors.primary}
-              />
-              <Text style={styles.infoText}>
-                You can sign in with either your <Text style={styles.boldText}>username</Text> or <Text style={styles.boldText}>email address</Text>
-              </Text>
-            </View>
-          )}
+          <View style={styles.infoBox}>
+            <IconSymbol
+              ios_icon_name="info.circle"
+              android_material_icon_name="info"
+              size={20}
+              color={colors.primary}
+            />
+            <Text style={styles.infoText}>
+              This is a beta test app. Simply enter your email address to access your profile.
+            </Text>
+          </View>
 
           <View style={styles.inputContainer}>
             <IconSymbol
-              ios_icon_name={mode === "signin" ? "person" : "envelope"}
-              android_material_icon_name={mode === "signin" ? "person" : "email"}
+              ios_icon_name="envelope"
+              android_material_icon_name="email"
               size={20}
               color={colors.textSecondary}
             />
             <TextInput
               style={styles.input}
-              placeholder={mode === "signin" ? "Username or Email" : "Email Address"}
+              placeholder="Email Address"
               placeholderTextColor={colors.textSecondary}
-              value={identifier}
+              value={email}
               onChangeText={(text) => {
-                console.log("AuthScreen: Identifier input changed:", text);
-                setIdentifier(text);
+                console.log("AuthScreen: Email input changed:", text);
+                setEmail(text);
               }}
-              keyboardType={mode === "signin" ? "default" : "email-address"}
+              keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
             />
           </View>
 
-          <View style={styles.inputContainer}>
-            <IconSymbol
-              ios_icon_name="lock.fill"
-              android_material_icon_name="lock"
-              size={20}
-              color={colors.textSecondary}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Password (min 6 characters)"
-              placeholderTextColor={colors.textSecondary}
-              value={password}
-              onChangeText={(text) => {
-                console.log("AuthScreen: Password input changed, length:", text.length);
-                setPassword(text);
-              }}
-              secureTextEntry
-              autoCapitalize="none"
-            />
-          </View>
-
-          {mode === "signup" && (
-            <View style={styles.inputContainer}>
-              <IconSymbol
-                ios_icon_name="person.fill"
-                android_material_icon_name="account-circle"
-                size={20}
-                color={colors.textSecondary}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Display Name (optional)"
-                placeholderTextColor={colors.textSecondary}
-                value={displayName}
-                onChangeText={(text) => {
-                  console.log("AuthScreen: Display name input changed:", text);
-                  setDisplayName(text);
-                }}
-                autoCapitalize="words"
-              />
-            </View>
-          )}
-
-          {/* Forgot password link (only show on sign in) */}
-          {mode === "signin" && (
-            <TouchableOpacity
-              style={styles.forgotPasswordButton}
-              onPress={() => {
-                console.log("AuthScreen: Switching to forgot password mode");
-                setMode("forgot-password");
-                setErrorMessage("");
-                setSuccessMessage("");
-              }}
-            >
-              <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-            </TouchableOpacity>
-          )}
-
           <TouchableOpacity
             style={[styles.primaryButton, loading && styles.buttonDisabled]}
             onPress={() => {
-              console.log("AuthScreen: Primary button pressed, mode:", mode);
-              handleEmailAuth();
+              console.log("AuthScreen: Login button pressed");
+              handleEmailSignIn();
             }}
             disabled={loading}
           >
@@ -1034,71 +444,25 @@ export default function AuthScreen() {
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.primaryButtonText}>
-                {mode === "signin" ? "Sign In" : "Sign Up"}
+                Login
               </Text>
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.switchModeButton}
-            onPress={() => {
-              const newMode = mode === "signin" ? "signup" : "signin";
-              console.log("AuthScreen: Switching mode from", mode, "to", newMode);
-              setMode(newMode);
-              setErrorMessage("");
-              setSuccessMessage("");
-            }}
-          >
-            <Text style={styles.switchModeText}>
-              {mode === "signin"
-                ? "Don't have an account? Sign Up"
-                : "Already have an account? Sign In"}
-            </Text>
-          </TouchableOpacity>
-
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          <TouchableOpacity
-            style={styles.socialButton}
-            onPress={() => {
-              console.log("AuthScreen: Google button pressed");
-              handleSocialAuth("google");
-            }}
-            disabled={loading}
-          >
+          <View style={styles.betaInfoBox}>
             <IconSymbol
-              ios_icon_name="g.circle.fill"
-              android_material_icon_name="g-translate"
-              size={20}
-              color={colors.text}
+              ios_icon_name="checkmark.shield.fill"
+              android_material_icon_name="verified-user"
+              size={24}
+              color={colors.primary}
             />
-            <Text style={styles.socialButtonText}>Continue with Google</Text>
-          </TouchableOpacity>
-
-          {Platform.OS === "ios" && (
-            <TouchableOpacity
-              style={[styles.socialButton, styles.appleButton]}
-              onPress={() => {
-                console.log("AuthScreen: Apple button pressed");
-                handleSocialAuth("apple");
-              }}
-              disabled={loading}
-            >
-              <IconSymbol
-                ios_icon_name="apple.logo"
-                android_material_icon_name="apple"
-                size={20}
-                color="#FFFFFF"
-              />
-              <Text style={[styles.socialButtonText, styles.appleButtonText]}>
-                Continue with Apple
+            <View style={styles.betaInfoContent}>
+              <Text style={styles.betaInfoTitle}>Beta Test Access</Text>
+              <Text style={styles.betaInfoText}>
+                No password required. Just enter your email to access your account.
               </Text>
-            </TouchableOpacity>
-          )}
+            </View>
+          </View>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -1128,17 +492,6 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 24,
     justifyContent: "center",
-  },
-  backButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 24,
-    gap: 8,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: colors.text,
-    fontWeight: "500",
   },
   logoContainer: {
     alignItems: "center",
@@ -1193,31 +546,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: "center",
   },
-  instructionsBox: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    gap: 12,
-  },
-  instructionsContent: {
-    flex: 1,
-  },
-  instructionsTitle: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: colors.text,
-    marginBottom: 8,
-  },
-  instructionsText: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    lineHeight: 20,
-  },
   infoBox: {
     flexDirection: "row",
     alignItems: "center",
@@ -1234,10 +562,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.text,
     lineHeight: 20,
-  },
-  boldText: {
-    fontWeight: "bold",
-    color: colors.primary,
   },
   inputContainer: {
     flexDirection: "row",
@@ -1276,15 +600,6 @@ const styles = StyleSheet.create({
     color: colors.primary,
     letterSpacing: 2,
   },
-  forgotPasswordButton: {
-    alignSelf: "flex-end",
-    marginBottom: 8,
-  },
-  forgotPasswordText: {
-    color: colors.primary,
-    fontSize: 14,
-    fontWeight: "500",
-  },
   primaryButton: {
     height: 50,
     backgroundColor: colors.primary,
@@ -1301,71 +616,29 @@ const styles = StyleSheet.create({
   buttonDisabled: {
     opacity: 0.6,
   },
-  switchModeButton: {
-    marginTop: 16,
-    alignItems: "center",
-  },
-  switchModeText: {
-    color: colors.primary,
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  divider: {
+  betaInfoBox: {
     flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 24,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.border,
-  },
-  dividerText: {
-    marginHorizontal: 12,
-    color: colors.textSecondary,
-    fontSize: 14,
-  },
-  socialButton: {
-    height: 50,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 12,
-    backgroundColor: colors.card,
-    flexDirection: "row",
-    gap: 12,
-  },
-  socialButtonText: {
-    fontSize: 16,
-    color: colors.text,
-    fontWeight: "500",
-  },
-  appleButton: {
-    backgroundColor: "#000",
-    borderColor: "#000",
-  },
-  appleButtonText: {
-    color: "#fff",
-  },
-  supportBox: {
-    flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     backgroundColor: colors.backgroundAlt,
     borderRadius: 12,
     padding: 16,
     marginTop: 24,
+    borderWidth: 1,
+    borderColor: colors.primary,
     gap: 12,
   },
-  supportText: {
+  betaInfoContent: {
     flex: 1,
+  },
+  betaInfoTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.text,
+    marginBottom: 4,
+  },
+  betaInfoText: {
     fontSize: 14,
     color: colors.textSecondary,
     lineHeight: 20,
-  },
-  supportEmail: {
-    fontWeight: "600",
-    color: colors.primary,
   },
 });
