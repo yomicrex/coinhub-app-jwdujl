@@ -86,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const storedUserData = await getUserData();
       console.log("AuthProvider: Stored user data:", storedUserData);
       
-      // Fetch the full profile from /api/auth/me to get CoinHub profile data
+      // Use authClient.$fetch which properly handles cookies
       // Retry up to 3 times with exponential backoff
       let lastError: any = null;
       let retries = 3;
@@ -95,23 +95,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           console.log(`AuthProvider: Profile fetch attempt ${attempt}/${retries}`);
           
-          const response = await fetch(`${API_URL}/api/auth/me`, {
+          // Use authClient.$fetch which includes credentials automatically
+          const response = await authClient.$fetch("/api/auth/me", {
             method: "GET",
             credentials: "include",
-            headers: {
-              "Content-Type": "application/json",
-            },
           });
           
-          console.log("AuthProvider: Profile fetch response status:", response.status);
+          console.log("AuthProvider: Profile fetch response:", response);
           
-          if (response.ok) {
-            const data = await response.json();
-            console.log("AuthProvider: Profile response data:", data);
-            
+          if (response) {
             // The /api/auth/me endpoint returns { user: {...}, profile: {...} }
-            const sessionUser = data.user;
-            const profileData = data.profile;
+            const sessionUser = (response as any).user;
+            const profileData = (response as any).profile;
             
             console.log("AuthProvider: Session user:", sessionUser);
             console.log("AuthProvider: Profile data:", profileData);
@@ -155,29 +150,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               setUser(null);
               return; // No user - exit the retry loop
             }
-          } else if (response.status === 401) {
-            // Session is invalid - clear everything and show sign in
+          } else {
+            // No response or null response - session invalid
+            console.log("AuthProvider: No response from /api/auth/me, session invalid");
+            setUser(null);
+            return;
+          }
+        } catch (error: any) {
+          lastError = error;
+          
+          // Check if it's a 401 error (session invalid)
+          if (error?.status === 401 || error?.message?.includes("401")) {
             console.log("AuthProvider: Session invalid (401), no active session");
             setUser(null);
             return; // 401 is not a retryable error - exit the retry loop
-          } else {
-            // Other error status - might be temporary, retry
-            lastError = new Error(`HTTP ${response.status}`);
-            console.log(`AuthProvider: Profile fetch returned status ${response.status}, will retry if attempts remain`);
-            
-            if (attempt < retries) {
-              // Wait before retrying (exponential backoff: 500ms, 1000ms, 2000ms)
-              const delay = 500 * Math.pow(2, attempt - 1);
-              console.log(`AuthProvider: Waiting ${delay}ms before retry...`);
-              await new Promise(resolve => setTimeout(resolve, delay));
-            }
           }
-        } catch (error) {
-          lastError = error;
+          
           console.error(`AuthProvider: Error fetching profile (attempt ${attempt}/${retries}):`, error);
           
           if (attempt < retries) {
-            // Wait before retrying (exponential backoff)
+            // Wait before retrying (exponential backoff: 500ms, 1000ms, 2000ms)
             const delay = 500 * Math.pow(2, attempt - 1);
             console.log(`AuthProvider: Waiting ${delay}ms before retry...`);
             await new Promise(resolve => setTimeout(resolve, delay));
@@ -257,6 +249,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       console.log("AuthProvider: Sign in successful, fetching user");
+      
+      // Wait a moment for the session cookie to be set
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       await fetchUser();
       console.log("AuthProvider: User fetched after sign in");
     } catch (error: any) {
@@ -304,6 +300,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       console.log("AuthProvider: Sign up successful, fetching user");
+      
+      // Wait a moment for the session cookie to be set
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       await fetchUser();
       console.log("AuthProvider: User fetched after sign up");
     } catch (error: any) {

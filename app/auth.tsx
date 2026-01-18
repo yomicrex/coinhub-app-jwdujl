@@ -17,6 +17,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import React, { useState, useEffect, useRef } from "react";
 import Constants from "expo-constants";
 import { IconSymbol } from "@/components/IconSymbol";
+import { authClient } from "@/lib/auth";
 
 type Mode = "signin" | "complete-profile" | "create-new-profile";
 
@@ -120,10 +121,10 @@ export default function AuthScreen() {
     
     try {
       console.log("AuthScreen: Attempting email-only sign in with:", email);
-      console.log("AuthScreen: API URL:", API_URL);
-      console.log("AuthScreen: Full endpoint:", `${API_URL}/api/auth/email/signin`);
+      console.log("AuthScreen: Using authClient.$fetch for proper cookie handling");
       
-      const response = await fetch(`${API_URL}/api/auth/email/signin`, {
+      // Use authClient.$fetch which properly handles cookies
+      const response = await authClient.$fetch("/api/auth/email/signin", {
         method: "POST",
         credentials: "include",
         headers: {
@@ -134,36 +135,34 @@ export default function AuthScreen() {
         }),
       });
 
-      console.log("AuthScreen: Sign in response status:", response.status);
-      console.log("AuthScreen: Sign in response headers:", JSON.stringify(Object.fromEntries(response.headers.entries())));
+      console.log("AuthScreen: Sign in response:", response);
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+      if (!response || (response as any).error) {
+        const errorData = (response as any)?.error || { message: "Unknown error" };
         console.error("AuthScreen: Sign in error response:", errorData);
         
         // Provide helpful error messages
-        let errorMsg = errorData.error || errorData.message || "Sign in failed";
+        let errorMsg = errorData.message || "Sign in failed";
         
-        if (response.status === 404) {
+        if (errorMsg.includes("not found") || errorMsg.includes("404")) {
           errorMsg = `No account found with email "${email}". Please check your email address or create a new profile.`;
-        } else if (response.status === 401) {
+        } else if (errorMsg.includes("401") || errorMsg.includes("Invalid")) {
           errorMsg = "Invalid credentials. Please check your email and try again.";
-        } else if (response.status === 500) {
+        } else if (errorMsg.includes("500")) {
           errorMsg = "Server error. Please try again in a few moments.";
         }
         
         throw new Error(errorMsg);
       }
 
-      const data = await response.json();
-      console.log("AuthScreen: Sign in successful, response data:", data);
+      console.log("AuthScreen: Sign in successful");
       
       // Show success message
       setSuccessMessage("Login successful! Loading your profile...");
       
       // Wait for the cookie to be set and propagated
       console.log("AuthScreen: Waiting for session to be established...");
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Fetch user profile - the AuthContext will handle retries
       console.log("AuthScreen: Fetching user profile after login...");
@@ -226,7 +225,8 @@ export default function AuthScreen() {
     console.log("AuthScreen: Completing profile with username:", username, "displayName:", displayName, "email:", profileEmail);
     
     try {
-      const response = await fetch(`${API_URL}/api/auth/complete-profile`, {
+      // Use authClient.$fetch for proper cookie handling
+      const response = await authClient.$fetch("/api/auth/complete-profile", {
         method: "POST",
         credentials: "include",
         headers: {
@@ -240,16 +240,13 @@ export default function AuthScreen() {
         }),
       });
 
-      console.log("AuthScreen: Complete profile response status:", response.status);
+      console.log("AuthScreen: Complete profile response:", response);
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+      if (!response || (response as any).error) {
+        const errorData = (response as any)?.error || { message: "Unknown error" };
         console.error("AuthScreen: Profile completion error response:", errorData);
-        throw new Error(errorData.error || errorData.message || "Failed to complete profile");
+        throw new Error(errorData.message || "Failed to complete profile");
       }
-
-      const data = await response.json();
-      console.log("AuthScreen: Complete profile response data:", data);
 
       Alert.alert("Success", "Profile created successfully!");
       
