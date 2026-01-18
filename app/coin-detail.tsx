@@ -192,7 +192,7 @@ export default function CoinDetailScreen() {
                 router.push('/(tabs)/profile');
               } else {
                 console.log('CoinDetailScreen: Navigating to user profile:', coin.user.username);
-                router.push(`/user-profile?userId=${coin.user.username}`);
+                router.push(`/user-profile?username=${coin.user.username}`);
               }
             }}
           >

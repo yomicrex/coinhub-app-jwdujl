@@ -278,8 +278,8 @@ export default function SearchUsersScreen() {
       console.log('SearchUsersScreen: Navigating to own profile');
       router.push('/(tabs)/profile');
     } else {
-      console.log('SearchUsersScreen: Navigating to user profile:', username);
-      router.push(`/user-profile?userId=${username}`);
+      console.log('SearchUsersScreen: Navigating to user profile with username:', username);
+      router.push(`/user-profile?username=${encodeURIComponent(username)}`);
     }
   };
 
