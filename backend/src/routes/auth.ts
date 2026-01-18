@@ -311,6 +311,59 @@ export function registerAuthRoutes(app: App) {
   });
 
   /**
+   * GET /api/auth/debug/email-by-username/:username
+   * DEBUG ENDPOINT - Find user by CoinHub username and get their Better Auth ID and email
+   * Helps correlate CoinHub usernames with Better Auth accounts
+   * REMOVE IN PRODUCTION
+   */
+  app.fastify.get('/api/auth/debug/email-by-username/:username', async (request: FastifyRequest, reply: FastifyReply) => {
+    const username = String((request.params as any).username);
+    app.logger.warn({ username }, 'DEBUG: Looking up user by username');
+
+    try {
+      const coinHubUser = await app.db.query.users.findFirst({
+        where: eq(schema.users.username, username)
+      });
+
+      if (!coinHubUser) {
+        return {
+          username,
+          found: false,
+          message: 'User not found in CoinHub users table'
+        };
+      }
+
+      // Get Better Auth user record
+      const authUser = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, coinHubUser.id)
+      });
+
+      // Get all accounts for this user
+      const accounts = await app.db.query.account.findMany({
+        where: eq(authSchema.account.userId, coinHubUser.id)
+      });
+
+      return {
+        username,
+        found: true,
+        coinHubUserId: coinHubUser.id,
+        coinHubEmail: coinHubUser.email,
+        authUserEmail: authUser?.email,
+        authUserId: authUser?.id,
+        accounts: accounts.map(a => ({
+          id: a.id,
+          providerId: a.providerId,
+          hasPassword: !!a.password,
+          passwordHashLength: a.password?.length
+        }))
+      };
+    } catch (error) {
+      app.logger.error({ err: error, username }, 'DEBUG: Lookup failed');
+      return reply.status(500).send({ error: 'Lookup failed', details: String(error) });
+    }
+  });
+
+  /**
    * IMPORTANT: Sign-in and Sign-up endpoints are automatically provided by Better Auth
    *
    * POST /api/auth/sign-in/email
