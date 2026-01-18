@@ -456,12 +456,29 @@ export function registerAuthRoutes(app: App) {
    * Returns 401 if session is invalid
    */
   app.fastify.get('/api/auth/me', async (request: FastifyRequest, reply: FastifyReply) => {
-    app.logger.info('Session validation attempt');
+    // Log incoming request details for debugging session issues
+    const cookies = request.headers.cookie || '';
+    const authHeader = request.headers.authorization || '';
+    app.logger.info(
+      {
+        hasCookie: !!cookies,
+        hasAuthHeader: !!authHeader,
+        cookieLength: cookies.length,
+        authHeaderLength: authHeader.length
+      },
+      'Session validation attempt - checking headers'
+    );
 
     const session = await requireAuth(request, reply);
     if (!session) {
-      app.logger.info('Session validation failed - no active session');
-      return;
+      app.logger.warn(
+        {
+          cookies: cookies.substring(0, 100),
+          authHeader: authHeader.substring(0, 50)
+        },
+        'Session validation failed - no active session'
+      );
+      return reply.status(401).send({ error: 'No active session' });
     }
 
     app.logger.info({ userId: session.user.id, email: session.user.email }, 'Session validation successful');
@@ -1360,11 +1377,11 @@ export function registerAuthRoutes(app: App) {
           .returning();
 
         app.logger.info(
-          { userId: authUser.id, identifier, identifierType: isEmail ? 'email' : 'username' },
+          { userId: authUser.id, identifier, identifierType: isEmail ? 'email' : 'username', sessionToken: session[0].token },
           'Sign-in successful: session created'
         );
 
-        // Set secure HTTP-only cookie using native Fastify header
+        // Set secure HTTP-only cookie with proper cross-origin attributes
         const cookieOptions = [
           `session=${session[0].token}`,
           'HttpOnly',
@@ -1376,6 +1393,9 @@ export function registerAuthRoutes(app: App) {
           cookieOptions.push('Secure');
         }
         reply.header('Set-Cookie', cookieOptions.join('; '));
+
+        // Also set Access-Control headers to allow credentials
+        reply.header('Access-Control-Allow-Credentials', 'true');
 
         return {
           user: {
@@ -1474,11 +1494,11 @@ export function registerAuthRoutes(app: App) {
           .returning();
 
         app.logger.info(
-          { userId: authUser.id, email: normalizedEmail, sessionId },
+          { userId: authUser.id, email: normalizedEmail, sessionId, sessionToken: session[0].token },
           'Email-only sign-in successful: session created'
         );
 
-        // Set secure HTTP-only cookie using native Fastify header
+        // Set secure HTTP-only cookie with proper cross-origin attributes
         // Use same cookie format as other signin endpoints for consistency
         const cookieOptions = [
           `session=${sessionToken}`,
@@ -1492,12 +1512,19 @@ export function registerAuthRoutes(app: App) {
         }
         reply.header('Set-Cookie', cookieOptions.join('; '));
 
-        // Return user data - session handled via cookie
+        // Also set Access-Control headers to allow credentials
+        reply.header('Access-Control-Allow-Credentials', 'true');
+
+        // Return user data with session token for Authorization header fallback
         return {
           user: {
             id: authUser.id,
             email: authUser.email,
             name: authUser.name,
+          },
+          session: {
+            token: sessionToken,
+            expiresAt,
           },
         };
       } catch (sessionError) {
@@ -1516,6 +1543,95 @@ export function registerAuthRoutes(app: App) {
       return reply.status(500).send({ error: 'An error occurred during sign-in' });
     }
   });
+
+  /**
+   * DEBUG ENDPOINT: GET /api/auth/debug/verify-session/:token
+   * Check if a session token exists in the database
+   * Helps diagnose session lookup issues
+   */
+  if (process.env.NODE_ENV !== 'production') {
+    app.fastify.get('/api/auth/debug/verify-session/:token', async (request: FastifyRequest, reply: FastifyReply) => {
+      const token = (request.params as any).token;
+      app.logger.info({ token }, 'DEBUG: Checking if session token exists');
+
+      try {
+        const session = await app.db.query.session.findFirst({
+          where: eq(authSchema.session.token, token)
+        });
+
+        if (!session) {
+          app.logger.warn({ token }, 'DEBUG: Session token not found in database');
+          return {
+            found: false,
+            token,
+            message: 'Session token not found in database'
+          };
+        }
+
+        app.logger.info(
+          { token, userId: session.userId, expiresAt: session.expiresAt },
+          'DEBUG: Session token found in database'
+        );
+
+        const isExpired = new Date(session.expiresAt) < new Date();
+
+        return {
+          found: true,
+          token,
+          sessionId: session.id,
+          userId: session.userId,
+          expiresAt: session.expiresAt,
+          isExpired,
+          message: isExpired ? 'Session found but expired' : 'Session found and valid'
+        };
+      } catch (error) {
+        app.logger.error({ err: error, token }, 'DEBUG: Error checking session');
+        return reply.status(500).send({ error: 'Error checking session', details: String(error) });
+      }
+    });
+
+    /**
+     * DEBUG ENDPOINT: GET /api/auth/debug/auth-middleware-status
+     * Check what the requireAuth middleware returns
+     */
+    app.fastify.get('/api/auth/debug/auth-middleware-status', async (request: FastifyRequest, reply: FastifyReply) => {
+      const cookies = request.headers.cookie || '';
+      const authHeader = request.headers.authorization || '';
+      app.logger.info(
+        {
+          cookieString: cookies.substring(0, 150),
+          authHeaderString: authHeader.substring(0, 100)
+        },
+        'DEBUG: Auth middleware status check'
+      );
+
+      const session = await requireAuth(request, reply);
+      if (!session) {
+        app.logger.warn(
+          { cookies, authHeader },
+          'DEBUG: requireAuth returned null - no session found'
+        );
+        return {
+          sessionFound: false,
+          incomingCookie: cookies.substring(0, 150),
+          incomingAuthHeader: authHeader.substring(0, 100),
+          message: 'requireAuth returned null'
+        };
+      }
+
+      app.logger.info(
+        { userId: session.user?.id },
+        'DEBUG: requireAuth returned a session'
+      );
+      return {
+        sessionFound: true,
+        userId: session.user?.id,
+        userEmail: session.user?.email,
+        incomingCookie: cookies.substring(0, 150),
+        incomingAuthHeader: authHeader.substring(0, 100)
+      };
+    });
+  }
 
   /**
    * GET /api/auth/verify-reset-token/:token
