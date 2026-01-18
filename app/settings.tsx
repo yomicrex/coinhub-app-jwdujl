@@ -93,6 +93,28 @@ export default function SettingsScreen() {
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => {
+                console.log('Settings: User tapped Admin Tools - View All Accounts');
+                router.push('/admin-view-accounts');
+              }}
+            >
+              <IconSymbol
+                ios_icon_name="person.3.fill"
+                android_material_icon_name="group"
+                size={24}
+                color="#34c759"
+              />
+              <Text style={[styles.menuItemText, { fontWeight: '600' }]}>View All Accounts</Text>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron-right"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
                 console.log('Settings: User tapped Admin Tools - Fix Passwords');
                 router.push('/admin-fix-passwords');
               }}
@@ -101,9 +123,9 @@ export default function SettingsScreen() {
                 ios_icon_name="wrench.and.screwdriver.fill"
                 android_material_icon_name="build"
                 size={24}
-                color="#34c759"
+                color="#ff9800"
               />
-              <Text style={[styles.menuItemText, { fontWeight: '600' }]}>Fix Password Issues</Text>
+              <Text style={styles.menuItemText}>Fix Password Issues</Text>
               <IconSymbol
                 ios_icon_name="chevron.right"
                 android_material_icon_name="chevron-right"
@@ -145,7 +167,7 @@ export default function SettingsScreen() {
                 ios_icon_name="shield.fill"
                 android_material_icon_name="admin-panel-settings"
                 size={24}
-                color={colors.primary}
+                color={colors.error}
               />
               <Text style={styles.menuItemText}>Delete User Account</Text>
               <IconSymbol
