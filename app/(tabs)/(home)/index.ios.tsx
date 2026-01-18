@@ -59,9 +59,9 @@ export default function FeedScreen() {
   const scrollViewRefs = useRef<{ [key: string]: ScrollView | null }>({});
 
   const fetchCoins = useCallback(async () => {
-    console.log('FeedScreen: Fetching public coins feed');
+    console.log('FeedScreen: Fetching public coins feed from /api/coins/feed');
     try {
-      const response = await fetch(`${API_URL}/api/feed/public`, {
+      const response = await fetch(`${API_URL}/api/coins/feed`, {
         credentials: 'include',
       });
 
@@ -71,6 +71,8 @@ export default function FeedScreen() {
         setCoins(data.coins || []);
       } else {
         console.error('FeedScreen: Failed to fetch coins, status:', response.status);
+        const errorText = await response.text();
+        console.error('FeedScreen: Error response:', errorText);
       }
     } catch (error) {
       console.error('FeedScreen: Error fetching coins:', error);
@@ -80,9 +82,9 @@ export default function FeedScreen() {
   }, []);
 
   const fetchTradeCoins = useCallback(async () => {
-    console.log('FeedScreen: Fetching coins up for trade');
+    console.log('FeedScreen: Fetching coins up for trade from /api/coins/feed/trade');
     try {
-      const response = await fetch(`${API_URL}/api/feed/trade`, {
+      const response = await fetch(`${API_URL}/api/coins/feed/trade`, {
         credentials: 'include',
       });
 
@@ -92,6 +94,8 @@ export default function FeedScreen() {
         setTradeCoins(data.coins || []);
       } else {
         console.error('FeedScreen: Failed to fetch trade coins, status:', response.status);
+        const errorText = await response.text();
+        console.error('FeedScreen: Error response:', errorText);
       }
     } catch (error) {
       console.error('FeedScreen: Error fetching trade coins:', error);
@@ -113,6 +117,13 @@ export default function FeedScreen() {
 
   const handleLike = async (coinId: string) => {
     console.log('FeedScreen: User tapped like button for coin:', coinId);
+    
+    if (!user) {
+      console.log('FeedScreen: User not logged in, redirecting to auth');
+      router.push('/auth');
+      return;
+    }
+    
     try {
       const response = await fetch(`${API_URL}/api/coins/${coinId}/like`, {
         method: 'POST',
@@ -136,6 +147,13 @@ export default function FeedScreen() {
 
   const handleAddCoin = () => {
     console.log('FeedScreen: User tapped Add Coin button');
+    
+    if (!user) {
+      console.log('FeedScreen: User not logged in, redirecting to auth');
+      router.push('/auth');
+      return;
+    }
+    
     router.push('/add-coin');
   };
 

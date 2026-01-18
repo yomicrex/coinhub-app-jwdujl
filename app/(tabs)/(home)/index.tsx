@@ -45,9 +45,9 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
 
   const fetchCoins = useCallback(async () => {
-    console.log('HomeScreen: Fetching public coins feed');
+    console.log('HomeScreen: Fetching public coins feed from /api/coins/feed');
     try {
-      const response = await fetch(`${API_URL}/api/feed/public`, {
+      const response = await fetch(`${API_URL}/api/coins/feed`, {
         credentials: 'include',
       });
 
@@ -57,6 +57,8 @@ export default function HomeScreen() {
         setCoins(data.coins || []);
       } else {
         console.error('HomeScreen: Failed to fetch coins, status:', response.status);
+        const errorText = await response.text();
+        console.error('HomeScreen: Error response:', errorText);
       }
     } catch (error) {
       console.error('HomeScreen: Error fetching coins:', error);
@@ -79,6 +81,13 @@ export default function HomeScreen() {
 
   const handleLike = async (coinId: string) => {
     console.log('HomeScreen: User tapped like button for coin:', coinId);
+    
+    if (!user) {
+      console.log('HomeScreen: User not logged in, redirecting to auth');
+      router.push('/auth');
+      return;
+    }
+    
     try {
       const response = await fetch(`${API_URL}/api/coins/${coinId}/like`, {
         method: 'POST',
@@ -98,6 +107,18 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('HomeScreen: Error liking coin:', error);
     }
+  };
+
+  const handleAddCoin = () => {
+    console.log('HomeScreen: User tapped Add Coin button');
+    
+    if (!user) {
+      console.log('HomeScreen: User not logged in, redirecting to auth');
+      router.push('/auth');
+      return;
+    }
+    
+    router.push('/add-coin');
   };
 
   const renderCoin = ({ item }: { item: Coin }) => (
@@ -161,6 +182,9 @@ export default function HomeScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>🪙 CoinHub</Text>
+        </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading feed...</Text>
@@ -171,6 +195,13 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>🪙 CoinHub</Text>
+        <TouchableOpacity onPress={handleAddCoin} style={styles.addButton}>
+          <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add-circle" size={28} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
+
       <FlatList
         data={coins}
         renderItem={renderCoin}
@@ -183,8 +214,12 @@ export default function HomeScreen() {
             <IconSymbol ios_icon_name="tray" android_material_icon_name="inbox" size={64} color={colors.textSecondary} />
             <Text style={styles.emptyText}>No coins yet</Text>
             <Text style={styles.emptySubtext}>Be the first to share a coin!</Text>
+            <TouchableOpacity style={styles.emptyButton} onPress={handleAddCoin}>
+              <Text style={styles.emptyButtonText}>Add Your First Coin</Text>
+            </TouchableOpacity>
           </View>
         }
+        contentContainerStyle={coins.length === 0 ? styles.emptyList : undefined}
       />
     </SafeAreaView>
   );
@@ -194,6 +229,24 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  addButton: {
+    padding: 4,
   },
   loadingContainer: {
     flex: 1,
@@ -271,6 +324,9 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginLeft: 6,
   },
+  emptyList: {
+    flexGrow: 1,
+  },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -287,5 +343,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     marginTop: 8,
+  },
+  emptyButton: {
+    marginTop: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+  },
+  emptyButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.background,
   },
 });
