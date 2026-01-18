@@ -17,7 +17,7 @@ import Constants from "expo-constants";
 import { useAuth } from "@/contexts/AuthContext";
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "expo-router";
-import { extractSessionCookie, storeSessionCookie } from "@/lib/cookieManager";
+import { storeSessionCookie } from "@/lib/cookieManager";
 
 type Mode = "signin" | "complete-profile" | "create-new-profile";
 
@@ -156,21 +156,15 @@ export default function AuthScreen() {
       const data = await response.json();
       console.log("AuthScreen: Sign in successful, data:", data);
       
-      // CRITICAL: Extract and store the session cookie from Set-Cookie header
-      const setCookieHeader = response.headers.get("set-cookie");
-      console.log("AuthScreen: Set-Cookie header:", setCookieHeader?.substring(0, 100));
-      
-      if (setCookieHeader) {
-        const sessionToken = extractSessionCookie(setCookieHeader);
-        if (sessionToken) {
-          console.log("AuthScreen: Storing session cookie:", sessionToken.substring(0, 20) + "...");
-          await storeSessionCookie(sessionToken);
-          console.log("AuthScreen: Session cookie stored successfully");
-        } else {
-          console.warn("AuthScreen: Could not extract session token from Set-Cookie header");
-        }
+      // CRITICAL FIX: Extract session token from response body, not Set-Cookie header
+      if (data.session && data.session.token) {
+        const sessionToken = data.session.token;
+        console.log("AuthScreen: Storing session token from response body:", sessionToken.substring(0, 20) + "...");
+        await storeSessionCookie(sessionToken);
+        console.log("AuthScreen: Session token stored successfully");
       } else {
-        console.warn("AuthScreen: No Set-Cookie header in response");
+        console.warn("AuthScreen: No session token in response body");
+        throw new Error("Login successful but no session token received. Please try again.");
       }
       
       // Show success message
