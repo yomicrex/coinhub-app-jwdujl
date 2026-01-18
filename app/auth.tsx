@@ -1,6 +1,4 @@
 
-import { colors } from "@/styles/commonStyles";
-import { useRouter } from "expo-router";
 import {
   View,
   Text,
@@ -13,10 +11,13 @@ import {
   KeyboardAvoidingView,
   ScrollView,
 } from "react-native";
+import { IconSymbol } from "@/components/IconSymbol";
+import { colors } from "@/styles/commonStyles";
+import Constants from "expo-constants";
 import { useAuth } from "@/contexts/AuthContext";
 import React, { useState, useEffect, useRef } from "react";
-import Constants from "expo-constants";
-import { IconSymbol } from "@/components/IconSymbol";
+import { useRouter } from "expo-router";
+import { extractSessionCookie, storeSessionCookie } from "@/lib/cookieManager";
 
 type Mode = "signin" | "complete-profile" | "create-new-profile";
 
@@ -120,10 +121,7 @@ export default function AuthScreen() {
     
     try {
       console.log("AuthScreen: Attempting email-only sign in with:", email);
-      console.log("AuthScreen: Calling raw fetch to avoid URL duplication");
       
-      // Use raw fetch instead of authClient.$fetch to avoid URL duplication
-      // The backend endpoint is /api/auth/email/signin
       const response = await fetch(`${API_URL}/api/auth/email/signin`, {
         method: "POST",
         credentials: "include",
@@ -158,12 +156,29 @@ export default function AuthScreen() {
       const data = await response.json();
       console.log("AuthScreen: Sign in successful, data:", data);
       
+      // CRITICAL: Extract and store the session cookie from Set-Cookie header
+      const setCookieHeader = response.headers.get("set-cookie");
+      console.log("AuthScreen: Set-Cookie header:", setCookieHeader?.substring(0, 100));
+      
+      if (setCookieHeader) {
+        const sessionToken = extractSessionCookie(setCookieHeader);
+        if (sessionToken) {
+          console.log("AuthScreen: Storing session cookie:", sessionToken.substring(0, 20) + "...");
+          await storeSessionCookie(sessionToken);
+          console.log("AuthScreen: Session cookie stored successfully");
+        } else {
+          console.warn("AuthScreen: Could not extract session token from Set-Cookie header");
+        }
+      } else {
+        console.warn("AuthScreen: No Set-Cookie header in response");
+      }
+      
       // Show success message
       setSuccessMessage("Login successful! Loading your profile...");
       
-      // Wait for the cookie to be set and propagated
+      // Wait for the cookie to be stored
       console.log("AuthScreen: Waiting for session to be established...");
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       // Fetch user profile - the AuthContext will handle retries
       console.log("AuthScreen: Fetching user profile after login...");
@@ -226,10 +241,10 @@ export default function AuthScreen() {
     console.log("AuthScreen: Completing profile with username:", username, "displayName:", displayName, "email:", profileEmail);
     
     try {
-      // Use raw fetch to avoid URL duplication
-      const response = await fetch(`${API_URL}/api/auth/complete-profile`, {
+      // Use raw fetch with stored session cookie
+      const { createAuthenticatedFetchOptions } = await import("@/lib/cookieManager");
+      const fetchOptions = await createAuthenticatedFetchOptions({
         method: "POST",
-        credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },
@@ -240,6 +255,8 @@ export default function AuthScreen() {
           inviteCode: inviteCode.toUpperCase(),
         }),
       });
+      
+      const response = await fetch(`${API_URL}/api/auth/complete-profile`, fetchOptions);
 
       console.log("AuthScreen: Complete profile response status:", response.status);
 

@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
 import { Platform } from "react-native";
 import { authClient, storeWebBearerToken, clearAuthTokens, API_URL, storeUserData, getUserData } from "@/lib/auth";
+import { createAuthenticatedFetchOptions, clearSessionCookie } from "@/lib/cookieManager";
 
 interface User {
   id: string;
@@ -86,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const storedUserData = await getUserData();
       console.log("AuthProvider: Stored user data:", storedUserData);
       
-      // Use raw fetch to avoid URL duplication
+      // Use authenticated fetch with stored session cookie
       // Retry up to 3 times with exponential backoff
       let lastError: any = null;
       let retries = 3;
@@ -95,14 +96,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           console.log(`AuthProvider: Profile fetch attempt ${attempt}/${retries}`);
           
-          // Use raw fetch with credentials to properly send cookies
-          const response = await fetch(`${API_URL}/api/auth/me`, {
+          // Create fetch options with session cookie
+          const fetchOptions = await createAuthenticatedFetchOptions({
             method: "GET",
-            credentials: "include",
             headers: {
               "Accept": "application/json",
             },
           });
+          
+          const response = await fetch(`${API_URL}/api/auth/me`, fetchOptions);
           
           console.log("AuthProvider: Profile fetch response status:", response.status);
           
@@ -383,9 +385,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       // Clear all auth tokens and storage
-      console.log("AuthProvider: Clearing auth tokens");
+      console.log("AuthProvider: Clearing auth tokens and session cookie");
       await clearAuthTokens();
-      console.log("AuthProvider: Auth tokens cleared");
+      await clearSessionCookie();
+      console.log("AuthProvider: Auth tokens and session cookie cleared");
       
       console.log("AuthProvider: Sign out complete");
     } catch (error) {
@@ -394,6 +397,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Even if there's an error, ensure local state is cleared
       setUser(null);
       await clearAuthTokens();
+      await clearSessionCookie();
       
       // Don't throw the error - logout should always succeed from the user's perspective
       console.log("AuthProvider: Sign out completed with errors (local state cleared)");
