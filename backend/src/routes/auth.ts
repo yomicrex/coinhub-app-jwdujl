@@ -456,36 +456,53 @@ export function registerAuthRoutes(app: App) {
    * Returns 401 if session is invalid
    */
   app.fastify.get('/api/auth/me', async (request: FastifyRequest, reply: FastifyReply) => {
-    // Log incoming request details for debugging session issues
-    const cookies = request.headers.cookie || '';
-    const authHeader = request.headers.authorization || '';
-    app.logger.info(
-      {
-        hasCookie: !!cookies,
-        hasAuthHeader: !!authHeader,
-        cookieLength: cookies.length,
-        authHeaderLength: authHeader.length
-      },
-      'Session validation attempt - checking headers'
-    );
-
-    const session = await requireAuth(request, reply);
-    if (!session) {
-      app.logger.warn(
-        {
-          cookies: cookies.substring(0, 100),
-          authHeader: authHeader.substring(0, 50)
-        },
-        'Session validation failed - no active session'
-      );
-      return reply.status(401).send({ error: 'No active session' });
-    }
-
-    app.logger.info({ userId: session.user.id, email: session.user.email }, 'Session validation successful');
+    app.logger.info('GET /api/auth/me - fetching current user');
 
     try {
+      // Get session token from cookie header
+      const cookieHeader = request.headers.cookie || '';
+      const sessionToken = cookieHeader
+        .split(';')
+        .find(cookie => cookie.trim().startsWith('session='))
+        ?.split('=')[1]
+        ?.trim();
+
+      if (!sessionToken) {
+        app.logger.warn('No session cookie found');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'No active session' });
+      }
+
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken)
+      });
+
+      if (!sessionRecord) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session token not found in database');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid' });
+      }
+
+      // Check if session is expired
+      if (new Date(sessionRecord.expiresAt) < new Date()) {
+        app.logger.info({ token: sessionToken.substring(0, 20) }, 'Session expired');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      }
+
+      // Get user record
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId)
+      });
+
+      if (!userRecord) {
+        app.logger.warn({ userId: sessionRecord.userId }, 'User not found for valid session');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+      }
+
+      app.logger.info({ userId: userRecord.id, email: userRecord.email }, 'Session validation successful');
+
+      // Get CoinHub user profile
       const profile = await app.db.query.users.findFirst({
-        where: eq(schema.users.id, session.user.id),
+        where: eq(schema.users.id, userRecord.id),
       });
 
       // Generate signed URL for avatar if it exists
@@ -495,19 +512,31 @@ export function registerAuthRoutes(app: App) {
           const { url } = await app.storage.getSignedUrl(profile.avatarUrl);
           profileWithAvatar = { ...profile, avatarUrl: url };
         } catch (urlError) {
-          app.logger.warn({ err: urlError, userId: session.user.id }, 'Failed to generate avatar signed URL');
+          app.logger.warn({ err: urlError, userId: userRecord.id }, 'Failed to generate avatar signed URL');
           profileWithAvatar = { ...profile, avatarUrl: null };
         }
       }
 
       app.logger.info(
-        { userId: session.user.id, hasProfile: !!profile, username: profile?.username },
+        { userId: userRecord.id, hasProfile: !!profile, username: profile?.username },
         'Current user profile fetched successfully'
       );
-      return { user: session.user, profile: profileWithAvatar };
+
+      return {
+        user: {
+          id: userRecord.id,
+          email: userRecord.email,
+          name: userRecord.name,
+          emailVerified: userRecord.emailVerified,
+          image: userRecord.image,
+          createdAt: userRecord.createdAt,
+          updatedAt: userRecord.updatedAt
+        },
+        profile: profileWithAvatar
+      };
     } catch (error) {
-      app.logger.error({ err: error, userId: session.user.id }, 'Failed to fetch current user');
-      throw error;
+      app.logger.error({ err: error }, 'Failed to fetch current user');
+      return reply.status(500).send({ error: 'Failed to fetch user' });
     }
   });
 
@@ -528,19 +557,59 @@ export function registerAuthRoutes(app: App) {
    * Returns 400 if validation fails, 409 if username already taken, 500 for database errors
    */
   app.fastify.post('/api/auth/complete-profile', async (request: FastifyRequest, reply: FastifyReply) => {
-    const session = await requireAuth(request, reply);
-    if (!session) {
-      app.logger.warn('Profile completion attempted without authentication');
-      return reply.status(401).send({ error: 'Unauthorized', message: 'Authentication required' });
-    }
+    app.logger.info('POST /api/auth/complete-profile - starting profile completion');
 
-    const requestBody = request.body as Record<string, any>;
-    app.logger.info(
-      { userId: session.user.id, email: session.user.email, username: requestBody?.username },
-      'Profile completion started'
-    );
+    let userRecord: any;
+    let requestBody: Record<string, any> | undefined;
 
     try {
+      // Get session token from cookie header
+      const cookieHeader = request.headers.cookie || '';
+      const sessionToken = cookieHeader
+        .split(';')
+        .find(cookie => cookie.trim().startsWith('session='))
+        ?.split('=')[1]
+        ?.trim();
+
+      if (!sessionToken) {
+        app.logger.warn('Profile completion attempted without authentication');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Authentication required' });
+      }
+
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken)
+      });
+
+      if (!sessionRecord) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session not found for profile completion');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid' });
+      }
+
+      // Check if session is expired
+      if (new Date(sessionRecord.expiresAt) < new Date()) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session expired for profile completion');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      }
+
+      // Get user record
+      userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId)
+      });
+
+      if (!userRecord) {
+        app.logger.warn({ userId: sessionRecord.userId }, 'User not found for profile completion');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+      }
+
+      app.logger.info({ userId: userRecord.id, email: userRecord.email }, 'Session validated for profile completion');
+
+      requestBody = request.body as Record<string, any>;
+      app.logger.info(
+        { userId: userRecord.id, email: userRecord.email, username: requestBody?.username },
+        'Profile completion started'
+      );
+
       const body = CompleteProfileSchema.parse(requestBody);
 
       // Check if username is already taken
@@ -549,32 +618,32 @@ export function registerAuthRoutes(app: App) {
         where: eq(schema.users.username, body.username),
       });
 
-      if (existingUsername && existingUsername.id !== session.user.id) {
-        app.logger.warn({ username: body.username, userId: session.user.id }, 'Username already taken');
+      if (existingUsername && existingUsername.id !== userRecord.id) {
+        app.logger.warn({ username: body.username, userId: userRecord.id }, 'Username already taken');
         return reply.status(409).send({ error: 'Username already taken' });
       }
 
       // Validate and process invite code if provided
       let inviteCodeUsed = null;
       if (body.inviteCode) {
-        app.logger.info({ userId: session.user.id, code: body.inviteCode }, 'Validating invite code');
+        app.logger.info({ userId: userRecord.id, code: body.inviteCode }, 'Validating invite code');
         try {
           const inviteCode = await app.db.query.inviteCodes.findFirst({
             where: eq(schema.inviteCodes.code, body.inviteCode.toUpperCase()),
           });
 
           if (!inviteCode) {
-            app.logger.warn({ code: body.inviteCode, userId: session.user.id }, 'Invalid invite code');
+            app.logger.warn({ code: body.inviteCode, userId: userRecord.id }, 'Invalid invite code');
             return reply.status(400).send({ error: 'Invalid invite code', message: 'The invite code is not valid' });
           }
 
           if (!inviteCode.isActive) {
-            app.logger.warn({ code: body.inviteCode, userId: session.user.id }, 'Invite code is not active');
+            app.logger.warn({ code: body.inviteCode, userId: userRecord.id }, 'Invite code is not active');
             return reply.status(400).send({ error: 'Invite code is not active', message: 'This invite code has been deactivated' });
           }
 
           if (inviteCode.expiresAt && new Date(inviteCode.expiresAt) < new Date()) {
-            app.logger.warn({ code: body.inviteCode, userId: session.user.id, expiresAt: inviteCode.expiresAt }, 'Invite code has expired');
+            app.logger.warn({ code: body.inviteCode, userId: userRecord.id, expiresAt: inviteCode.expiresAt }, 'Invite code has expired');
             return reply.status(400).send({ error: 'Invite code has expired', message: 'This invite code is no longer valid' });
           }
 
@@ -583,7 +652,7 @@ export function registerAuthRoutes(app: App) {
             inviteCode.usageCount >= inviteCode.usageLimit
           ) {
             app.logger.warn(
-              { code: body.inviteCode, userId: session.user.id, limit: inviteCode.usageLimit, count: inviteCode.usageCount },
+              { code: body.inviteCode, userId: userRecord.id, limit: inviteCode.usageLimit, count: inviteCode.usageCount },
               'Invite code usage limit reached'
             );
             return reply.status(400).send({ error: 'Invite code usage limit reached', message: 'This invite code has reached its usage limit' });
@@ -598,18 +667,18 @@ export function registerAuthRoutes(app: App) {
 
             inviteCodeUsed = body.inviteCode.toUpperCase();
             app.logger.info(
-              { userId: session.user.id, code: body.inviteCode, newCount: inviteCode.usageCount + 1 },
+              { userId: userRecord.id, code: body.inviteCode, newCount: inviteCode.usageCount + 1 },
               'Invite code used successfully'
             );
           } catch (updateError) {
             app.logger.error(
-              { err: updateError, codeId: inviteCode.id, userId: session.user.id },
+              { err: updateError, codeId: inviteCode.id, userId: userRecord.id },
               'Failed to increment invite code usage'
             );
             return reply.status(500).send({ error: 'Server error', message: 'Failed to process invite code' });
           }
         } catch (dbError) {
-          app.logger.error({ err: dbError, code: body.inviteCode, userId: session.user.id }, 'Database error during invite code processing');
+          app.logger.error({ err: dbError, code: body.inviteCode, userId: userRecord.id }, 'Database error during invite code processing');
           return reply.status(500).send({ error: 'Server error', message: 'Unable to validate invite code' });
         }
       }
@@ -618,12 +687,12 @@ export function registerAuthRoutes(app: App) {
       let profile;
       try {
         const existingProfile = await app.db.query.users.findFirst({
-          where: eq(schema.users.id, session.user.id),
+          where: eq(schema.users.id, userRecord.id),
         });
 
         if (existingProfile) {
           // Update existing profile
-          app.logger.info({ userId: session.user.id, username: body.username }, 'Updating existing user profile');
+          app.logger.info({ userId: userRecord.id, username: body.username }, 'Updating existing user profile');
           try {
             const updates: any = {
               username: body.username,
@@ -640,34 +709,25 @@ export function registerAuthRoutes(app: App) {
             await app.db
               .update(schema.users)
               .set(updates)
-              .where(eq(schema.users.id, session.user.id));
+              .where(eq(schema.users.id, userRecord.id));
 
             profile = await app.db.query.users.findFirst({
-              where: eq(schema.users.id, session.user.id),
+              where: eq(schema.users.id, userRecord.id),
             });
-            app.logger.info({ userId: session.user.id, username: body.username }, 'User profile updated successfully');
+            app.logger.info({ userId: userRecord.id, username: body.username }, 'User profile updated successfully');
           } catch (updateError) {
-            app.logger.error({ err: updateError, userId: session.user.id, username: body.username }, 'Failed to update user profile');
+            app.logger.error({ err: updateError, userId: userRecord.id, username: body.username }, 'Failed to update user profile');
             return reply.status(500).send({ error: 'Server error', message: 'Failed to update profile' });
           }
         } else {
           // Create new profile - fetch email from Better Auth user table
-          app.logger.info({ userId: session.user.id, username: body.username }, 'Creating new user profile');
-          let email = '';
-          try {
-            const authUser = await app.db.query.user.findFirst({
-              where: eq(authSchema.user.id, session.user.id),
-            });
-            email = authUser?.email || '';
-            app.logger.info({ userId: session.user.id, email }, 'Fetched auth user email');
-          } catch (err) {
-            app.logger.warn({ userId: session.user.id, err }, 'Failed to fetch auth user email, using fallback');
-            email = session.user.email || '';
-          }
+          app.logger.info({ userId: userRecord.id, username: body.username }, 'Creating new user profile');
+          const email = userRecord.email;
+          app.logger.info({ userId: userRecord.id, email }, 'Using auth user email');
 
           try {
             await app.db.insert(schema.users).values({
-              id: session.user.id,
+              id: userRecord.id,
               email: email,
               username: body.username,
               displayName: body.displayName,
@@ -678,34 +738,34 @@ export function registerAuthRoutes(app: App) {
             });
 
             profile = await app.db.query.users.findFirst({
-              where: eq(schema.users.id, session.user.id),
+              where: eq(schema.users.id, userRecord.id),
             });
             app.logger.info(
-              { userId: session.user.id, username: body.username, email, inviteCodeUsed },
+              { userId: userRecord.id, username: body.username, email, inviteCodeUsed },
               'User profile created successfully'
             );
           } catch (createError) {
             app.logger.error(
-              { err: createError, userId: session.user.id, username: body.username },
+              { err: createError, userId: userRecord.id, username: body.username },
               'Failed to create user profile'
             );
             return reply.status(500).send({ error: 'Server error', message: 'Failed to create profile' });
           }
         }
       } catch (profileError) {
-        app.logger.error({ err: profileError, userId: session.user.id }, 'Unexpected error during profile creation/update');
+        app.logger.error({ err: profileError, userId: userRecord.id }, 'Unexpected error during profile creation/update');
         return reply.status(500).send({ error: 'Server error', message: 'Failed to complete profile' });
       }
 
       app.logger.info(
-        { userId: session.user.id, username: body.username, inviteCodeUsed, email: profile?.email },
+        { userId: userRecord.id, username: body.username, inviteCodeUsed, email: profile?.email },
         'Profile completion finished successfully'
       );
       return profile;
     } catch (error) {
       if (error instanceof z.ZodError) {
         app.logger.warn(
-          { error: error.issues, userId: session.user.id, body: requestBody },
+          { error: error.issues, userId: userRecord.id, body: requestBody },
           'Profile completion validation error - missing or invalid fields'
         );
         return reply.status(400).send({
@@ -718,12 +778,12 @@ export function registerAuthRoutes(app: App) {
       // Check for unique constraint violations
       const errorMsg = String(error);
       if (errorMsg.includes('duplicate key') || errorMsg.includes('unique constraint')) {
-        app.logger.warn({ err: error, userId: session.user.id, username: requestBody?.username }, 'Username already taken - unique constraint violation');
+        app.logger.warn({ err: error, userId: userRecord.id, username: requestBody?.username }, 'Username already taken - unique constraint violation');
         return reply.status(409).send({ error: 'Username already taken' });
       }
 
       app.logger.error(
-        { err: error, userId: session.user.id, username: requestBody?.username, body: requestBody },
+        { err: error, userId: userRecord.id, username: requestBody?.username, body: requestBody },
         'Failed to complete profile - unexpected error'
       );
       return reply.status(500).send({ error: 'Server error', message: 'Failed to complete profile' });
@@ -781,15 +841,50 @@ export function registerAuthRoutes(app: App) {
    * Returns 400 if validation fails, 401 if not authenticated
    */
   app.fastify.patch('/api/auth/profile', async (request: FastifyRequest, reply: FastifyReply) => {
-    const session = await requireAuth(request, reply);
-    if (!session) {
-      app.logger.warn('Profile update attempted without authentication');
-      return reply.status(401).send({ error: 'Unauthorized', message: 'Authentication required' });
-    }
-
-    app.logger.info({ userId: session.user.id }, 'Profile update started');
+    app.logger.info('PATCH /api/auth/profile - updating profile');
 
     try {
+      // Get session token from cookie header
+      const cookieHeader = request.headers.cookie || '';
+      const sessionToken = cookieHeader
+        .split(';')
+        .find(cookie => cookie.trim().startsWith('session='))
+        ?.split('=')[1]
+        ?.trim();
+
+      if (!sessionToken) {
+        app.logger.warn('Profile update attempted without authentication');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Authentication required' });
+      }
+
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken)
+      });
+
+      if (!sessionRecord) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session not found for profile update');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid' });
+      }
+
+      // Check if session is expired
+      if (new Date(sessionRecord.expiresAt) < new Date()) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session expired for profile update');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      }
+
+      // Get user record
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId)
+      });
+
+      if (!userRecord) {
+        app.logger.warn({ userId: sessionRecord.userId }, 'User not found for profile update');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+      }
+
+      app.logger.info({ userId: userRecord.id }, 'Profile update started');
+
       const body = UpdateProfileSchema.parse(request.body);
 
       const updates: any = {};
@@ -801,25 +896,25 @@ export function registerAuthRoutes(app: App) {
 
       // Only update if there are actual changes
       if (Object.keys(updates).length === 0) {
-        app.logger.warn({ userId: session.user.id }, 'Profile update with no changes requested');
+        app.logger.warn({ userId: userRecord.id }, 'Profile update with no changes requested');
         return reply.status(400).send({ error: 'No fields to update', message: 'Provide at least one field to update' });
       }
 
       const profile = await app.db
         .update(schema.users)
         .set(updates)
-        .where(eq(schema.users.id, session.user.id))
+        .where(eq(schema.users.id, userRecord.id))
         .returning();
 
       app.logger.info(
-        { userId: session.user.id, updatedFields: Object.keys(updates) },
+        { userId: userRecord.id, updatedFields: Object.keys(updates) },
         'Profile updated successfully'
       );
       return profile[0];
     } catch (error) {
       if (error instanceof z.ZodError) {
         app.logger.warn(
-          { error: error.issues, userId: session.user.id },
+          { error: error.issues },
           'Profile update validation error'
         );
         return reply.status(400).send({
@@ -828,7 +923,7 @@ export function registerAuthRoutes(app: App) {
           message: 'Please check the fields and try again'
         });
       }
-      app.logger.error({ err: error, userId: session.user.id }, 'Failed to update profile');
+      app.logger.error({ err: error }, 'Failed to update profile');
       return reply.status(500).send({ error: 'Server error', message: 'Failed to update profile' });
     }
   });

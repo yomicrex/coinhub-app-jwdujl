@@ -22,6 +22,106 @@ export function registerProfileRoutes(app: App) {
   const requireAuth = app.requireAuth();
 
   /**
+   * GET /api/profiles/:userId
+   * Get user profile by user ID
+   * Returns: { id, username, displayName, avatarUrl, bio, location, role, email }
+   */
+  app.fastify.get('/api/profiles/:userId', async (request: FastifyRequest, reply: FastifyReply) => {
+    const { userId } = request.params as { userId: string };
+
+    app.logger.info({ userId }, 'Fetching user profile by ID');
+
+    try {
+      const profile = await app.db.query.users.findFirst({
+        where: eq(schema.users.id, userId),
+      });
+
+      if (!profile) {
+        app.logger.warn({ userId }, 'User profile not found');
+        return reply.status(404).send({ error: 'User not found' });
+      }
+
+      app.logger.info({ userId, username: profile.username }, 'User profile fetched by ID');
+
+      // Generate signed URL for avatar if it exists
+      let avatarUrl = profile.avatarUrl;
+      if (avatarUrl) {
+        try {
+          const { url } = await app.storage.getSignedUrl(avatarUrl);
+          avatarUrl = url;
+        } catch (urlError) {
+          app.logger.warn({ err: urlError, userId }, 'Failed to generate avatar signed URL');
+          avatarUrl = null;
+        }
+      }
+
+      return {
+        id: profile.id,
+        username: profile.username,
+        displayName: profile.displayName,
+        avatarUrl,
+        bio: profile.bio || null,
+        location: profile.location || null,
+        role: profile.role,
+        email: profile.email,
+      };
+    } catch (error) {
+      app.logger.error({ err: error, userId }, 'Failed to fetch user profile by ID');
+      return reply.status(500).send({ error: 'Failed to fetch profile' });
+    }
+  });
+
+  /**
+   * GET /api/profiles/username/:username
+   * Get user profile by username (case-insensitive)
+   * Returns: { id, username, displayName, avatarUrl, bio, location, role, email }
+   */
+  app.fastify.get('/api/profiles/username/:username', async (request: FastifyRequest, reply: FastifyReply) => {
+    const { username } = request.params as { username: string };
+
+    app.logger.info({ username }, 'Fetching user profile by username');
+
+    try {
+      const profile = await app.db.query.users.findFirst({
+        where: eq(schema.users.username, username),
+      });
+
+      if (!profile) {
+        app.logger.warn({ username }, 'User profile not found');
+        return reply.status(404).send({ error: 'User not found' });
+      }
+
+      app.logger.info({ username, userId: profile.id }, 'User profile fetched by username');
+
+      // Generate signed URL for avatar if it exists
+      let avatarUrl = profile.avatarUrl;
+      if (avatarUrl) {
+        try {
+          const { url } = await app.storage.getSignedUrl(avatarUrl);
+          avatarUrl = url;
+        } catch (urlError) {
+          app.logger.warn({ err: urlError, userId: profile.id }, 'Failed to generate avatar signed URL');
+          avatarUrl = null;
+        }
+      }
+
+      return {
+        id: profile.id,
+        username: profile.username,
+        displayName: profile.displayName,
+        avatarUrl,
+        bio: profile.bio || null,
+        location: profile.location || null,
+        role: profile.role,
+        email: profile.email,
+      };
+    } catch (error) {
+      app.logger.error({ err: error, username }, 'Failed to fetch user profile by username');
+      return reply.status(500).send({ error: 'Failed to fetch profile' });
+    }
+  });
+
+  /**
    * GET /api/users/:username
    * Get public user profile by username with follow counts
    * Shows if authenticated user is following this profile
