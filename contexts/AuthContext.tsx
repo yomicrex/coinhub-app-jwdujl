@@ -2,7 +2,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
 import { Platform } from "react-native";
 import { authClient, clearAuthTokens, API_URL } from "@/lib/auth";
-import { storeSessionCookie, clearSessionCookie, createAuthenticatedFetchOptions } from "@/lib/cookieManager";
 import * as SecureStore from "expo-secure-store";
 
 interface User {
@@ -31,6 +30,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const USER_DATA_KEY = "coinhub_user_data";
+const SESSION_TOKEN_KEY = "coinhub_session_token";
 
 async function storeUserData(userData: any) {
   console.log("AuthContext: Storing user data");
@@ -79,6 +79,46 @@ async function clearUserData() {
   }
 }
 
+async function storeSessionToken(token: string) {
+  console.log("AuthContext: Storing session token");
+  try {
+    if (Platform.OS === "web") {
+      localStorage.setItem(SESSION_TOKEN_KEY, token);
+    } else {
+      await SecureStore.setItemAsync(SESSION_TOKEN_KEY, token);
+    }
+    console.log("AuthContext: Session token stored successfully");
+  } catch (error) {
+    console.error("AuthContext: Error storing session token:", error);
+  }
+}
+
+async function getSessionToken(): Promise<string | null> {
+  try {
+    if (Platform.OS === "web") {
+      return localStorage.getItem(SESSION_TOKEN_KEY);
+    } else {
+      return await SecureStore.getItemAsync(SESSION_TOKEN_KEY);
+    }
+  } catch (error) {
+    console.error("AuthContext: Error retrieving session token:", error);
+    return null;
+  }
+}
+
+async function clearSessionToken() {
+  console.log("AuthContext: Clearing session token");
+  try {
+    if (Platform.OS === "web") {
+      localStorage.removeItem(SESSION_TOKEN_KEY);
+    } else {
+      await SecureStore.deleteItemAsync(SESSION_TOKEN_KEY);
+    }
+  } catch (error) {
+    console.error("AuthContext: Error clearing session token:", error);
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -87,23 +127,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log("AuthContext: Fetching user session");
       
-      // Create authenticated fetch options with session cookie
-      const fetchOptions = await createAuthenticatedFetchOptions({
+      // Get session token from storage
+      const sessionToken = await getSessionToken();
+      
+      if (!sessionToken) {
+        console.log("AuthContext: No session token found");
+        setUser(null);
+        await clearUserData();
+        return;
+      }
+      
+      console.log("AuthContext: Session token found, fetching user profile");
+      
+      // Create fetch options with Authorization header (React Native compatible)
+      const fetchOptions: RequestInit = {
         method: "GET",
         headers: {
           "Accept": "application/json",
+          "Authorization": `Bearer ${sessionToken}`,
         },
-      });
+        credentials: 'include',
+      };
       
       const response = await fetch(`${API_URL}/api/auth/me`, fetchOptions);
       
       console.log("AuthContext: /api/auth/me response status:", response.status);
       
       if (response.status === 401) {
-        // No active session
-        console.log("AuthContext: No active session (401)");
+        // Session expired or invalid
+        console.log("AuthContext: Session invalid (401), clearing session");
         setUser(null);
         await clearUserData();
+        await clearSessionToken();
         return;
       }
       
@@ -151,6 +206,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log("AuthContext: No user in response");
         setUser(null);
         await clearUserData();
+        await clearSessionToken();
       }
     } catch (error) {
       console.error("AuthContext: Failed to fetch user:", error);
@@ -162,6 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(storedUserData);
       } else {
         setUser(null);
+        await clearSessionToken();
       }
     }
   }, []);
@@ -186,7 +243,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithEmail = async (email: string, password: string) => {
     try {
-      console.log("AuthContext: Starting email sign-in");
+      console.log("AuthContext: Starting email sign-in for:", email);
       
       // Use custom endpoint for email-only sign-in
       const response = await fetch(`${API_URL}/api/auth/email/signin`, {
@@ -197,25 +254,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         credentials: 'include',
         body: JSON.stringify({
           email: email.trim().toLowerCase(),
-          password,
         }),
       });
 
       console.log("AuthContext: Sign-in response status:", response.status);
-
-      // Extract and store session cookie from Set-Cookie header
-      const setCookieHeader = response.headers.get('set-cookie');
-      if (setCookieHeader) {
-        console.log("AuthContext: Storing session cookie from Set-Cookie header");
-        await storeSessionCookie(setCookieHeader);
-      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         console.error("AuthContext: Sign-in error:", errorData);
         
         if (response.status === 401 || response.status === 400) {
-          throw new Error("Invalid email or password. Please check your credentials and try again.");
+          throw new Error("Invalid email. Please check your email and try again.");
         } else if (response.status === 404) {
           throw new Error("Account not found. Please sign up first.");
         } else {
@@ -226,8 +275,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
       console.log("AuthContext: Sign-in successful, response data:", data);
       
-      // Wait a moment for cookies to be set
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Extract session token from response body
+      if (data.session && data.session.token) {
+        console.log("AuthContext: Storing session token from response body");
+        await storeSessionToken(data.session.token);
+      } else {
+        console.error("AuthContext: No session token in response body");
+        throw new Error("Sign in failed: No session token received");
+      }
+      
+      // Wait a moment for storage to complete
+      await new Promise(resolve => setTimeout(resolve, 300));
       
       // Fetch user profile
       await fetchUser();
@@ -305,7 +363,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       // Clear all local storage
       await clearAuthTokens();
-      await clearSessionCookie();
+      await clearSessionToken();
       await clearUserData();
       
       console.log("AuthContext: Sign-out complete");
@@ -315,7 +373,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Ensure local state is cleared even if there's an error
       setUser(null);
       await clearAuthTokens();
-      await clearSessionCookie();
+      await clearSessionToken();
       await clearUserData();
     }
   };
@@ -345,4 +403,18 @@ export function useAuth() {
     throw new Error("useAuth must be used within AuthProvider");
   }
   return context;
+}
+
+// Export helper function to get session token for API calls
+export async function getAuthSessionToken(): Promise<string | null> {
+  try {
+    if (Platform.OS === "web") {
+      return localStorage.getItem(SESSION_TOKEN_KEY);
+    } else {
+      return await SecureStore.getItemAsync(SESSION_TOKEN_KEY);
+    }
+  } catch (error) {
+    console.error("getAuthSessionToken: Error retrieving session token:", error);
+    return null;
+  }
 }

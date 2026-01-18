@@ -110,6 +110,19 @@ const styles = StyleSheet.create({
   usernameTaken: {
     color: colors.error,
   },
+  infoBox: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  infoText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
+  },
 });
 
 export default function AuthScreen() {
@@ -167,8 +180,8 @@ export default function AuthScreen() {
   }, [username, mode]);
 
   const handleEmailSignIn = async () => {
-    if (!email || !password) {
-      setError("Please enter both email and password");
+    if (!email) {
+      setError("Please enter your email address");
       return;
     }
 
@@ -176,8 +189,8 @@ export default function AuthScreen() {
     setError("");
 
     try {
-      console.log("AuthScreen: Attempting sign-in");
-      await signInWithEmail(email, password);
+      console.log("AuthScreen: Attempting sign-in with email:", email);
+      await signInWithEmail(email, "");
       console.log("AuthScreen: Sign-in successful");
       // Navigation will happen automatically via useEffect when user state updates
     } catch (err: any) {
@@ -354,6 +367,49 @@ export default function AuthScreen() {
                 )}
               </TouchableOpacity>
             </>
+          ) : mode === "signin" ? (
+            <>
+              <View style={styles.infoBox}>
+                <Text style={styles.infoText}>
+                  Enter your email address to sign in. No password required during beta testing.
+                </Text>
+              </View>
+              <TextInput
+                style={styles.input}
+                placeholder="Email"
+                placeholderTextColor={colors.textSecondary}
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                autoCorrect={false}
+              />
+              <TouchableOpacity
+                style={[styles.button, loading && styles.buttonDisabled]}
+                onPress={handleEmailSignIn}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.buttonText}>Sign In</Text>
+                )}
+              </TouchableOpacity>
+
+              <View style={styles.switchModeContainer}>
+                <Text style={styles.switchModeText}>
+                  Don&apos;t have an account?
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setMode("signup");
+                    setError("");
+                  }}
+                >
+                  <Text style={styles.switchModeButton}>Sign Up</Text>
+                </TouchableOpacity>
+              </View>
+            </>
           ) : (
             <>
               {mode === "signup" && (
@@ -388,33 +444,27 @@ export default function AuthScreen() {
               />
               <TouchableOpacity
                 style={[styles.button, loading && styles.buttonDisabled]}
-                onPress={mode === "signin" ? handleEmailSignIn : handleEmailSignUp}
+                onPress={handleEmailSignUp}
                 disabled={loading}
               >
                 {loading ? (
                   <ActivityIndicator color="#FFFFFF" />
                 ) : (
-                  <Text style={styles.buttonText}>
-                    {mode === "signin" ? "Sign In" : "Sign Up"}
-                  </Text>
+                  <Text style={styles.buttonText}>Sign Up</Text>
                 )}
               </TouchableOpacity>
 
               <View style={styles.switchModeContainer}>
                 <Text style={styles.switchModeText}>
-                  {mode === "signin"
-                    ? "Don't have an account?"
-                    : "Already have an account?"}
+                  Already have an account?
                 </Text>
                 <TouchableOpacity
                   onPress={() => {
-                    setMode(mode === "signin" ? "signup" : "signin");
+                    setMode("signin");
                     setError("");
                   }}
                 >
-                  <Text style={styles.switchModeButton}>
-                    {mode === "signin" ? "Sign Up" : "Sign In"}
-                  </Text>
+                  <Text style={styles.switchModeButton}>Sign In</Text>
                 </TouchableOpacity>
               </View>
             </>
