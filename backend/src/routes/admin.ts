@@ -7,6 +7,94 @@ import { z } from 'zod';
 
 export function registerAdminRoutes(app: App) {
   /**
+   * GET /api/admin/users/list
+   * List all user accounts with their details
+   *
+   * Returns: { users: [ { id, username, email, displayName, createdAt, emailVerified } ] }
+   * Ordered by createdAt descending (newest first)
+   *
+   * Note: Password data is never exposed
+   * Only non-sensitive user profile information is returned
+   */
+  app.fastify.get('/api/admin/users/list', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.info('Admin: Fetching list of all users');
+
+    try {
+      // Get all users from CoinHub users table
+      const allUsers = await app.db.query.users.findMany({
+        columns: {
+          id: true,
+          username: true,
+          email: true,
+          displayName: true,
+          createdAt: true,
+          updatedAt: true,
+        }
+      });
+
+      // Get email verification status from Better Auth user table
+      const usersWithVerification = [];
+
+      for (const user of allUsers) {
+        try {
+          const authUser = await app.db.query.user.findFirst({
+            where: eq(authSchema.user.id, user.id),
+            columns: {
+              emailVerified: true,
+            }
+          });
+
+          usersWithVerification.push({
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            displayName: user.displayName,
+            createdAt: user.createdAt,
+            emailVerified: authUser?.emailVerified || false,
+          });
+        } catch (e) {
+          app.logger.warn(
+            { userId: user.id, username: user.username, err: e },
+            'Admin: Failed to fetch auth user details'
+          );
+          // Still include user without email verification status
+          usersWithVerification.push({
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            displayName: user.displayName,
+            createdAt: user.createdAt,
+            emailVerified: false,
+          });
+        }
+      }
+
+      // Sort by createdAt descending (newest first)
+      usersWithVerification.sort((a, b) => {
+        const dateA = new Date(a.createdAt).getTime();
+        const dateB = new Date(b.createdAt).getTime();
+        return dateB - dateA;
+      });
+
+      app.logger.info(
+        { totalUsers: usersWithVerification.length },
+        'Admin: User list fetched successfully'
+      );
+
+      return {
+        users: usersWithVerification,
+        count: usersWithVerification.length,
+      };
+    } catch (error) {
+      app.logger.error(
+        { err: error },
+        'Admin: Failed to fetch user list'
+      );
+      return reply.status(500).send({ error: 'Failed to fetch user list', details: String(error) });
+    }
+  });
+
+  /**
    * DELETE /api/admin/users/:username
    * Deletes a user account and all associated data
    *
