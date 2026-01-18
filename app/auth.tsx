@@ -18,7 +18,7 @@ import {
   ScrollView,
 } from "react-native";
 
-type Mode = "signin" | "complete-profile";
+type Mode = "signin" | "complete-profile" | "create-new-profile";
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || "https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev";
 
@@ -134,7 +134,7 @@ export default function AuthScreen() {
         let errorMsg = errorData.error || errorData.message || "Sign in failed";
         
         if (response.status === 404) {
-          errorMsg = `No account found with email "${email}". Please check your email address.`;
+          errorMsg = `No account found with email "${email}". Please check your email address or create a new profile.`;
         }
         
         throw new Error(errorMsg);
@@ -233,6 +233,144 @@ export default function AuthScreen() {
       setLoading(false);
     }
   };
+
+  // Create new profile screen (for creating additional test accounts)
+  if (mode === "create-new-profile") {
+    return (
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.content}>
+            {/* Logo/Icon */}
+            <View style={styles.logoContainer}>
+              <View style={styles.logoCircle}>
+                <IconSymbol
+                  ios_icon_name="circle.fill"
+                  android_material_icon_name="album"
+                  size={80}
+                  color={colors.primary}
+                />
+              </View>
+            </View>
+
+            <Text style={styles.title}>Create New Profile</Text>
+            <Text style={styles.subtitle}>
+              Create a new test profile for CoinHub beta testing
+            </Text>
+
+            {errorMessage ? (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>{errorMessage}</Text>
+              </View>
+            ) : null}
+
+            <View style={styles.inputContainer}>
+              <IconSymbol
+                ios_icon_name="envelope"
+                android_material_icon_name="email"
+                size={20}
+                color={colors.textSecondary}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Email Address (required)"
+                placeholderTextColor={colors.textSecondary}
+                value={profileEmail}
+                onChangeText={setProfileEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <IconSymbol
+                ios_icon_name="person"
+                android_material_icon_name="person"
+                size={20}
+                color={colors.textSecondary}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Username (required)"
+                placeholderTextColor={colors.textSecondary}
+                value={username}
+                onChangeText={setUsername}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <IconSymbol
+                ios_icon_name="person.fill"
+                android_material_icon_name="account-circle"
+                size={20}
+                color={colors.textSecondary}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Display Name (required)"
+                placeholderTextColor={colors.textSecondary}
+                value={displayName}
+                onChangeText={setDisplayName}
+                autoCapitalize="words"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <IconSymbol
+                ios_icon_name="key.fill"
+                android_material_icon_name="vpn-key"
+                size={20}
+                color={colors.textSecondary}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Invite Code (required)"
+                placeholderTextColor={colors.textSecondary}
+                value={inviteCode}
+                onChangeText={setInviteCode}
+                autoCapitalize="characters"
+                autoCorrect={false}
+              />
+            </View>
+
+            <View style={styles.inviteCodeBox}>
+              <Text style={styles.inviteCodeLabel}>Beta Invite Code:</Text>
+              <Text style={styles.inviteCodeText}>BETA2026</Text>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.primaryButton, loading && styles.buttonDisabled]}
+              onPress={handleCompleteProfile}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Create Profile</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={() => {
+                console.log("AuthScreen: Switching to sign in mode");
+                setMode("signin");
+                setErrorMessage("");
+                setSuccessMessage("");
+              }}
+            >
+              <Text style={styles.secondaryButtonText}>Back to Sign In</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
 
   // Profile completion screen (only shown when user is authenticated but has no username)
   if (mode === "complete-profile" && user && !user.hasCompletedProfile) {
@@ -449,6 +587,18 @@ export default function AuthScreen() {
             )}
           </TouchableOpacity>
 
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => {
+              console.log("AuthScreen: Create New Profile button pressed");
+              setMode("create-new-profile");
+              setErrorMessage("");
+              setSuccessMessage("");
+            }}
+          >
+            <Text style={styles.secondaryButtonText}>Create New Profile</Text>
+          </TouchableOpacity>
+
           <View style={styles.betaInfoBox}>
             <IconSymbol
               ios_icon_name="checkmark.shield.fill"
@@ -459,7 +609,7 @@ export default function AuthScreen() {
             <View style={styles.betaInfoContent}>
               <Text style={styles.betaInfoTitle}>Beta Test Access</Text>
               <Text style={styles.betaInfoText}>
-                No password required. Just enter your email to access your account.
+                No password required. Just enter your email to access your account or create a new profile for testing.
               </Text>
             </View>
           </View>
@@ -610,6 +760,21 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  secondaryButton: {
+    height: 50,
+    backgroundColor: "transparent",
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  secondaryButtonText: {
+    color: colors.text,
     fontSize: 16,
     fontWeight: "600",
   },
