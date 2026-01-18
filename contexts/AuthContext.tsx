@@ -87,88 +87,112 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log("AuthProvider: Stored user data:", storedUserData);
       
       // Fetch the full profile from /api/auth/me to get CoinHub profile data
-      try {
-        const response = await fetch(`${API_URL}/api/auth/me`, {
-          method: "GET",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        });
-        
-        console.log("AuthProvider: Profile fetch response status:", response.status);
-        
-        if (response.ok) {
-          const data = await response.json();
-          console.log("AuthProvider: Profile response data:", data);
+      // Retry up to 3 times with exponential backoff
+      let lastError: any = null;
+      let retries = 3;
+      
+      for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+          console.log(`AuthProvider: Profile fetch attempt ${attempt}/${retries}`);
           
-          // The /api/auth/me endpoint returns { user: {...}, profile: {...} }
-          const sessionUser = data.user;
-          const profileData = data.profile;
+          const response = await fetch(`${API_URL}/api/auth/me`, {
+            method: "GET",
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          });
           
-          console.log("AuthProvider: Session user:", sessionUser);
-          console.log("AuthProvider: Profile data:", profileData);
+          console.log("AuthProvider: Profile fetch response status:", response.status);
           
-          // Check if user has completed their CoinHub profile
-          const hasCompletedProfile = !!(profileData && profileData.username);
-          
-          if (hasCompletedProfile) {
-            // User has completed profile - merge session user with profile
-            const mergedUser = {
-              ...sessionUser,
-              username: profileData.username,
-              displayName: profileData.displayName,
-              avatar_url: profileData.avatarUrl,
-              bio: profileData.bio,
-              location: profileData.location,
-              hasCompletedProfile: true,
-            };
-            console.log("AuthProvider: Profile complete, merged user:", mergedUser);
+          if (response.ok) {
+            const data = await response.json();
+            console.log("AuthProvider: Profile response data:", data);
             
-            // Store user data for future use
-            await storeUserData(mergedUser);
+            // The /api/auth/me endpoint returns { user: {...}, profile: {...} }
+            const sessionUser = data.user;
+            const profileData = data.profile;
             
-            setUser(mergedUser as User);
-          } else if (sessionUser) {
-            // User has NOT completed profile - set user with flag
-            const userWithFlag = {
-              ...sessionUser,
-              hasCompletedProfile: false,
-            };
-            console.log("AuthProvider: Profile incomplete, user needs to complete profile:", userWithFlag);
+            console.log("AuthProvider: Session user:", sessionUser);
+            console.log("AuthProvider: Profile data:", profileData);
             
-            // Store user data for future use
-            await storeUserData(userWithFlag);
+            // Check if user has completed their CoinHub profile
+            const hasCompletedProfile = !!(profileData && profileData.username);
             
-            setUser(userWithFlag as User);
-          } else {
-            console.log("AuthProvider: No user in response");
+            if (hasCompletedProfile) {
+              // User has completed profile - merge session user with profile
+              const mergedUser = {
+                ...sessionUser,
+                username: profileData.username,
+                displayName: profileData.displayName,
+                avatar_url: profileData.avatarUrl,
+                bio: profileData.bio,
+                location: profileData.location,
+                hasCompletedProfile: true,
+              };
+              console.log("AuthProvider: Profile complete, merged user:", mergedUser);
+              
+              // Store user data for future use
+              await storeUserData(mergedUser);
+              
+              setUser(mergedUser as User);
+              return; // Success - exit the retry loop
+            } else if (sessionUser) {
+              // User has NOT completed profile - set user with flag
+              const userWithFlag = {
+                ...sessionUser,
+                hasCompletedProfile: false,
+              };
+              console.log("AuthProvider: Profile incomplete, user needs to complete profile:", userWithFlag);
+              
+              // Store user data for future use
+              await storeUserData(userWithFlag);
+              
+              setUser(userWithFlag as User);
+              return; // Success - exit the retry loop
+            } else {
+              console.log("AuthProvider: No user in response");
+              setUser(null);
+              return; // No user - exit the retry loop
+            }
+          } else if (response.status === 401) {
+            // Session is invalid - clear everything and show sign in
+            console.log("AuthProvider: Session invalid (401), no active session");
             setUser(null);
+            return; // 401 is not a retryable error - exit the retry loop
+          } else {
+            // Other error status - might be temporary, retry
+            lastError = new Error(`HTTP ${response.status}`);
+            console.log(`AuthProvider: Profile fetch returned status ${response.status}, will retry if attempts remain`);
+            
+            if (attempt < retries) {
+              // Wait before retrying (exponential backoff: 500ms, 1000ms, 2000ms)
+              const delay = 500 * Math.pow(2, attempt - 1);
+              console.log(`AuthProvider: Waiting ${delay}ms before retry...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
           }
-        } else if (response.status === 401) {
-          // Session is invalid - clear everything and show sign in
-          console.log("AuthProvider: Session invalid (401), no active session");
-          setUser(null);
-        } else {
-          console.log("AuthProvider: Profile fetch returned non-OK status:", response.status);
-          // If we have stored user data, use it as a fallback
-          if (storedUserData) {
-            console.log("AuthProvider: Using stored user data as fallback");
-            setUser(storedUserData);
-          } else {
-            setUser(null);
+        } catch (error) {
+          lastError = error;
+          console.error(`AuthProvider: Error fetching profile (attempt ${attempt}/${retries}):`, error);
+          
+          if (attempt < retries) {
+            // Wait before retrying (exponential backoff)
+            const delay = 500 * Math.pow(2, attempt - 1);
+            console.log(`AuthProvider: Waiting ${delay}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
           }
         }
-      } catch (error) {
-        console.error("AuthProvider: Error fetching profile:", error);
-        
-        // Try to use stored user data as a fallback
-        if (storedUserData) {
-          console.log("AuthProvider: Using stored user data after error");
-          setUser(storedUserData);
-        } else {
-          setUser(null);
-        }
+      }
+      
+      // All retries exhausted - use stored data as fallback
+      console.log("AuthProvider: All profile fetch attempts failed, using stored data as fallback");
+      if (storedUserData) {
+        console.log("AuthProvider: Using stored user data as fallback");
+        setUser(storedUserData);
+      } else {
+        console.log("AuthProvider: No stored user data available, setting user to null");
+        setUser(null);
       }
     } catch (error) {
       console.error("AuthProvider: Failed to fetch user:", error);

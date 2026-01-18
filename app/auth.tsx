@@ -158,39 +158,29 @@ export default function AuthScreen() {
       const data = await response.json();
       console.log("AuthScreen: Sign in successful, response data:", data);
       
-      // Wait longer for the cookie to be set and propagated
+      // Show success message
+      setSuccessMessage("Login successful! Loading your profile...");
+      
+      // Wait for the cookie to be set and propagated
       console.log("AuthScreen: Waiting for session to be established...");
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
-      // Try to fetch user profile with retries
+      // Fetch user profile - the AuthContext will handle retries
       console.log("AuthScreen: Fetching user profile after login...");
-      let retries = 3;
-      let success = false;
-      
-      while (retries > 0 && !success) {
-        try {
-          await fetchUser();
-          
-          // Check if user was successfully fetched
-          // We'll check this in the next render cycle via useEffect
-          success = true;
-          console.log("AuthScreen: User profile fetched successfully");
-        } catch (error) {
-          retries--;
-          console.log(`AuthScreen: Profile fetch failed, retries remaining: ${retries}`);
-          
-          if (retries > 0) {
-            // Wait before retrying
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          } else {
-            // All retries exhausted
-            console.error("AuthScreen: Failed to fetch profile after all retries");
-            throw new Error("Session established but profile fetch failed. Please refresh the page.");
-          }
-        }
+      try {
+        await fetchUser();
+        console.log("AuthScreen: User profile fetched successfully");
+        
+        // Wait a moment for the state to update
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // The useEffect will handle navigation based on the user state
+        console.log("AuthScreen: Login process complete, navigation will be handled by useEffect");
+      } catch (error) {
+        console.error("AuthScreen: Failed to fetch profile after login:", error);
+        // Don't throw - let the user try again or the useEffect will handle it
+        setSuccessMessage("Login successful! If you're not redirected, please refresh the page.");
       }
-      
-      console.log("AuthScreen: Login process complete, navigation will be handled by useEffect");
     } catch (error: any) {
       console.error("AuthScreen: Authentication error:", error);
       const errorMsg = error.message || "Authentication failed. Please try again.";
@@ -670,6 +660,13 @@ export default function AuthScreen() {
               </Text>
             </View>
           </View>
+
+          <View style={styles.debugInfo}>
+            <Text style={styles.debugText}>Backend: {API_URL}</Text>
+            <Text style={styles.debugText}>Auth Loading: {authLoading ? "Yes" : "No"}</Text>
+            <Text style={styles.debugText}>User: {user ? user.email || "No email" : "None"}</Text>
+            <Text style={styles.debugText}>Profile Complete: {user?.hasCompletedProfile ? "Yes" : "No"}</Text>
+          </View>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -882,5 +879,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     lineHeight: 20,
+  },
+  debugInfo: {
+    marginTop: 24,
+    padding: 12,
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  debugText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
+    marginBottom: 4,
   },
 });
