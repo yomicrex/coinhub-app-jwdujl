@@ -30,15 +30,10 @@ export const authClient = createAuthClient({
       storage,
     }),
   ],
-  // On web, use bearer token for authenticated requests
-  ...(Platform.OS === "web" && {
-    fetchOptions: {
-      auth: {
-        type: "Bearer" as const,
-        token: () => localStorage.getItem(BEARER_TOKEN_KEY) || "",
-      },
-    },
-  }),
+  // CRITICAL: Always include credentials (cookies) in requests
+  fetchOptions: {
+    credentials: "include",
+  },
 });
 
 export function storeWebBearerToken(token: string) {
