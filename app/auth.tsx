@@ -17,7 +17,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import React, { useState, useEffect, useRef } from "react";
 import Constants from "expo-constants";
 import { IconSymbol } from "@/components/IconSymbol";
-import { authClient } from "@/lib/auth";
 
 type Mode = "signin" | "complete-profile" | "create-new-profile";
 
@@ -121,10 +120,11 @@ export default function AuthScreen() {
     
     try {
       console.log("AuthScreen: Attempting email-only sign in with:", email);
-      console.log("AuthScreen: Using authClient.$fetch for proper cookie handling");
+      console.log("AuthScreen: Calling raw fetch to avoid URL duplication");
       
-      // Use authClient.$fetch which properly handles cookies
-      const response = await authClient.$fetch("/api/auth/email/signin", {
+      // Use raw fetch instead of authClient.$fetch to avoid URL duplication
+      // The backend endpoint is /api/auth/email/signin
+      const response = await fetch(`${API_URL}/api/auth/email/signin`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -135,27 +135,28 @@ export default function AuthScreen() {
         }),
       });
 
-      console.log("AuthScreen: Sign in response:", response);
+      console.log("AuthScreen: Sign in response status:", response.status);
 
-      if (!response || (response as any).error) {
-        const errorData = (response as any)?.error || { message: "Unknown error" };
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: "Unknown error" }));
         console.error("AuthScreen: Sign in error response:", errorData);
         
         // Provide helpful error messages
         let errorMsg = errorData.message || "Sign in failed";
         
-        if (errorMsg.includes("not found") || errorMsg.includes("404")) {
+        if (response.status === 404 || errorMsg.includes("not found")) {
           errorMsg = `No account found with email "${email}". Please check your email address or create a new profile.`;
-        } else if (errorMsg.includes("401") || errorMsg.includes("Invalid")) {
+        } else if (response.status === 401 || errorMsg.includes("Invalid")) {
           errorMsg = "Invalid credentials. Please check your email and try again.";
-        } else if (errorMsg.includes("500")) {
+        } else if (response.status === 500) {
           errorMsg = "Server error. Please try again in a few moments.";
         }
         
         throw new Error(errorMsg);
       }
 
-      console.log("AuthScreen: Sign in successful");
+      const data = await response.json();
+      console.log("AuthScreen: Sign in successful, data:", data);
       
       // Show success message
       setSuccessMessage("Login successful! Loading your profile...");
@@ -225,8 +226,8 @@ export default function AuthScreen() {
     console.log("AuthScreen: Completing profile with username:", username, "displayName:", displayName, "email:", profileEmail);
     
     try {
-      // Use authClient.$fetch for proper cookie handling
-      const response = await authClient.$fetch("/api/auth/complete-profile", {
+      // Use raw fetch to avoid URL duplication
+      const response = await fetch(`${API_URL}/api/auth/complete-profile`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -240,13 +241,16 @@ export default function AuthScreen() {
         }),
       });
 
-      console.log("AuthScreen: Complete profile response:", response);
+      console.log("AuthScreen: Complete profile response status:", response.status);
 
-      if (!response || (response as any).error) {
-        const errorData = (response as any)?.error || { message: "Unknown error" };
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: "Unknown error" }));
         console.error("AuthScreen: Profile completion error response:", errorData);
         throw new Error(errorData.message || "Failed to complete profile");
       }
+
+      const data = await response.json();
+      console.log("AuthScreen: Profile completion successful, data:", data);
 
       Alert.alert("Success", "Profile created successfully!");
       

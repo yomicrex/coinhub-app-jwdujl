@@ -86,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const storedUserData = await getUserData();
       console.log("AuthProvider: Stored user data:", storedUserData);
       
-      // Use authClient.$fetch which properly handles cookies
+      // Use raw fetch to avoid URL duplication
       // Retry up to 3 times with exponential backoff
       let lastError: any = null;
       let retries = 3;
@@ -95,18 +95,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           console.log(`AuthProvider: Profile fetch attempt ${attempt}/${retries}`);
           
-          // Use authClient.$fetch which includes credentials automatically
-          const response = await authClient.$fetch("/api/auth/me", {
+          // Use raw fetch with credentials to properly send cookies
+          const response = await fetch(`${API_URL}/api/auth/me`, {
             method: "GET",
             credentials: "include",
+            headers: {
+              "Accept": "application/json",
+            },
           });
           
-          console.log("AuthProvider: Profile fetch response:", response);
+          console.log("AuthProvider: Profile fetch response status:", response.status);
           
-          if (response) {
+          if (response.status === 401) {
+            // 401 is not a retryable error - session is invalid
+            console.log("AuthProvider: Session invalid (401), no active session");
+            setUser(null);
+            return;
+          }
+          
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          
+          const data = await response.json();
+          console.log("AuthProvider: Profile fetch response data:", data);
+          
+          if (data) {
             // The /api/auth/me endpoint returns { user: {...}, profile: {...} }
-            const sessionUser = (response as any).user;
-            const profileData = (response as any).profile;
+            const sessionUser = data.user;
+            const profileData = data.profile;
             
             console.log("AuthProvider: Session user:", sessionUser);
             console.log("AuthProvider: Profile data:", profileData);
