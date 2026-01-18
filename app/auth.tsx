@@ -158,57 +158,15 @@ export default function AuthScreen() {
       const data = await response.json();
       console.log("AuthScreen: Sign in successful, response data:", data);
       
-      // Wait a moment for the cookie to be set
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Wait a moment for the cookie to be set and propagated
+      console.log("AuthScreen: Waiting for cookie to be set...");
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // The backend returns the user data directly in the response
-      // Check if the user has a profile (username exists)
-      if (data.user) {
-        console.log("AuthScreen: User data received from login:", data.user);
-        
-        // Fetch the full profile to check if it's complete
-        try {
-          const profileResponse = await fetch(`${API_URL}/api/auth/me`, {
-            method: "GET",
-            credentials: "include",
-            headers: {
-              "Content-Type": "application/json",
-            },
-          });
-          
-          console.log("AuthScreen: Profile check response status:", profileResponse.status);
-          
-          if (profileResponse.ok) {
-            const profileData = await profileResponse.json();
-            console.log("AuthScreen: Profile data:", profileData);
-            
-            const profile = profileData.profile || profileData.data?.profile || profileData;
-            
-            if (profile && profile.username) {
-              // Profile is complete - refresh user and navigate to home
-              console.log("AuthScreen: Profile complete, refreshing user state");
-              await fetchUser();
-              // Navigation will be handled by useEffect
-            } else {
-              // Profile is incomplete - refresh user state (will show profile completion)
-              console.log("AuthScreen: Profile incomplete, refreshing user state");
-              await fetchUser();
-              // Navigation will be handled by useEffect
-            }
-          } else {
-            // No profile found - refresh user state (will show profile completion)
-            console.log("AuthScreen: No profile found, refreshing user state");
-            await fetchUser();
-          }
-        } catch (profileError) {
-          console.error("AuthScreen: Error checking profile:", profileError);
-          // Refresh user state anyway
-          await fetchUser();
-        }
-      } else {
-        console.log("AuthScreen: No user data in response, refreshing user state");
-        await fetchUser();
-      }
+      // Fetch user profile to check if it's complete
+      console.log("AuthScreen: Fetching user profile after login...");
+      await fetchUser();
+      
+      console.log("AuthScreen: User profile fetched, navigation will be handled by useEffect");
     } catch (error: any) {
       console.error("AuthScreen: Authentication error:", error);
       const errorMsg = error.message || "Authentication failed. Please try again.";
@@ -282,9 +240,11 @@ export default function AuthScreen() {
       Alert.alert("Success", "Profile created successfully!");
       
       // Refresh user data to get the updated profile
+      console.log("AuthScreen: Refreshing user data after profile completion...");
       await fetchUser();
       
       // Navigate to home
+      console.log("AuthScreen: Navigating to home...");
       hasNavigated.current = true;
       router.replace("/(tabs)/(home)");
     } catch (error: any) {
@@ -611,6 +571,13 @@ export default function AuthScreen() {
             </Text>
           </View>
 
+          <View style={styles.testAccountsBox}>
+            <Text style={styles.testAccountsTitle}>Test Accounts:</Text>
+            <Text style={styles.testAccountText}>• yomicrex@gmail.com (Yomicrex)</Text>
+            <Text style={styles.testAccountText}>• yomicrex@mail.com (JJ1980)</Text>
+            <Text style={styles.testAccountText}>• yomicrex@hotmail.com (JJ1981)</Text>
+          </View>
+
           <View style={styles.inputContainer}>
             <IconSymbol
               ios_icon_name="envelope"
@@ -777,6 +744,26 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: colors.text,
+    lineHeight: 20,
+  },
+  testAccountsBox: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  testAccountsTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.text,
+    marginBottom: 8,
+  },
+  testAccountText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 4,
     lineHeight: 20,
   },
   inputContainer: {
