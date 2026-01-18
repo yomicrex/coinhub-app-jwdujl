@@ -22,6 +22,7 @@ export default function AdminResetAllPasswordsScreen() {
   const [resetting, setResetting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [usersUpdated, setUsersUpdated] = useState(0);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const handleResetAllPasswords = () => {
     console.log('AdminResetAllPasswords: User tapped Reset All Passwords button');
@@ -48,9 +49,11 @@ export default function AdminResetAllPasswordsScreen() {
     console.log('AdminResetAllPasswords: Confirming reset all passwords');
     setResetting(true);
     setSuccess(false);
+    setErrorMessage('');
 
     try {
-      console.log('AdminResetAllPasswords: Sending request to backend');
+      console.log('AdminResetAllPasswords: Calling /api/admin/fix-all-passwords endpoint');
+      console.log('AdminResetAllPasswords: API URL:', API_URL);
       
       const response = await fetch(`${API_URL}/api/admin/fix-all-passwords`, {
         method: 'POST',
@@ -62,29 +65,42 @@ export default function AdminResetAllPasswordsScreen() {
       });
 
       console.log('AdminResetAllPasswords: Response status:', response.status);
+      console.log('AdminResetAllPasswords: Response headers:', JSON.stringify(response.headers));
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('AdminResetAllPasswords: Error response:', errorData);
-        throw new Error(errorData.error || errorData.message || 'Failed to reset passwords');
+      const responseText = await response.text();
+      console.log('AdminResetAllPasswords: Response text:', responseText);
+
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('AdminResetAllPasswords: Failed to parse response as JSON:', parseError);
+        throw new Error(`Server returned invalid JSON. Status: ${response.status}, Response: ${responseText.substring(0, 200)}`);
       }
 
-      const data = await response.json();
+      if (!response.ok) {
+        console.error('AdminResetAllPasswords: Error response:', data);
+        throw new Error(data.error || data.message || `Server error: ${response.status}`);
+      }
+
       console.log('AdminResetAllPasswords: Success response:', data);
 
-      setUsersUpdated(data.usersUpdated || data.updated || 0);
+      const updatedCount = data.usersUpdated || data.updated || data.count || 0;
+      setUsersUpdated(updatedCount);
       setSuccess(true);
 
       Alert.alert(
         'Success!',
-        `All ${data.usersUpdated || data.updated || 0} account passwords have been reset to "123456".\n\nYou can now log in to any account using password: 123456`,
+        `All ${updatedCount} account passwords have been reset to "123456".\n\nYou can now log in to any account using password: 123456`,
         [{ text: 'OK' }]
       );
     } catch (error: any) {
       console.error('AdminResetAllPasswords: Error:', error);
+      const errorMsg = error.message || 'Failed to reset passwords. Please try again.';
+      setErrorMessage(errorMsg);
       Alert.alert(
         'Error',
-        error.message || 'Failed to reset passwords. Please try again.'
+        errorMsg
       );
     } finally {
       setResetting(false);
@@ -114,11 +130,25 @@ export default function AdminResetAllPasswordsScreen() {
               size={48}
               color="#FF9500"
             />
-            <Text style={styles.warningTitle}>Danger Zone</Text>
+            <Text style={styles.warningTitle}>Emergency Password Fix</Text>
             <Text style={styles.warningText}>
-              This tool will reset ALL user account passwords to a default password for testing purposes.
+              This tool will fix corrupted password hashes and reset ALL user account passwords to "123456" for testing.
             </Text>
           </View>
+
+          {/* Error Message */}
+          {errorMessage !== '' && (
+            <View style={styles.errorBox}>
+              <IconSymbol
+                ios_icon_name="xmark.circle.fill"
+                android_material_icon_name="error"
+                size={32}
+                color="#FF3B30"
+              />
+              <Text style={styles.errorTitle}>Error</Text>
+              <Text style={styles.errorText}>{errorMessage}</Text>
+            </View>
+          )}
 
           {/* Info Section */}
           <View style={styles.infoSection}>
@@ -158,7 +188,22 @@ export default function AdminResetAllPasswordsScreen() {
               <View style={styles.infoTextContainer}>
                 <Text style={styles.infoTitle}>Security</Text>
                 <Text style={styles.infoText}>
-                  Passwords will be properly hashed with bcrypt
+                  Passwords will be properly hashed with bcrypt (60 chars, starts with $2b$)
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.infoRow}>
+              <IconSymbol
+                ios_icon_name="wrench.and.screwdriver.fill"
+                android_material_icon_name="build"
+                size={24}
+                color="#FF3B30"
+              />
+              <View style={styles.infoTextContainer}>
+                <Text style={styles.infoTitle}>What This Fixes</Text>
+                <Text style={styles.infoText}>
+                  Corrupted password hashes (161 chars, invalid format) will be replaced with valid bcrypt hashes
                 </Text>
               </View>
             </View>
@@ -190,7 +235,7 @@ export default function AdminResetAllPasswordsScreen() {
             <View style={styles.instructionStep}>
               <Text style={styles.stepNumber}>1</Text>
               <Text style={styles.stepText}>
-                Tap the "Reset All Passwords" button below
+                Tap the "Fix All Passwords" button below
               </Text>
             </View>
             <View style={styles.instructionStep}>
@@ -202,13 +247,13 @@ export default function AdminResetAllPasswordsScreen() {
             <View style={styles.instructionStep}>
               <Text style={styles.stepNumber}>3</Text>
               <Text style={styles.stepText}>
-                All accounts will be reset to password: 123456
+                Wait for the success message
               </Text>
             </View>
             <View style={styles.instructionStep}>
               <Text style={styles.stepNumber}>4</Text>
               <Text style={styles.stepText}>
-                Log in to any account using the new password
+                Log in to any account using password: 123456
               </Text>
             </View>
           </View>
@@ -222,7 +267,7 @@ export default function AdminResetAllPasswordsScreen() {
             {resetting ? (
               <>
                 <ActivityIndicator color="#fff" />
-                <Text style={styles.resetButtonText}>Resetting Passwords...</Text>
+                <Text style={styles.resetButtonText}>Fixing Passwords...</Text>
               </>
             ) : (
               <>
@@ -232,7 +277,7 @@ export default function AdminResetAllPasswordsScreen() {
                   size={24}
                   color="#fff"
                 />
-                <Text style={styles.resetButtonText}>Reset All Passwords to 123456</Text>
+                <Text style={styles.resetButtonText}>Fix All Passwords Now</Text>
               </>
             )}
           </TouchableOpacity>
@@ -277,6 +322,28 @@ const styles = StyleSheet.create({
   warningText: {
     fontSize: 14,
     color: '#856404',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  errorBox: {
+    backgroundColor: '#FFE5E5',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+    marginBottom: 24,
+    borderWidth: 2,
+    borderColor: '#FF3B30',
+  },
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#D32F2F',
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#D32F2F',
     textAlign: 'center',
     lineHeight: 20,
   },
