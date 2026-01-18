@@ -95,277 +95,279 @@ export function registerAuthRoutes(app: App) {
    * GET /api/auth/debug/users
    * DEBUG ENDPOINT - List all users in auth database to diagnose sign-up/sign-in issues
    * Shows email addresses and verification status
-   * REMOVE IN PRODUCTION
+   * DISABLED IN PRODUCTION - Only available in development/staging
    */
-  app.fastify.get('/api/auth/debug/users', async (request: FastifyRequest, reply: FastifyReply) => {
-    app.logger.warn('DEBUG: Listing all users - this endpoint should be disabled in production');
-    try {
-      const users = await app.db.query.user.findMany();
-      app.logger.info({ count: users.length }, 'DEBUG: Retrieved users for debugging');
-      return {
-        count: users.length,
-        users: users.map(u => ({
-          id: u.id,
-          email: u.email,
-          emailLowercase: String(u.email).toLowerCase(),
-          name: u.name,
-          emailVerified: u.emailVerified,
-          createdAt: u.createdAt
-        }))
-      };
-    } catch (error) {
-      app.logger.error({ err: error }, 'DEBUG: Failed to list users');
-      return reply.status(500).send({ error: 'Failed to list users' });
-    }
-  });
-
-  /**
-   * GET /api/auth/debug/check-email/:email
-   * DEBUG ENDPOINT - Check if an email exists in the database
-   * Shows exact matching and case-insensitive matching
-   * REMOVE IN PRODUCTION
-   */
-  app.fastify.get('/api/auth/debug/check-email/:email', async (request: FastifyRequest, reply: FastifyReply) => {
-    const email = String((request.params as any).email);
-    app.logger.warn({ email }, 'DEBUG: Checking email existence - this endpoint should be disabled in production');
-    try {
-      // Exact match
-      const exactMatch = await app.db.query.user.findFirst({
-        where: eq(authSchema.user.email, email)
-      });
-
-      // Case-insensitive match using lowercase
-      const allUsers = await app.db.query.user.findMany();
-      const caseInsensitiveMatch = allUsers.find(u => String(u.email).toLowerCase() === email.toLowerCase());
-
-      app.logger.info({ email, exactMatch: !!exactMatch, caseInsensitive: !!caseInsensitiveMatch }, 'DEBUG: Email check result');
-      return {
-        searchEmail: email,
-        exactMatch: exactMatch ? { id: exactMatch.id, email: exactMatch.email } : null,
-        caseInsensitiveMatch: caseInsensitiveMatch ? { id: caseInsensitiveMatch.id, email: caseInsensitiveMatch.email } : null,
-        note: 'If only caseInsensitiveMatch exists, the issue is email case sensitivity'
-      };
-    } catch (error) {
-      app.logger.error({ err: error, email }, 'DEBUG: Failed to check email');
-      return reply.status(500).send({ error: 'Failed to check email' });
-    }
-  });
-
-  /**
-   * GET /api/auth/debug/accounts/:userId
-   * DEBUG ENDPOINT - Check account records for a user (by Better Auth user ID)
-   * Shows which provider_id values are stored and if password exists
-   * REMOVE IN PRODUCTION
-   */
-  app.fastify.get('/api/auth/debug/accounts/:userId', async (request: FastifyRequest, reply: FastifyReply) => {
-    const userId = String((request.params as any).userId);
-    app.logger.warn({ userId }, 'DEBUG: Checking accounts for user - this endpoint should be disabled in production');
-    try {
-      const accounts = await app.db.query.account.findMany({
-        where: eq(authSchema.account.userId, userId)
-      });
-
-      app.logger.info({ userId, count: accounts.length }, 'DEBUG: Retrieved accounts for user');
-      return {
-        userId,
-        accountCount: accounts.length,
-        accounts: accounts.map(a => ({
-          id: a.id,
-          accountId: a.accountId,
-          providerId: a.providerId,
-          hasPassword: !!a.password,
-          passwordLength: a.password ? a.password.length : 0,
-          passwordFirst50Chars: a.password ? a.password.substring(0, 50) : null,
-          createdAt: a.createdAt
-        }))
-      };
-    } catch (error) {
-      app.logger.error({ err: error, userId }, 'DEBUG: Failed to check accounts');
-      return reply.status(500).send({ error: 'Failed to check accounts' });
-    }
-  });
-
-  /**
-   * POST /api/auth/debug/test-password
-   * DEBUG ENDPOINT - Test password hashing and comparison
-   * Helps diagnose bcrypt issues
-   * REMOVE IN PRODUCTION
-   */
-  app.fastify.post('/api/auth/debug/test-password', async (request: FastifyRequest, reply: FastifyReply) => {
-    const { password, hash } = request.body as { password?: string; hash?: string };
-    app.logger.warn('DEBUG: Testing password hashing - this endpoint should be disabled in production');
-
-    try {
-      const bcrypt = await import('bcryptjs') as any;
-
-      if (!password) {
-        return reply.status(400).send({ error: 'Password required' });
-      }
-
-      if (!hash) {
-        // Hash the password and return it
-        const newHash = await bcrypt.hash(password, 10);
+  if (process.env.NODE_ENV !== 'production') {
+    app.fastify.get('/api/auth/debug/users', async (request: FastifyRequest, reply: FastifyReply) => {
+      app.logger.warn('DEBUG: Listing all users - this endpoint should be disabled in production');
+      try {
+        const users = await app.db.query.user.findMany();
+        app.logger.info({ count: users.length }, 'DEBUG: Retrieved users for debugging');
         return {
-          action: 'hash',
-          passwordLength: password.length,
-          hashLength: newHash.length,
-          hash: newHash.substring(0, 50) + '...',
-          note: 'Use this hash in subsequent test calls'
+          count: users.length,
+          users: users.map(u => ({
+            id: u.id,
+            email: u.email,
+            emailLowercase: String(u.email).toLowerCase(),
+            name: u.name,
+            emailVerified: u.emailVerified,
+            createdAt: u.createdAt
+          }))
         };
-      } else {
-        // Compare password to hash
-        const match = await bcrypt.compare(password, hash);
+      } catch (error) {
+        app.logger.error({ err: error }, 'DEBUG: Failed to list users');
+        return reply.status(500).send({ error: 'Failed to list users' });
+      }
+    });
+
+    /**
+     * GET /api/auth/debug/check-email/:email
+     * DEBUG ENDPOINT - Check if an email exists in the database
+     * Shows exact matching and case-insensitive matching
+     * DISABLED IN PRODUCTION - Only available in development/staging
+     */
+    app.fastify.get('/api/auth/debug/check-email/:email', async (request: FastifyRequest, reply: FastifyReply) => {
+      const email = String((request.params as any).email);
+      app.logger.warn({ email }, 'DEBUG: Checking email existence - this endpoint should be disabled in production');
+      try {
+        // Exact match
+        const exactMatch = await app.db.query.user.findFirst({
+          where: eq(authSchema.user.email, email)
+        });
+
+        // Case-insensitive match using lowercase
+        const allUsers = await app.db.query.user.findMany();
+        const caseInsensitiveMatch = allUsers.find(u => String(u.email).toLowerCase() === email.toLowerCase());
+
+        app.logger.info({ email, exactMatch: !!exactMatch, caseInsensitive: !!caseInsensitiveMatch }, 'DEBUG: Email check result');
         return {
-          action: 'compare',
-          passwordLength: password.length,
-          hashLength: hash.length,
-          match,
-          hashFirst50: hash.substring(0, 50),
-          note: match ? 'Password matches hash' : 'Password does NOT match hash'
+          searchEmail: email,
+          exactMatch: exactMatch ? { id: exactMatch.id, email: exactMatch.email } : null,
+          caseInsensitiveMatch: caseInsensitiveMatch ? { id: caseInsensitiveMatch.id, email: caseInsensitiveMatch.email } : null,
+          note: 'If only caseInsensitiveMatch exists, the issue is email case sensitivity'
         };
+      } catch (error) {
+        app.logger.error({ err: error, email }, 'DEBUG: Failed to check email');
+        return reply.status(500).send({ error: 'Failed to check email' });
       }
-    } catch (error) {
-      app.logger.error({ err: error }, 'DEBUG: Password test failed');
-      return reply.status(500).send({ error: 'Password test failed', details: String(error) });
-    }
-  });
+    });
 
-  /**
-   * POST /api/auth/debug/diagnose/:userId
-   * DEBUG ENDPOINT - Complete password authentication diagnosis
-   * Test if a specific user can authenticate with a password
-   * Body: { password: string }
-   * REMOVE IN PRODUCTION
-   */
-  app.fastify.post('/api/auth/debug/diagnose/:userId', async (request: FastifyRequest, reply: FastifyReply) => {
-    const userId = String((request.params as any).userId);
-    const { password } = request.body as { password?: string };
+    /**
+     * GET /api/auth/debug/accounts/:userId
+     * DEBUG ENDPOINT - Check account records for a user (by Better Auth user ID)
+     * Shows which provider_id values are stored and if password exists
+     * DISABLED IN PRODUCTION - Only available in development/staging
+     */
+    app.fastify.get('/api/auth/debug/accounts/:userId', async (request: FastifyRequest, reply: FastifyReply) => {
+      const userId = String((request.params as any).userId);
+      app.logger.warn({ userId }, 'DEBUG: Checking accounts for user - this endpoint should be disabled in production');
+      try {
+        const accounts = await app.db.query.account.findMany({
+          where: eq(authSchema.account.userId, userId)
+        });
 
-    app.logger.warn({ userId }, 'DEBUG: Running full auth diagnosis - this endpoint should be disabled in production');
-
-    try {
-      if (!password) {
-        return reply.status(400).send({ error: 'Password required' });
-      }
-
-      // Step 1: Get auth user
-      const authUser = await app.db.query.user.findFirst({
-        where: eq(authSchema.user.id, userId)
-      });
-
-      if (!authUser) {
+        app.logger.info({ userId, count: accounts.length }, 'DEBUG: Retrieved accounts for user');
         return {
-          step: 'user_lookup',
-          status: 'failed',
-          message: 'Auth user not found'
+          userId,
+          accountCount: accounts.length,
+          accounts: accounts.map(a => ({
+            id: a.id,
+            accountId: a.accountId,
+            providerId: a.providerId,
+            hasPassword: !!a.password,
+            passwordLength: a.password ? a.password.length : 0,
+            passwordFirst50Chars: a.password ? a.password.substring(0, 50) : null,
+            createdAt: a.createdAt
+          }))
         };
+      } catch (error) {
+        app.logger.error({ err: error, userId }, 'DEBUG: Failed to check accounts');
+        return reply.status(500).send({ error: 'Failed to check accounts' });
       }
+    });
 
-      // Step 2: Get all accounts for this user
-      const allAccounts = await app.db.query.account.findMany({
-        where: eq(authSchema.account.userId, userId)
-      });
+    /**
+     * POST /api/auth/debug/test-password
+     * DEBUG ENDPOINT - Test password hashing and comparison
+     * Helps diagnose bcrypt issues
+     * DISABLED IN PRODUCTION - Only available in development/staging
+     */
+    app.fastify.post('/api/auth/debug/test-password', async (request: FastifyRequest, reply: FastifyReply) => {
+      const { password, hash } = request.body as { password?: string; hash?: string };
+      app.logger.warn('DEBUG: Testing password hashing - this endpoint should be disabled in production');
 
-      // Step 3: Find accounts with passwords
-      const accountsWithPassword = allAccounts.filter(a => a.password);
+      try {
+        const bcrypt = await import('bcryptjs') as any;
 
-      // Step 4: Try to verify with each account
-      const bcrypt = await import('bcryptjs') as any;
-      const results = [];
-
-      for (const account of accountsWithPassword) {
-        try {
-          const match = await bcrypt.compare(password, account.password);
-          results.push({
-            accountId: account.id,
-            providerId: account.providerId,
-            passwordHashLength: account.password.length,
-            match,
-            bcryptValid: true
-          });
-        } catch (e) {
-          results.push({
-            accountId: account.id,
-            providerId: account.providerId,
-            passwordHashLength: account.password.length,
-            match: false,
-            bcryptValid: false,
-            error: String(e).substring(0, 100)
-          });
+        if (!password) {
+          return reply.status(400).send({ error: 'Password required' });
         }
+
+        if (!hash) {
+          // Hash the password and return it
+          const newHash = await bcrypt.hash(password, 10);
+          return {
+            action: 'hash',
+            passwordLength: password.length,
+            hashLength: newHash.length,
+            hash: newHash.substring(0, 50) + '...',
+            note: 'Use this hash in subsequent test calls'
+          };
+        } else {
+          // Compare password to hash
+          const match = await bcrypt.compare(password, hash);
+          return {
+            action: 'compare',
+            passwordLength: password.length,
+            hashLength: hash.length,
+            match,
+            hashFirst50: hash.substring(0, 50),
+            note: match ? 'Password matches hash' : 'Password does NOT match hash'
+          };
+        }
+      } catch (error) {
+        app.logger.error({ err: error }, 'DEBUG: Password test failed');
+        return reply.status(500).send({ error: 'Password test failed', details: String(error) });
       }
+    });
 
-      const successfulMatches = results.filter(r => r.match).length;
+    /**
+     * POST /api/auth/debug/diagnose/:userId
+     * DEBUG ENDPOINT - Complete password authentication diagnosis
+     * Test if a specific user can authenticate with a password
+     * Body: { password: string }
+     * DISABLED IN PRODUCTION - Only available in development/staging
+     */
+    app.fastify.post('/api/auth/debug/diagnose/:userId', async (request: FastifyRequest, reply: FastifyReply) => {
+      const userId = String((request.params as any).userId);
+      const { password } = request.body as { password?: string };
 
-      return {
-        diagnosis: 'complete',
-        userId,
-        authUserFound: true,
-        totalAccounts: allAccounts.length,
-        accountsWithPassword: accountsWithPassword.length,
-        providers: allAccounts.map(a => a.providerId),
-        passwordVerificationResults: results,
-        successfulMatches,
-        note: successfulMatches > 0 ? 'Password verified successfully' : 'Password failed to verify with all accounts'
-      };
-    } catch (error) {
-      app.logger.error({ err: error, userId }, 'DEBUG: Diagnosis failed');
-      return reply.status(500).send({ error: 'Diagnosis failed', details: String(error) });
-    }
-  });
+      app.logger.warn({ userId }, 'DEBUG: Running full auth diagnosis - this endpoint should be disabled in production');
 
-  /**
-   * GET /api/auth/debug/email-by-username/:username
-   * DEBUG ENDPOINT - Find user by CoinHub username and get their Better Auth ID and email
-   * Helps correlate CoinHub usernames with Better Auth accounts
-   * REMOVE IN PRODUCTION
-   */
-  app.fastify.get('/api/auth/debug/email-by-username/:username', async (request: FastifyRequest, reply: FastifyReply) => {
-    const username = String((request.params as any).username);
-    app.logger.warn({ username }, 'DEBUG: Looking up user by username');
+      try {
+        if (!password) {
+          return reply.status(400).send({ error: 'Password required' });
+        }
 
-    try {
-      const coinHubUser = await app.db.query.users.findFirst({
-        where: eq(schema.users.username, username)
-      });
+        // Step 1: Get auth user
+        const authUser = await app.db.query.user.findFirst({
+          where: eq(authSchema.user.id, userId)
+        });
 
-      if (!coinHubUser) {
+        if (!authUser) {
+          return {
+            step: 'user_lookup',
+            status: 'failed',
+            message: 'Auth user not found'
+          };
+        }
+
+        // Step 2: Get all accounts for this user
+        const allAccounts = await app.db.query.account.findMany({
+          where: eq(authSchema.account.userId, userId)
+        });
+
+        // Step 3: Find accounts with passwords
+        const accountsWithPassword = allAccounts.filter(a => a.password);
+
+        // Step 4: Try to verify with each account
+        const bcrypt = await import('bcryptjs') as any;
+        const results = [];
+
+        for (const account of accountsWithPassword) {
+          try {
+            const match = await bcrypt.compare(password, account.password);
+            results.push({
+              accountId: account.id,
+              providerId: account.providerId,
+              passwordHashLength: account.password.length,
+              match,
+              bcryptValid: true
+            });
+          } catch (e) {
+            results.push({
+              accountId: account.id,
+              providerId: account.providerId,
+              passwordHashLength: account.password.length,
+              match: false,
+              bcryptValid: false,
+              error: String(e).substring(0, 100)
+            });
+          }
+        }
+
+        const successfulMatches = results.filter(r => r.match).length;
+
+        return {
+          diagnosis: 'complete',
+          userId,
+          authUserFound: true,
+          totalAccounts: allAccounts.length,
+          accountsWithPassword: accountsWithPassword.length,
+          providers: allAccounts.map(a => a.providerId),
+          passwordVerificationResults: results,
+          successfulMatches,
+          note: successfulMatches > 0 ? 'Password verified successfully' : 'Password failed to verify with all accounts'
+        };
+      } catch (error) {
+        app.logger.error({ err: error, userId }, 'DEBUG: Diagnosis failed');
+        return reply.status(500).send({ error: 'Diagnosis failed', details: String(error) });
+      }
+    });
+
+    /**
+     * GET /api/auth/debug/email-by-username/:username
+     * DEBUG ENDPOINT - Find user by CoinHub username and get their Better Auth ID and email
+     * Helps correlate CoinHub usernames with Better Auth accounts
+     * DISABLED IN PRODUCTION - Only available in development/staging
+     */
+    app.fastify.get('/api/auth/debug/email-by-username/:username', async (request: FastifyRequest, reply: FastifyReply) => {
+      const username = String((request.params as any).username);
+      app.logger.warn({ username }, 'DEBUG: Looking up user by username');
+
+      try {
+        const coinHubUser = await app.db.query.users.findFirst({
+          where: eq(schema.users.username, username)
+        });
+
+        if (!coinHubUser) {
+          return {
+            username,
+            found: false,
+            message: 'User not found in CoinHub users table'
+          };
+        }
+
+        // Get Better Auth user record
+        const authUser = await app.db.query.user.findFirst({
+          where: eq(authSchema.user.id, coinHubUser.id)
+        });
+
+        // Get all accounts for this user
+        const accounts = await app.db.query.account.findMany({
+          where: eq(authSchema.account.userId, coinHubUser.id)
+        });
+
         return {
           username,
-          found: false,
-          message: 'User not found in CoinHub users table'
+          found: true,
+          coinHubUserId: coinHubUser.id,
+          coinHubEmail: coinHubUser.email,
+          authUserEmail: authUser?.email,
+          authUserId: authUser?.id,
+          accounts: accounts.map(a => ({
+            id: a.id,
+            providerId: a.providerId,
+            hasPassword: !!a.password,
+            passwordHashLength: a.password?.length
+          }))
         };
+      } catch (error) {
+        app.logger.error({ err: error, username }, 'DEBUG: Lookup failed');
+        return reply.status(500).send({ error: 'Lookup failed', details: String(error) });
       }
-
-      // Get Better Auth user record
-      const authUser = await app.db.query.user.findFirst({
-        where: eq(authSchema.user.id, coinHubUser.id)
-      });
-
-      // Get all accounts for this user
-      const accounts = await app.db.query.account.findMany({
-        where: eq(authSchema.account.userId, coinHubUser.id)
-      });
-
-      return {
-        username,
-        found: true,
-        coinHubUserId: coinHubUser.id,
-        coinHubEmail: coinHubUser.email,
-        authUserEmail: authUser?.email,
-        authUserId: authUser?.id,
-        accounts: accounts.map(a => ({
-          id: a.id,
-          providerId: a.providerId,
-          hasPassword: !!a.password,
-          passwordHashLength: a.password?.length
-        }))
-      };
-    } catch (error) {
-      app.logger.error({ err: error, username }, 'DEBUG: Lookup failed');
-      return reply.status(500).send({ error: 'Lookup failed', details: String(error) });
-    }
-  });
+    });
+  }
 
   /**
    * IMPORTANT: Sign-in and Sign-up endpoints are automatically provided by Better Auth
