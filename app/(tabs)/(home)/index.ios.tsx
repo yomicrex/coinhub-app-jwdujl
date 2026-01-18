@@ -221,8 +221,9 @@ export default function FeedScreen() {
       console.log('FeedScreen: Navigating to own profile');
       router.push('/(tabs)/profile');
     } else {
-      console.log('FeedScreen: Navigating to user profile:', username);
-      router.push(`/user-profile?userId=${username}`);
+      console.log('FeedScreen: Navigating to user profile with username:', username);
+      // Pass username to user-profile screen
+      router.push(`/user-profile?username=${encodeURIComponent(username)}`);
     }
   };
 

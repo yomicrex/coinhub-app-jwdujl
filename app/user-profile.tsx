@@ -47,7 +47,7 @@ interface UserCoin {
 }
 
 export default function UserProfileScreen() {
-  const { userId } = useLocalSearchParams<{ userId: string }>();
+  const { username } = useLocalSearchParams<{ username: string }>();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [coins, setCoins] = useState<UserCoin[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,28 +57,28 @@ export default function UserProfileScreen() {
   const router = useRouter();
 
   useEffect(() => {
-    console.log('UserProfileScreen: Component mounted, userId:', userId);
-    if (userId) {
+    console.log('UserProfileScreen: Component mounted, username:', username);
+    if (username) {
       fetchProfile();
     }
-  }, [userId]);
+  }, [username]);
 
   useEffect(() => {
     if (profile) {
-      console.log('UserProfileScreen: Profile loaded, fetching coins');
+      console.log('UserProfileScreen: Profile loaded, fetching coins for user ID:', profile.id);
       fetchUserCoins();
     }
   }, [profile]);
 
   const fetchProfile = async () => {
-    if (!userId) return;
+    if (!username) return;
 
     try {
-      console.log('UserProfileScreen: Fetching profile for username:', userId);
+      console.log('UserProfileScreen: Fetching profile for username:', username);
       const token = await getToken();
       
-      // Use the username endpoint
-      const response = await fetch(`${API_URL}/api/users/${userId}`, {
+      // Use the /api/users/:username endpoint
+      const response = await fetch(`${API_URL}/api/users/${username}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -90,7 +90,7 @@ export default function UserProfileScreen() {
       }
 
       const data = await response.json();
-      console.log('UserProfileScreen: Profile data:', data);
+      console.log('UserProfileScreen: Profile data received:', data);
       setProfile(data);
       setIsFollowing(data.isFollowing || false);
     } catch (error) {
@@ -102,7 +102,7 @@ export default function UserProfileScreen() {
   };
 
   const fetchUserCoins = async () => {
-    if (!userId || !profile) return;
+    if (!profile) return;
 
     try {
       console.log('UserProfileScreen: Fetching coins for user ID:', profile.id);
@@ -141,7 +141,7 @@ export default function UserProfileScreen() {
       const token = await getToken();
       const method = previousState ? 'DELETE' : 'POST';
       
-      const response = await fetch(`${API_URL}/api/follows/${profile.id}`, {
+      const response = await fetch(`${API_URL}/api/users/${profile.id}/follow`, {
         method,
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -328,7 +328,7 @@ export default function UserProfileScreen() {
         </View>
 
         {/* Follow Button */}
-        {user?.id !== userId && (
+        {user?.id !== profile.id && (
           <View style={styles.actionContainer}>
             <TouchableOpacity
               style={[styles.followButton, isFollowing && styles.followingButton]}

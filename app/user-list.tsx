@@ -64,8 +64,8 @@ export default function UserListScreen() {
 
   const handleUserPress = (user: User) => {
     console.log('UserListScreen: User tapped on:', user.username, 'userId:', user.id);
-    // Pass both userId and username to ensure profile loads correctly
-    router.push(`/user-profile?userId=${user.id}&username=${encodeURIComponent(user.username)}`);
+    // Pass username to user-profile screen
+    router.push(`/user-profile?username=${encodeURIComponent(user.username)}`);
   };
 
   const renderUser = ({ item }: { item: User }) => (
