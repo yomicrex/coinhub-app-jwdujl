@@ -112,7 +112,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     console.log('AuthProvider mounted, initializing...');
-    fetchUser();
+    
+    // Set a timeout to ensure loading doesn't hang forever
+    const timeout = setTimeout(() => {
+      console.log('Auth initialization timeout - forcing loading to false');
+      setLoading(false);
+    }, 5000); // 5 second timeout
+    
+    fetchUser().finally(() => {
+      clearTimeout(timeout);
+    });
+
+    return () => {
+      clearTimeout(timeout);
+    };
   }, []);
 
   const signIn = async (email: string, password: string) => {

@@ -4,6 +4,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { colors } from '@/styles/commonStyles';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useEffect } from 'react';
+import { View, Text, ActivityIndicator } from 'react-native';
 
 export default function RootLayout() {
   useEffect(() => {

@@ -18,6 +18,7 @@ export default function Index() {
     console.log('Showing loading indicator');
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+        <Text style={{ fontSize: 48, marginBottom: 24 }}>🪙</Text>
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={{ color: colors.text, marginTop: 16, fontSize: 16 }}>Loading CoinHub...</Text>
       </View>

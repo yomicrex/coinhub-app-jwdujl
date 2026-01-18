@@ -1,3 +1,4 @@
+
 /**
  * Error Boundary Component Template
  *
@@ -21,6 +22,7 @@
 
 import React, { Component, ReactNode } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
+import { colors } from "@/styles/commonStyles";
 
 interface Props {
   children: ReactNode;
@@ -84,6 +86,7 @@ export class ErrorBoundary extends Component<Props, State> {
       // Default fallback UI
       return (
         <View style={styles.container}>
+          <Text style={styles.logo}>🪙</Text>
           <Text style={styles.title}>Oops! Something went wrong</Text>
           <Text style={styles.message}>
             We're sorry for the inconvenience. The app encountered an error.
@@ -120,53 +123,59 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
-    backgroundColor: "#fff",
+    backgroundColor: colors.background,
+  },
+  logo: {
+    fontSize: 64,
+    marginBottom: 24,
   },
   title: {
     fontSize: 24,
     fontWeight: "bold",
     marginBottom: 16,
-    color: "#000",
+    color: colors.text,
   },
   message: {
     fontSize: 16,
     textAlign: "center",
-    color: "#666",
+    color: colors.textSecondary,
     marginBottom: 24,
   },
   errorDetails: {
     maxHeight: 200,
     width: "100%",
     padding: 16,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: colors.surface,
     borderRadius: 8,
     marginBottom: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   errorTitle: {
     fontSize: 14,
     fontWeight: "600",
     marginBottom: 8,
-    color: "#FF3B30",
+    color: colors.error,
   },
   errorText: {
     fontSize: 12,
-    color: "#333",
+    color: colors.text,
     fontFamily: "monospace",
     marginBottom: 8,
   },
   errorStack: {
     fontSize: 10,
-    color: "#666",
+    color: colors.textSecondary,
     fontFamily: "monospace",
   },
   button: {
-    backgroundColor: "#007AFF",
+    backgroundColor: colors.primary,
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 8,
   },
   buttonText: {
-    color: "#fff",
+    color: colors.background,
     fontSize: 16,
     fontWeight: "600",
   },
