@@ -158,6 +158,9 @@ export default function AuthScreen() {
       const data = await response.json();
       console.log("AuthScreen: Sign in successful, response data:", data);
       
+      // Wait a moment for the cookie to be set
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       // The backend returns the user data directly in the response
       // Check if the user has a profile (username exists)
       if (data.user) {
