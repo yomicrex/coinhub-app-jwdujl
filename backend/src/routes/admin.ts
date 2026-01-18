@@ -502,6 +502,160 @@ export function registerAdminRoutes(app: App) {
   });
 
   /**
+   * POST /api/admin/reset-all-passwords
+   * CRITICAL FIX: Reset ALL user passwords in the database to "123456"
+   *
+   * This endpoint is used to fix corrupted password hashes across all accounts
+   * All users will be reset to password: "123456"
+   *
+   * WARNING: This is a destructive operation that resets all passwords
+   *
+   * Returns: { success: true, usersUpdated: number, message: "All passwords reset to 123456" }
+   */
+  app.fastify.post('/api/admin/reset-all-passwords', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.warn('CRITICAL: Reset-all-passwords operation started - resetting ALL user passwords to 123456');
+
+    try {
+      const bcrypt = await import('bcryptjs') as any;
+      const defaultPassword = '123456';
+      let usersUpdated = 0;
+      const updateDetails = [];
+
+      // Step 1: Get all CoinHub users
+      const allUsers = await app.db.query.users.findMany();
+      app.logger.info({ totalUsers: allUsers.length }, 'Admin: Found all users for reset');
+
+      // Step 2: For each user, reset password
+      for (const coinHubUser of allUsers) {
+        const userId = String(coinHubUser.id);
+        const username = String(coinHubUser.username);
+
+        try {
+          // Hash the default password
+          const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+
+          // Validate hash format
+          if (!hashedPassword || !/^\$2[aby]\$\d+\$/.test(hashedPassword)) {
+            app.logger.error(
+              { username, userId },
+              'Admin: Failed to generate valid hash for default password'
+            );
+            updateDetails.push({
+              username,
+              status: 'failed',
+              reason: 'Failed to generate password hash'
+            });
+            continue;
+          }
+
+          // Find credential account or any account
+          let targetAccount = await app.db.query.account.findFirst({
+            where: and(
+              eq(authSchema.account.userId, userId),
+              eq(authSchema.account.providerId, 'credential')
+            )
+          });
+
+          // If no credential account, look for any account with password
+          if (!targetAccount) {
+            const allAccounts = await app.db.query.account.findMany({
+              where: eq(authSchema.account.userId, userId)
+            });
+            targetAccount = allAccounts.find(a => a.password);
+          }
+
+          // If still no account, create a credential account
+          if (!targetAccount) {
+            const newAccountId = crypto.randomUUID();
+            await app.db.insert(authSchema.account).values({
+              id: newAccountId,
+              userId,
+              accountId: `credential-${userId}`,
+              providerId: 'credential',
+              password: hashedPassword,
+            });
+
+            app.logger.info(
+              { username, userId, newAccountId },
+              'Admin: Created credential account with default password'
+            );
+
+            usersUpdated++;
+            updateDetails.push({
+              username,
+              status: 'created',
+              action: 'created_credential_account'
+            });
+          } else {
+            // Update existing account with new password
+            await app.db
+              .update(authSchema.account)
+              .set({ password: hashedPassword, updatedAt: new Date() })
+              .where(eq(authSchema.account.id, targetAccount.id));
+
+            app.logger.info(
+              { username, userId, accountId: targetAccount.id },
+              'Admin: Password reset to default (123456)'
+            );
+
+            usersUpdated++;
+            updateDetails.push({
+              username,
+              status: 'updated',
+              action: 'reset_password'
+            });
+          }
+
+          // Invalidate all sessions for this user
+          try {
+            await app.db
+              .delete(authSchema.session)
+              .where(eq(authSchema.session.userId, userId));
+          } catch (e) {
+            app.logger.warn(
+              { username, err: e },
+              'Admin: Failed to invalidate sessions'
+            );
+          }
+        } catch (userError) {
+          app.logger.error(
+            { err: userError, username, userId },
+            'Admin: Error resetting password for user'
+          );
+          updateDetails.push({
+            username,
+            status: 'error',
+            reason: String(userError).substring(0, 100)
+          });
+        }
+      }
+
+      app.logger.warn(
+        { usersUpdated, totalUsers: allUsers.length },
+        'CRITICAL: Reset-all-passwords operation completed'
+      );
+
+      return {
+        success: true,
+        usersUpdated,
+        totalUsers: allUsers.length,
+        message: `All passwords reset to 123456. Updated ${usersUpdated} out of ${allUsers.length} users.`,
+        details: updateDetails,
+        defaultPassword: '123456'
+      };
+    } catch (error) {
+      app.logger.error(
+        { err: error },
+        'CRITICAL: Reset-all-passwords operation failed'
+      );
+      return reply.status(500).send({
+        error: 'Reset-all-passwords operation failed',
+        details: String(error)
+      });
+    }
+  });
+
+  /**
    * POST /api/admin/fix-all-passwords
    * Admin utility to find and fix all accounts with corrupted/invalid password data
    *
