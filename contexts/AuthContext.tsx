@@ -1,7 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import * as SecureStore from 'expo-secure-store';
-import { Platform } from 'react-native';
+import { authClient } from '@/lib/auth';
 import Constants from 'expo-constants';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
@@ -32,67 +31,27 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-async function storeToken(token: string) {
-  console.log('Storing session token');
-  try {
-    if (Platform.OS === 'web') {
-      localStorage.setItem('sessionToken', token);
-    } else {
-      await SecureStore.setItemAsync('sessionToken', token);
-    }
-    console.log('Session token stored successfully');
-  } catch (error) {
-    console.error('Error storing token:', error);
-  }
-}
-
-async function getTokenFromStorage(): Promise<string | null> {
-  try {
-    if (Platform.OS === 'web') {
-      return localStorage.getItem('sessionToken');
-    } else {
-      return await SecureStore.getItemAsync('sessionToken');
-    }
-  } catch (error) {
-    console.error('Error getting token:', error);
-    return null;
-  }
-}
-
-async function removeToken() {
-  console.log('Removing session token');
-  try {
-    if (Platform.OS === 'web') {
-      localStorage.removeItem('sessionToken');
-    } else {
-      await SecureStore.deleteItemAsync('sessionToken');
-    }
-    console.log('Session token removed successfully');
-  } catch (error) {
-    console.error('Error removing token:', error);
-  }
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchUser = async () => {
     try {
-      console.log('Fetching user from storage...');
-      const token = await getTokenFromStorage();
-      if (!token) {
-        console.log('No session token found');
+      console.log('Fetching user session...');
+      const session = await authClient.getSession();
+      
+      if (!session?.user) {
+        console.log('No active session found');
         setUser(null);
         setLoading(false);
         return;
       }
 
-      console.log('Session token found, fetching user profile...');
+      console.log('Session found, fetching full user profile...');
+      
+      // Fetch full user profile from /api/auth/me
       const response = await fetch(`${API_URL}/api/auth/me`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        credentials: 'include',
       });
 
       if (response.ok) {
@@ -100,8 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('User fetched successfully:', data.user?.username || data.user?.email);
         setUser(data.user);
       } else {
-        console.log('Failed to fetch user (status:', response.status, '), clearing token');
-        await removeToken();
+        console.log('Failed to fetch user profile (status:', response.status, ')');
         setUser(null);
       }
     } catch (error) {
@@ -120,64 +78,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     console.log('SignIn: Attempting to sign in with email:', email);
-    const response = await fetch(`${API_URL}/api/auth/email/signin`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
+    
+    try {
+      const result = await authClient.signIn.email({
+        email,
+        password,
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      console.error('SignIn: Failed with error:', error);
+      if (result.error) {
+        console.error('SignIn: Failed with error:', result.error);
+        throw new Error(result.error.message || 'Sign in failed');
+      }
+
+      console.log('SignIn: Successful');
+      
+      // Fetch the full user profile
+      await fetchUser();
+      
+      console.log('SignIn: User state updated');
+    } catch (error: any) {
+      console.error('SignIn: Error:', error);
       throw new Error(error.message || 'Sign in failed');
     }
-
-    const data = await response.json();
-    console.log('SignIn: Successful, received token');
-    
-    if (data.token) {
-      await storeToken(data.token);
-    }
-    
-    setUser(data.user);
-    console.log('SignIn: User state updated');
   };
 
   const signUp = async (email: string, password: string) => {
     console.log('SignUp: Attempting to sign up with email:', email);
-    const response = await fetch(`${API_URL}/api/auth/email/signin`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
+    
+    try {
+      const result = await authClient.signUp.email({
+        email,
+        password,
+        name: email.split('@')[0], // Use email prefix as default name
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      console.error('SignUp: Failed with error:', error);
+      if (result.error) {
+        console.error('SignUp: Failed with error:', result.error);
+        throw new Error(result.error.message || 'Sign up failed');
+      }
+
+      console.log('SignUp: Successful');
+      
+      // Fetch the full user profile
+      await fetchUser();
+      
+      console.log('SignUp: User state updated');
+    } catch (error: any) {
+      console.error('SignUp: Error:', error);
       throw new Error(error.message || 'Sign up failed');
     }
-
-    const data = await response.json();
-    console.log('SignUp: Successful, received token');
-    
-    if (data.token) {
-      await storeToken(data.token);
-    }
-    
-    setUser(data.user);
-    console.log('SignUp: User state updated');
   };
 
   const completeProfile = async (username: string, displayName: string) => {
     console.log('CompleteProfile: Completing profile with username:', username);
-    const token = await getTokenFromStorage();
     
     const response = await fetch(`${API_URL}/api/auth/complete-profile`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
       },
+      credentials: 'include',
       body: JSON.stringify({ username, displayName }),
     });
 
@@ -194,9 +154,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     console.log('SignOut: Signing out user');
-    await removeToken();
-    setUser(null);
-    console.log('SignOut: Complete');
+    
+    try {
+      await authClient.signOut();
+      setUser(null);
+      console.log('SignOut: Complete');
+    } catch (error) {
+      console.error('SignOut: Error:', error);
+      setUser(null);
+    }
   };
 
   const refreshUser = async () => {
@@ -205,7 +171,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const getToken = async (): Promise<string | null> => {
-    return await getTokenFromStorage();
+    // Better Auth uses session cookies, not tokens
+    // Return null as we don't need tokens anymore
+    return null;
   };
 
   return (

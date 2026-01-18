@@ -47,9 +47,8 @@ export default function HomeScreen() {
   const fetchCoins = async () => {
     try {
       console.log('HomeScreen: Fetching coins feed');
-      const token = await getToken();
       const response = await fetch(`${API_URL}/api/coins/feed`, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        credentials: 'include',
       });
 
       if (response.ok) {
@@ -81,16 +80,15 @@ export default function HomeScreen() {
   const handleLike = async (coinId: string) => {
     console.log('HomeScreen: User tapped like/unlike on coin:', coinId);
     try {
-      const token = await getToken();
       const coin = coins.find(c => c.id === coinId);
       const isLiked = coin?.isLiked;
 
       const response = await fetch(`${API_URL}/api/coins/${coinId}/like`, {
         method: isLiked ? 'DELETE' : 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({}),
       });
 

@@ -75,13 +75,10 @@ export default function UserProfileScreen() {
 
     try {
       console.log('UserProfileScreen: Fetching profile for username:', username);
-      const token = await getToken();
       
       // Use the /api/users/:username endpoint
       const response = await fetch(`${API_URL}/api/users/${username}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -106,13 +103,10 @@ export default function UserProfileScreen() {
 
     try {
       console.log('UserProfileScreen: Fetching coins for user ID:', profile.id);
-      const token = await getToken();
       
       // Use the user ID from the profile to fetch coins
       const response = await fetch(`${API_URL}/api/users/${profile.id}/coins`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -138,15 +132,14 @@ export default function UserProfileScreen() {
     setIsFollowing(!isFollowing);
 
     try {
-      const token = await getToken();
       const method = previousState ? 'DELETE' : 'POST';
       
       const response = await fetch(`${API_URL}/api/users/${profile.id}/follow`, {
         method,
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: method === 'POST' ? JSON.stringify({}) : undefined,
       });
 

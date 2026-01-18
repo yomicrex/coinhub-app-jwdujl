@@ -55,9 +55,8 @@ export default function CoinDetailScreen() {
 
     try {
       console.log('CoinDetailScreen: Fetching coin detail for coinId:', coinId);
-      const token = await getToken();
       const response = await fetch(`${API_URL}/api/coins/${coinId}`, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        credentials: 'include',
       });
 
       if (response.ok) {
@@ -84,13 +83,12 @@ export default function CoinDetailScreen() {
 
     console.log('CoinDetailScreen: User tapped like/unlike button');
     try {
-      const token = await getToken();
       const response = await fetch(`${API_URL}/api/coins/${coin.id}/like`, {
         method: coin.isLiked ? 'DELETE' : 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({}),
       });
 
