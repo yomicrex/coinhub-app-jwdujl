@@ -49,7 +49,12 @@ export default function ProfileScreen() {
       return;
     }
 
-    console.log('ProfileScreen: Fetching coins for user:', user.id);
+    console.log('ProfileScreen: Fetching coins for user:', {
+      id: user.id,
+      username: user.username,
+      email: user.email
+    });
+    
     try {
       const response = await fetch(`${API_URL}/api/users/${user.id}/coins`, {
         credentials: 'include',
@@ -59,7 +64,7 @@ export default function ProfileScreen() {
         const data = await response.json();
         // Handle both response formats: { coins: [] } or direct array
         const coinsArray = data.coins || data;
-        console.log('ProfileScreen: Fetched', coinsArray.length, 'coins');
+        console.log('ProfileScreen: Fetched', coinsArray.length, 'coins for user:', user.username);
         setCoins(coinsArray);
       } else {
         console.error('ProfileScreen: Failed to fetch coins, status:', response.status);
@@ -69,7 +74,7 @@ export default function ProfileScreen() {
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, user?.username, user?.email]);
 
   const fetchFollowCounts = useCallback(async () => {
     if (!user?.id) {
@@ -77,7 +82,11 @@ export default function ProfileScreen() {
       return;
     }
 
-    console.log('ProfileScreen: Fetching follow counts for user:', user.id);
+    console.log('ProfileScreen: Fetching follow counts for user:', {
+      id: user.id,
+      username: user.username
+    });
+    
     try {
       const [followersRes, followingRes] = await Promise.all([
         fetch(`${API_URL}/api/users/${user.id}/followers`, { credentials: 'include' }),
@@ -96,10 +105,16 @@ export default function ProfileScreen() {
     } catch (error) {
       console.error('ProfileScreen: Error fetching follow counts:', error);
     }
-  }, [user?.id]);
+  }, [user?.id, user?.username]);
 
   useEffect(() => {
-    console.log('ProfileScreen: Component mounted, user:', user?.username);
+    console.log('ProfileScreen: Component mounted/updated, user:', {
+      id: user?.id,
+      username: user?.username,
+      email: user?.email,
+      displayName: user?.displayName
+    });
+    
     if (user) {
       fetchUserCoins();
       fetchFollowCounts();
@@ -114,7 +129,7 @@ export default function ProfileScreen() {
         text: 'Sign Out',
         style: 'destructive',
         onPress: async () => {
-          console.log('ProfileScreen: Signing out user');
+          console.log('ProfileScreen: Signing out user:', user?.username);
           await signOut();
           router.replace('/auth');
         },
