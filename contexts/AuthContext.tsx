@@ -35,16 +35,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchUserProfile = async () => {
+  const fetchUserProfile = async (forceRefresh = false) => {
     try {
-      console.log('AuthContext: Fetching user profile from /api/auth/me...');
+      console.log('AuthContext: Fetching user profile from /api/auth/me...', forceRefresh ? '(forced refresh)' : '');
+      
+      // Add cache-busting parameter for forced refresh
+      const url = forceRefresh 
+        ? `${API_URL}/api/auth/me?_t=${Date.now()}`
+        : `${API_URL}/api/auth/me`;
       
       // Fetch full user profile from /api/auth/me
-      const response = await fetch(`${API_URL}/api/auth/me`, {
+      const response = await fetch(url, {
         credentials: 'include',
         headers: {
           'Accept': 'application/json',
         },
+        // Disable caching for authentication requests
+        cache: 'no-store',
       });
 
       console.log('AuthContext: Profile fetch response status:', response.status);
@@ -157,16 +164,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       console.log('AuthContext: SignIn - Better Auth sign-in successful');
       
-      // Wait a moment for the session cookie to be set
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // CRITICAL: Clear any cached user data before fetching new profile
+      // CRITICAL: Clear any cached user data immediately
       console.log('AuthContext: SignIn - Clearing cached user data');
       setUser(null);
       
-      // Fetch the full user profile directly from the backend
-      console.log('AuthContext: SignIn - Fetching fresh user profile');
-      const userData = await fetchUserProfile();
+      // Wait longer for the session cookie to be properly set
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Fetch the full user profile directly from the backend with forced refresh
+      console.log('AuthContext: SignIn - Fetching fresh user profile with forced refresh');
+      const userData = await fetchUserProfile(true);
       
       if (!userData) {
         console.error('AuthContext: SignIn - Failed to fetch user profile after sign in');
@@ -202,16 +209,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       console.log('AuthContext: SignUp - Better Auth sign-up successful');
       
-      // Wait a moment for the session cookie to be set
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // CRITICAL: Clear any cached user data before fetching new profile
+      // CRITICAL: Clear any cached user data immediately
       console.log('AuthContext: SignUp - Clearing cached user data');
       setUser(null);
       
-      // Fetch the full user profile
-      console.log('AuthContext: SignUp - Fetching fresh user profile');
-      const userData = await fetchUserProfile();
+      // Wait longer for the session cookie to be properly set
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Fetch the full user profile with forced refresh
+      console.log('AuthContext: SignUp - Fetching fresh user profile with forced refresh');
+      const userData = await fetchUserProfile(true);
       
       if (!userData) {
         console.error('AuthContext: SignUp - Failed to fetch user profile after sign up');
@@ -254,8 +261,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // CRITICAL: Clear cached user data before refreshing
     setUser(null);
     
-    // Refresh user data to get the complete profile
-    await fetchUserProfile();
+    // Wait a moment for the profile to be saved
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Refresh user data to get the complete profile with forced refresh
+    await fetchUserProfile(true);
   };
 
   const signOut = async () => {
@@ -283,7 +293,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // CRITICAL: Clear cached user data before refreshing
     setUser(null);
     
-    await fetchUserProfile();
+    // Wait a moment before fetching
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    await fetchUserProfile(true);
   };
 
   const getToken = async (): Promise<string | null> => {

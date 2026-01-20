@@ -28,7 +28,7 @@ interface Coin {
   title: string;
   country: string;
   year: number;
-  images: Array<{ url: string }>;
+  images: { url: string }[];
 }
 
 interface User {
@@ -323,6 +323,7 @@ export default function TradeDetailScreen() {
         headers: {
           'Content-Type': 'application/json',
         },
+        // Use "message" field for consistency
         body: JSON.stringify({ message: message.trim() }),
       });
 
@@ -364,16 +365,18 @@ export default function TradeDetailScreen() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to send offer');
+        const errorData = await response.json().catch(() => ({}));
+        console.error('TradeDetailScreen: Failed to create offer:', errorData);
+        throw new Error(errorData.message || 'Failed to send offer');
       }
 
       console.log('TradeDetailScreen: Offer created successfully');
       Alert.alert('Success', 'Your coin offer has been sent!');
       setOfferMessage('');
       await fetchTradeDetail();
-    } catch (error) {
+    } catch (error: any) {
       console.error('TradeDetailScreen: Error creating offer:', error);
-      Alert.alert('Error', 'Failed to send offer');
+      Alert.alert('Error', error.message || 'Failed to send offer');
     }
   };
 
@@ -455,7 +458,7 @@ export default function TradeDetailScreen() {
   };
 
   const handleCancelTrade = async () => {
-    console.log('TradeDetailScreen: User canceling trade');
+    console.log('TradeDetailScreen: User tapped Cancel Trade button');
 
     Alert.alert(
       'Cancel Trade',
@@ -467,6 +470,7 @@ export default function TradeDetailScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
+              console.log('TradeDetailScreen: Sending cancel trade request to backend');
               const response = await fetch(`${API_URL}/api/trades/${id}/cancel`, {
                 method: 'POST',
                 credentials: 'include',
@@ -477,16 +481,18 @@ export default function TradeDetailScreen() {
               });
 
               if (!response.ok) {
-                throw new Error('Failed to cancel trade');
+                const errorData = await response.json().catch(() => ({}));
+                console.error('TradeDetailScreen: Cancel trade failed:', errorData);
+                throw new Error(errorData.message || 'Failed to cancel trade');
               }
 
               console.log('TradeDetailScreen: Trade canceled successfully');
               Alert.alert('Success', 'Trade canceled.', [
                 { text: 'OK', onPress: () => router.back() },
               ]);
-            } catch (error) {
+            } catch (error: any) {
               console.error('TradeDetailScreen: Error canceling trade:', error);
-              Alert.alert('Error', 'Failed to cancel trade');
+              Alert.alert('Error', error.message || 'Failed to cancel trade');
             }
           },
         },
