@@ -21,7 +21,10 @@ import {
   Alert,
   FlatList,
   Modal,
+  Dimensions,
 } from 'react-native';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface Coin {
   id: string;
@@ -109,6 +112,7 @@ export default function TradeDetailScreen() {
   const [showUploadCoin, setShowUploadCoin] = useState(false);
   const [showCoinDetail, setShowCoinDetail] = useState(false);
   const [selectedCoin, setSelectedCoin] = useState<Coin | null>(null);
+  const [selectedOffer, setSelectedOffer] = useState<TradeOffer | null>(null);
   const [userCoins, setUserCoins] = useState<Coin[]>([]);
   const [loadingCoins, setLoadingCoins] = useState(false);
   const [trackingNumber, setTrackingNumber] = useState('');
@@ -220,9 +224,10 @@ export default function TradeDetailScreen() {
     await fetchUserCoins();
   };
 
-  const handleViewCoinDetail = (coin: Coin) => {
+  const handleViewCoinDetail = (coin: Coin, offer?: TradeOffer) => {
     console.log('TradeDetailScreen: User viewing coin detail:', coin.id);
     setSelectedCoin(coin);
+    setSelectedOffer(offer || null);
     setShowCoinDetail(true);
   };
 
@@ -449,6 +454,7 @@ export default function TradeDetailScreen() {
 
               console.log('TradeDetailScreen: Offer accepted successfully');
               Alert.alert('Success', 'Offer accepted! You can now proceed with shipping.');
+              setShowCoinDetail(false);
               await fetchTradeDetail();
             } catch (error) {
               console.error('TradeDetailScreen: Error accepting offer:', error);
@@ -488,6 +494,7 @@ export default function TradeDetailScreen() {
 
               console.log('TradeDetailScreen: Offer rejected successfully');
               Alert.alert('Success', 'Offer rejected.');
+              setShowCoinDetail(false);
               await fetchTradeDetail();
             } catch (error) {
               console.error('TradeDetailScreen: Error rejecting offer:', error);
@@ -497,6 +504,12 @@ export default function TradeDetailScreen() {
         },
       ]
     );
+  };
+
+  const handleCounterOffer = () => {
+    console.log('TradeDetailScreen: User initiating counter offer');
+    setShowCoinDetail(false);
+    handleOpenCoinPicker();
   };
 
   const handleCancelTrade = async () => {
@@ -926,7 +939,7 @@ export default function TradeDetailScreen() {
                     </View>
                     <TouchableOpacity 
                       style={styles.coinCard}
-                      onPress={() => handleViewCoinDetail(offerCoin)}
+                      onPress={() => handleViewCoinDetail(offerCoin, offer)}
                       activeOpacity={0.7}
                     >
                       {offerCoin.images && offerCoin.images.length > 0 && offerCoin.images[0]?.url ? (
@@ -954,35 +967,12 @@ export default function TradeDetailScreen() {
                           {offerCoin.country} • {offerCoin.year}
                         </Text>
                         <Text style={[styles.coinDetails, { color: colors.primary, marginTop: 4 }]}>
-                          Tap to view details
+                          Tap to view details and respond
                         </Text>
                       </View>
                     </TouchableOpacity>
                     {offer.message && (
                       <Text style={styles.offerMessage}>{offer.message}</Text>
-                    )}
-                    {/* Accept/Reject/Counter buttons for coin owner */}
-                    {canAcceptOffer && offer.status === 'pending' && (
-                      <View style={styles.actionButtons}>
-                        <TouchableOpacity
-                          style={[styles.actionButton, styles.primaryButton, { flex: 1 }]}
-                          onPress={() => handleAcceptOffer(offer.id)}
-                        >
-                          <Text style={styles.buttonText}>Accept</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.actionButton, styles.dangerButton, { flex: 1 }]}
-                          onPress={() => handleRejectOffer(offer.id)}
-                        >
-                          <Text style={styles.buttonText}>Reject</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.actionButton, styles.secondaryButton, { flex: 1 }]}
-                          onPress={handleOpenCoinPicker}
-                        >
-                          <Text style={styles.buttonText}>Counter</Text>
-                        </TouchableOpacity>
-                      </View>
                     )}
                     {offer.status === 'accepted' && (
                       <View style={[styles.offerBadge, { backgroundColor: '#4CAF50', marginTop: 8 }]}>
@@ -1217,7 +1207,7 @@ export default function TradeDetailScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      {/* Coin Detail Modal */}
+      {/* Coin Detail Modal - IMPROVED POSITIONING AND HEIGHT */}
       <Modal
         visible={showCoinDetail}
         animationType="slide"
@@ -1225,7 +1215,7 @@ export default function TradeDetailScreen() {
         onRequestClose={() => setShowCoinDetail(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { height: SCREEN_HEIGHT * 0.85, marginTop: SCREEN_HEIGHT * 0.15 }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Coin Details</Text>
               <TouchableOpacity
@@ -1276,6 +1266,30 @@ export default function TradeDetailScreen() {
                       <Text style={styles.coinDetailDescription}>{selectedCoin.description}</Text>
                     </View>
                   )}
+
+                  {/* Action buttons for offered coins */}
+                  {selectedOffer && canAcceptOffer && selectedOffer.status === 'pending' && (
+                    <View style={styles.coinDetailActions}>
+                      <TouchableOpacity
+                        style={[styles.actionButton, styles.primaryButton, { flex: 1, marginRight: 8 }]}
+                        onPress={() => handleAcceptOffer(selectedOffer.id)}
+                      >
+                        <Text style={styles.buttonText}>Accept Offer</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.actionButton, styles.dangerButton, { flex: 1, marginRight: 8 }]}
+                        onPress={() => handleRejectOffer(selectedOffer.id)}
+                      >
+                        <Text style={styles.buttonText}>Reject</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.actionButton, styles.secondaryButton, { flex: 1 }]}
+                        onPress={handleCounterOffer}
+                      >
+                        <Text style={styles.buttonText}>Counter</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </View>
               </ScrollView>
             )}
@@ -1291,7 +1305,7 @@ export default function TradeDetailScreen() {
         onRequestClose={() => setShowCoinPicker(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { height: SCREEN_HEIGHT * 0.85, marginTop: SCREEN_HEIGHT * 0.15 }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Select a Coin to Offer</Text>
               <TouchableOpacity
@@ -1386,7 +1400,7 @@ export default function TradeDetailScreen() {
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={{ flex: 1, justifyContent: 'flex-end' }}
           >
-            <View style={[styles.modalContent, { maxHeight: '90%' }]}>
+            <View style={[styles.modalContent, { height: SCREEN_HEIGHT * 0.9, marginTop: SCREEN_HEIGHT * 0.1 }]}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Upload Coin for Trade</Text>
                 <TouchableOpacity
@@ -1854,7 +1868,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '80%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1985,7 +1998,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   coinDetailImage: {
-    width: 400,
+    width: Dimensions.get('window').width,
     height: 300,
     backgroundColor: colors.border,
   },
@@ -2020,5 +2033,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginTop: 8,
     lineHeight: 20,
+  },
+  coinDetailActions: {
+    flexDirection: 'row',
+    marginTop: 24,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
 });

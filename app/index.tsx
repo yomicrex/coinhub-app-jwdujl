@@ -11,7 +11,7 @@ export default function Index() {
   console.log('Index screen - loading:', loading, 'user:', user?.username);
 
   useEffect(() => {
-    console.log('Index screen mounted');
+    console.log('Index screen mounted - App starting');
   }, []);
 
   useEffect(() => {
@@ -30,21 +30,20 @@ export default function Index() {
     );
   }
 
-  // ALWAYS default to login screen first
-  // If user is not authenticated, show login
+  // ALWAYS redirect to login screen first if no user
   if (!user) {
-    console.log('No user, redirecting to auth');
+    console.log('No user found - redirecting to login screen');
     return <Redirect href="/auth" />;
   }
 
   // If user needs profile completion, show auth screen
   if (user.needsProfileCompletion) {
-    console.log('User needs profile completion, redirecting to auth');
+    console.log('User needs profile completion - redirecting to auth');
     return <Redirect href="/auth" />;
   }
 
   // User is authenticated and has profile, go to home
-  console.log('User authenticated, redirecting to home');
+  console.log('User authenticated - redirecting to home feed');
   return <Redirect href="/(tabs)/(home)" />;
 }
 
