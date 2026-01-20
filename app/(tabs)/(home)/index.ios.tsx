@@ -3,7 +3,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { IconSymbol } from '@/components/IconSymbol';
-import { authClient } from '@/lib/auth';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -18,6 +17,7 @@ import {
   ScrollView,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Alert,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
@@ -68,12 +68,24 @@ export default function FeedScreen() {
 
   const fetchCoins = async () => {
     try {
-      console.log('FeedScreen: Fetching public coins feed');
-      const response = await authClient.$fetch(`${API_URL}/api/coins/feed`);
-      console.log('FeedScreen: Fetched', response.coins?.length || 0, 'coins');
-      setCoins(response.coins || []);
+      console.log('FeedScreen: Fetching public coins feed from', `${API_URL}/api/coins/feed`);
+      const response = await fetch(`${API_URL}/api/coins/feed`, {
+        credentials: 'include',
+      });
+
+      console.log('FeedScreen: Feed response status:', response.status);
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('FeedScreen: Fetched', data.coins?.length || 0, 'coins');
+        setCoins(data.coins || []);
+      } else {
+        console.error('FeedScreen: Failed to fetch coins, status:', response.status);
+        setCoins([]);
+      }
     } catch (error) {
       console.error('FeedScreen: Error fetching coins:', error);
+      setCoins([]);
     } finally {
       setLoading(false);
     }
@@ -81,12 +93,24 @@ export default function FeedScreen() {
 
   const fetchTradeCoins = async () => {
     try {
-      console.log('FeedScreen: Fetching trade coins');
-      const response = await authClient.$fetch(`${API_URL}/api/coins/feed/trade`);
-      console.log('FeedScreen: Fetched', response.coins?.length || 0, 'trade coins');
-      setTradeCoins(response.coins || []);
+      console.log('FeedScreen: Fetching trade coins from', `${API_URL}/api/coins/feed/trade`);
+      const response = await fetch(`${API_URL}/api/coins/feed/trade`, {
+        credentials: 'include',
+      });
+
+      console.log('FeedScreen: Trade feed response status:', response.status);
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('FeedScreen: Fetched', data.coins?.length || 0, 'trade coins');
+        setTradeCoins(data.coins || []);
+      } else {
+        console.error('FeedScreen: Failed to fetch trade coins, status:', response.status);
+        setTradeCoins([]);
+      }
     } catch (error) {
       console.error('FeedScreen: Error fetching trade coins:', error);
+      setTradeCoins([]);
     }
   };
 
@@ -108,17 +132,22 @@ export default function FeedScreen() {
     }
 
     try {
-      await authClient.$fetch(`${API_URL}/api/coins/${coinId}/like`, {
+      const response = await fetch(`${API_URL}/api/coins/${coinId}/like`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({}),
       });
 
-      console.log('FeedScreen: Like successful, refreshing feed');
-      fetchCoins();
-      fetchTradeCoins();
+      if (response.ok) {
+        console.log('FeedScreen: Like successful, refreshing feed');
+        fetchCoins();
+        fetchTradeCoins();
+      } else {
+        console.error('FeedScreen: Failed to like coin, status:', response.status);
+      }
     } catch (error) {
       console.error('FeedScreen: Error liking coin:', error);
     }
@@ -156,8 +185,10 @@ export default function FeedScreen() {
     }
 
     try {
-      const response = await authClient.$fetch(`${API_URL}/api/trades/initiate`, {
+      console.log('FeedScreen: Initiating trade for coin:', coinId);
+      const response = await fetch(`${API_URL}/api/trades/initiate`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -166,15 +197,24 @@ export default function FeedScreen() {
         }),
       });
 
-      console.log('FeedScreen: Trade initiated successfully:', response);
+      console.log('FeedScreen: Trade initiate response status:', response.status);
 
-      const tradeId = response.trade?.id || response.id;
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('FeedScreen: Failed to initiate trade:', errorData);
+        throw new Error(errorData.message || 'Failed to initiate trade');
+      }
+
+      const data = await response.json();
+      console.log('FeedScreen: Trade initiated successfully:', data);
+
+      const tradeId = data.trade?.id || data.id;
       if (tradeId) {
         router.push(`/trade-detail?id=${tradeId}`);
       }
     } catch (error: any) {
       console.error('FeedScreen: Error initiating trade:', error);
-      alert(error.message || 'Failed to initiate trade. Please try again.');
+      Alert.alert('Error', error.message || 'Failed to initiate trade. Please try again.');
     }
   };
 
