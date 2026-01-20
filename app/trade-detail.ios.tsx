@@ -29,6 +29,14 @@ interface Coin {
   country: string;
   year: number;
   images: { url: string }[];
+  description?: string;
+  condition?: string;
+  unit?: string;
+  organization?: string;
+  agency?: string;
+  deployment?: string;
+  coinNumber?: string;
+  mintMark?: string;
 }
 
 interface User {
@@ -54,6 +62,7 @@ interface TradeMessage {
   id: string;
   sender: User;
   message: string;
+  content?: string;
   createdAt: string;
 }
 
@@ -98,6 +107,8 @@ export default function TradeDetailScreen() {
   const [sending, setSending] = useState(false);
   const [showCoinPicker, setShowCoinPicker] = useState(false);
   const [showUploadCoin, setShowUploadCoin] = useState(false);
+  const [showCoinDetail, setShowCoinDetail] = useState(false);
+  const [selectedCoin, setSelectedCoin] = useState<Coin | null>(null);
   const [userCoins, setUserCoins] = useState<Coin[]>([]);
   const [loadingCoins, setLoadingCoins] = useState(false);
   const [trackingNumber, setTrackingNumber] = useState('');
@@ -123,7 +134,6 @@ export default function TradeDetailScreen() {
       setError('No trade ID provided');
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const fetchTradeDetail = async () => {
@@ -160,7 +170,6 @@ export default function TradeDetailScreen() {
       }
 
       console.log('TradeDetailScreen: Trade data loaded successfully');
-      console.log('TradeDetailScreen: Offers:', data.offers);
       console.log('TradeDetailScreen: Messages:', data.messages);
       setTrade(data);
       setError(null);
@@ -179,6 +188,7 @@ export default function TradeDetailScreen() {
       console.log('TradeDetailScreen: Fetching user coins for offer');
       if (!user?.id) {
         console.log('TradeDetailScreen: No user ID available');
+        Alert.alert('Error', 'User not logged in');
         return;
       }
 
@@ -188,6 +198,7 @@ export default function TradeDetailScreen() {
       });
 
       if (!response.ok) {
+        console.error('TradeDetailScreen: Failed to fetch coins, status:', response.status);
         throw new Error('Failed to fetch coins');
       }
 
@@ -201,6 +212,18 @@ export default function TradeDetailScreen() {
     } finally {
       setLoadingCoins(false);
     }
+  };
+
+  const handleOpenCoinPicker = async () => {
+    console.log('TradeDetailScreen: User tapped "Select from My Coins" button');
+    setShowCoinPicker(true);
+    await fetchUserCoins();
+  };
+
+  const handleViewCoinDetail = (coin: Coin) => {
+    console.log('TradeDetailScreen: User viewing coin detail:', coin.id);
+    setSelectedCoin(coin);
+    setShowCoinDetail(true);
   };
 
   const pickImages = async () => {
@@ -530,6 +553,7 @@ export default function TradeDetailScreen() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          shipped: true,
           trackingNumber: trackingNumber.trim() || undefined,
         }),
       });
@@ -576,8 +600,7 @@ export default function TradeDetailScreen() {
               const data = await response.json();
               console.log('TradeDetailScreen: Received status updated successfully');
               
-              const responseData = data?.data || data;
-              if (responseData?.tradeCompleted) {
+              if (data?.tradeCompleted) {
                 Alert.alert('Trade Completed!', 'Both parties have received their coins. Please rate your trading experience.', [
                   { text: 'Rate Now', onPress: () => setShowRatingModal(true) },
                   { text: 'Later', style: 'cancel' },
@@ -695,6 +718,8 @@ export default function TradeDetailScreen() {
         return '#2196F3';
       case 'cancelled':
         return '#9E9E9E';
+      case 'countered':
+        return '#9C27B0';
       default:
         return colors.primary;
     }
@@ -713,6 +738,11 @@ export default function TradeDetailScreen() {
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
     return date.toLocaleDateString();
+  };
+
+  const getMessageText = (msg: TradeMessage): string => {
+    // Handle both 'message' and 'content' field names
+    return msg.message || msg.content || '';
   };
 
   if (loading) {
@@ -824,10 +854,14 @@ export default function TradeDetailScreen() {
             )}
           </View>
 
-          {/* Requested Coin */}
+          {/* Up for Trade Coin */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Requested Coin</Text>
-            <View style={styles.coinCard}>
+            <Text style={styles.sectionTitle}>Up for Trade</Text>
+            <TouchableOpacity 
+              style={styles.coinCard}
+              onPress={() => handleViewCoinDetail(trade.coin)}
+              activeOpacity={0.7}
+            >
               {trade.coin.images && trade.coin.images.length > 0 && trade.coin.images[0]?.url ? (
                 <Image
                   source={{ uri: trade.coin.images[0].url }}
@@ -853,8 +887,11 @@ export default function TradeDetailScreen() {
                   {trade.coin.country} • {trade.coin.year}
                 </Text>
                 <Text style={styles.coinDetails}>Owner: @{trade.coinOwner.username}</Text>
+                <Text style={[styles.coinDetails, { color: colors.primary, marginTop: 4 }]}>
+                  Tap to view details
+                </Text>
               </View>
-            </View>
+            </TouchableOpacity>
           </View>
 
           {/* Offered Coins */}
@@ -887,7 +924,11 @@ export default function TradeDetailScreen() {
                         </View>
                       )}
                     </View>
-                    <View style={styles.coinCard}>
+                    <TouchableOpacity 
+                      style={styles.coinCard}
+                      onPress={() => handleViewCoinDetail(offerCoin)}
+                      activeOpacity={0.7}
+                    >
                       {offerCoin.images && offerCoin.images.length > 0 && offerCoin.images[0]?.url ? (
                         <Image
                           source={{ uri: offerCoin.images[0].url }}
@@ -912,25 +953,34 @@ export default function TradeDetailScreen() {
                         <Text style={styles.coinDetails}>
                           {offerCoin.country} • {offerCoin.year}
                         </Text>
+                        <Text style={[styles.coinDetails, { color: colors.primary, marginTop: 4 }]}>
+                          Tap to view details
+                        </Text>
                       </View>
-                    </View>
+                    </TouchableOpacity>
                     {offer.message && (
                       <Text style={styles.offerMessage}>{offer.message}</Text>
                     )}
-                    {/* Accept/Reject buttons for coin owner */}
+                    {/* Accept/Reject/Counter buttons for coin owner */}
                     {canAcceptOffer && offer.status === 'pending' && (
                       <View style={styles.actionButtons}>
                         <TouchableOpacity
-                          style={[styles.actionButton, styles.primaryButton]}
+                          style={[styles.actionButton, styles.primaryButton, { flex: 1 }]}
                           onPress={() => handleAcceptOffer(offer.id)}
                         >
                           <Text style={styles.buttonText}>Accept</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                          style={[styles.actionButton, styles.dangerButton]}
+                          style={[styles.actionButton, styles.dangerButton, { flex: 1 }]}
                           onPress={() => handleRejectOffer(offer.id)}
                         >
                           <Text style={styles.buttonText}>Reject</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.actionButton, styles.secondaryButton, { flex: 1 }]}
+                          onPress={handleOpenCoinPicker}
+                        >
+                          <Text style={styles.buttonText}>Counter</Text>
                         </TouchableOpacity>
                       </View>
                     )}
@@ -951,11 +1001,8 @@ export default function TradeDetailScreen() {
             {(trade.status === 'pending' || trade.status === 'countered') && (
               <View style={styles.offerButtonsContainer}>
                 <TouchableOpacity
-                  style={[styles.actionButton, styles.primaryButton, { marginTop: 12, marginRight: 8 }]}
-                  onPress={() => {
-                    fetchUserCoins();
-                    setShowCoinPicker(true);
-                  }}
+                  style={[styles.actionButton, styles.primaryButton, { flex: 1, marginTop: 12, marginRight: 8 }]}
+                  onPress={handleOpenCoinPicker}
                 >
                   <IconSymbol
                     ios_icon_name="list.bullet"
@@ -966,7 +1013,7 @@ export default function TradeDetailScreen() {
                   <Text style={styles.buttonText}>Select from My Coins</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.actionButton, styles.secondaryButton, { marginTop: 12 }]}
+                  style={[styles.actionButton, styles.secondaryButton, { flex: 1, marginTop: 12 }]}
                   onPress={() => setShowUploadCoin(true)}
                 >
                   <IconSymbol
@@ -1087,7 +1134,7 @@ export default function TradeDetailScreen() {
           {/* Messages */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Messages</Text>
-            {trade.messages.length === 0 ? (
+            {!trade.messages || trade.messages.length === 0 ? (
               <Text style={styles.emptyText}>No messages yet. Start the conversation!</Text>
             ) : (
               trade.messages.map((msg) => (
@@ -1116,7 +1163,7 @@ export default function TradeDetailScreen() {
                     </Text>
                   </View>
                   <View style={styles.messageBubble}>
-                    <Text style={styles.messageText}>{msg.message}</Text>
+                    <Text style={styles.messageText}>{getMessageText(msg)}</Text>
                   </View>
                 </View>
               ))
@@ -1169,6 +1216,72 @@ export default function TradeDetailScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Coin Detail Modal */}
+      <Modal
+        visible={showCoinDetail}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowCoinDetail(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Coin Details</Text>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setShowCoinDetail(false)}
+              >
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={24}
+                  color={colors.text}
+                />
+              </TouchableOpacity>
+            </View>
+            {selectedCoin && (
+              <ScrollView style={styles.coinDetailScroll}>
+                {selectedCoin.images && selectedCoin.images.length > 0 && (
+                  <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}>
+                    {selectedCoin.images.map((img, index) => (
+                      <Image
+                        key={index}
+                        source={{ uri: img.url }}
+                        style={styles.coinDetailImage}
+                        resizeMode="contain"
+                      />
+                    ))}
+                  </ScrollView>
+                )}
+                <View style={styles.coinDetailInfo}>
+                  <Text style={styles.coinDetailTitle}>{selectedCoin.title}</Text>
+                  <View style={styles.coinDetailRow}>
+                    <Text style={styles.coinDetailLabel}>Country:</Text>
+                    <Text style={styles.coinDetailValue}>{selectedCoin.country}</Text>
+                  </View>
+                  <View style={styles.coinDetailRow}>
+                    <Text style={styles.coinDetailLabel}>Year:</Text>
+                    <Text style={styles.coinDetailValue}>{selectedCoin.year}</Text>
+                  </View>
+                  {selectedCoin.condition && (
+                    <View style={styles.coinDetailRow}>
+                      <Text style={styles.coinDetailLabel}>Condition:</Text>
+                      <Text style={styles.coinDetailValue}>{selectedCoin.condition}</Text>
+                    </View>
+                  )}
+                  {selectedCoin.description && (
+                    <View style={styles.coinDetailSection}>
+                      <Text style={styles.coinDetailLabel}>Description:</Text>
+                      <Text style={styles.coinDetailDescription}>{selectedCoin.description}</Text>
+                    </View>
+                  )}
+                </View>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       {/* Coin Picker Modal */}
       <Modal
@@ -1273,7 +1386,7 @@ export default function TradeDetailScreen() {
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={{ flex: 1, justifyContent: 'flex-end' }}
           >
-            <View style={styles.modalContent}>
+            <View style={[styles.modalContent, { maxHeight: '90%' }]}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Upload Coin for Trade</Text>
                 <TouchableOpacity
@@ -1297,7 +1410,7 @@ export default function TradeDetailScreen() {
                 </TouchableOpacity>
               </View>
 
-              <ScrollView style={styles.uploadForm}>
+              <ScrollView style={styles.uploadForm} contentContainerStyle={{ paddingBottom: 20 }}>
                 {/* Images */}
                 <View style={styles.formSection}>
                   <Text style={styles.formLabel}>Images (Required)</Text>
@@ -1410,7 +1523,7 @@ export default function TradeDetailScreen() {
 
                 {/* Submit Button */}
                 <TouchableOpacity
-                  style={[styles.actionButton, styles.primaryButton, { marginTop: 16, marginBottom: 32 }]}
+                  style={[styles.actionButton, styles.primaryButton, { marginTop: 16 }]}
                   onPress={handleUploadCoinOffer}
                   disabled={uploading}
                 >
@@ -1561,8 +1674,8 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   actionButton: {
-    flex: 1,
     paddingVertical: 12,
+    paddingHorizontal: 16,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1867,5 +1980,45 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -8,
     right: -8,
+  },
+  coinDetailScroll: {
+    flex: 1,
+  },
+  coinDetailImage: {
+    width: 400,
+    height: 300,
+    backgroundColor: colors.border,
+  },
+  coinDetailInfo: {
+    padding: 16,
+  },
+  coinDetailTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 16,
+  },
+  coinDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  coinDetailLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  coinDetailValue: {
+    fontSize: 16,
+    color: colors.text,
+  },
+  coinDetailSection: {
+    marginTop: 16,
+  },
+  coinDetailDescription: {
+    fontSize: 14,
+    color: colors.text,
+    marginTop: 8,
+    lineHeight: 20,
   },
 });

@@ -38,7 +38,7 @@ interface Trade {
     avatarUrl?: string;
   };
   status: string;
-  lastMessage?: string;
+  lastMessage?: string | { content: string };
   createdAt: string;
   updatedAt: string;
 }
@@ -110,6 +110,8 @@ export default function TradesScreen() {
         return '#2196F3';
       case 'cancelled':
         return '#9E9E9E';
+      case 'countered':
+        return '#9C27B0';
       default:
         return colors.primary;
     }
@@ -124,6 +126,21 @@ export default function TradesScreen() {
     router.push(`/trade-detail?id=${tradeId}`);
   };
 
+  const getLastMessageText = (lastMessage: string | { content: string } | undefined): string => {
+    if (!lastMessage) return '';
+    
+    // Handle both string and object formats
+    if (typeof lastMessage === 'string') {
+      return lastMessage;
+    }
+    
+    if (typeof lastMessage === 'object' && lastMessage.content) {
+      return lastMessage.content;
+    }
+    
+    return '';
+  };
+
   const renderTradeCard = ({ item }: { item: Trade }) => {
     if (!item || !item.coin || !item.requester || !item.owner) {
       console.error('TradesScreen: Invalid trade item:', item);
@@ -132,6 +149,7 @@ export default function TradesScreen() {
 
     const isRequester = item.requester.id === user?.id;
     const otherUser = isRequester ? item.owner : item.requester;
+    const lastMessageText = getLastMessageText(item.lastMessage);
 
     return (
       <TouchableOpacity
@@ -176,9 +194,9 @@ export default function TradesScreen() {
           <Text style={styles.tradeInfo}>
             {isRequester ? 'You requested from' : 'Requested by'} {otherUser.displayName}
           </Text>
-          {item.lastMessage && (
+          {lastMessageText && (
             <Text style={styles.lastMessage} numberOfLines={1}>
-              {item.lastMessage}
+              {lastMessageText}
             </Text>
           )}
           <View style={styles.userInfo}>

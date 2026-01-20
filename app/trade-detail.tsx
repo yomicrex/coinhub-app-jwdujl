@@ -62,6 +62,7 @@ interface TradeMessage {
   id: string;
   sender: User;
   message: string;
+  content?: string;
   createdAt: string;
 }
 
@@ -133,7 +134,6 @@ export default function TradeDetailScreen() {
       setError('No trade ID provided');
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const fetchTradeDetail = async () => {
@@ -170,7 +170,6 @@ export default function TradeDetailScreen() {
       }
 
       console.log('TradeDetailScreen: Trade data loaded successfully');
-      console.log('TradeDetailScreen: Offers:', data.offers);
       console.log('TradeDetailScreen: Messages:', data.messages);
       setTrade(data);
       setError(null);
@@ -719,6 +718,8 @@ export default function TradeDetailScreen() {
         return '#2196F3';
       case 'cancelled':
         return '#9E9E9E';
+      case 'countered':
+        return '#9C27B0';
       default:
         return colors.primary;
     }
@@ -737,6 +738,11 @@ export default function TradeDetailScreen() {
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
     return date.toLocaleDateString();
+  };
+
+  const getMessageText = (msg: TradeMessage): string => {
+    // Handle both 'message' and 'content' field names
+    return msg.message || msg.content || '';
   };
 
   if (loading) {
@@ -955,20 +961,26 @@ export default function TradeDetailScreen() {
                     {offer.message && (
                       <Text style={styles.offerMessage}>{offer.message}</Text>
                     )}
-                    {/* Accept/Reject buttons for coin owner */}
+                    {/* Accept/Reject/Counter buttons for coin owner */}
                     {canAcceptOffer && offer.status === 'pending' && (
                       <View style={styles.actionButtons}>
                         <TouchableOpacity
-                          style={[styles.actionButton, styles.primaryButton]}
+                          style={[styles.actionButton, styles.primaryButton, { flex: 1 }]}
                           onPress={() => handleAcceptOffer(offer.id)}
                         >
                           <Text style={styles.buttonText}>Accept</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                          style={[styles.actionButton, styles.dangerButton]}
+                          style={[styles.actionButton, styles.dangerButton, { flex: 1 }]}
                           onPress={() => handleRejectOffer(offer.id)}
                         >
                           <Text style={styles.buttonText}>Reject</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.actionButton, styles.secondaryButton, { flex: 1 }]}
+                          onPress={handleOpenCoinPicker}
+                        >
+                          <Text style={styles.buttonText}>Counter</Text>
                         </TouchableOpacity>
                       </View>
                     )}
@@ -1122,7 +1134,7 @@ export default function TradeDetailScreen() {
           {/* Messages */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Messages</Text>
-            {trade.messages.length === 0 ? (
+            {!trade.messages || trade.messages.length === 0 ? (
               <Text style={styles.emptyText}>No messages yet. Start the conversation!</Text>
             ) : (
               trade.messages.map((msg) => (
@@ -1151,7 +1163,7 @@ export default function TradeDetailScreen() {
                     </Text>
                   </View>
                   <View style={styles.messageBubble}>
-                    <Text style={styles.messageText}>{msg.message}</Text>
+                    <Text style={styles.messageText}>{getMessageText(msg)}</Text>
                   </View>
                 </View>
               ))
