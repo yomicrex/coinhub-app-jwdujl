@@ -56,21 +56,28 @@ interface TradeMessage {
 
 interface ShippingInfo {
   id: string;
-  user: User;
-  trackingNumber?: string;
-  shippedAt?: string;
-  receivedAt?: string;
+  tradeId: string;
+  initiatorShipped: boolean;
+  initiatorTrackingNumber?: string;
+  initiatorShippedAt?: string;
+  initiatorReceived: boolean;
+  initiatorReceivedAt?: string;
+  ownerShipped: boolean;
+  ownerTrackingNumber?: string;
+  ownerShippedAt?: string;
+  ownerReceived: boolean;
+  ownerReceivedAt?: string;
 }
 
 interface TradeDetail {
   id: string;
   coin: Coin;
-  requester: User;
-  owner: User;
+  initiator: User;
+  coinOwner: User;
   status: string;
   offers: TradeOffer[];
   messages: TradeMessage[];
-  shipping: ShippingInfo[];
+  shipping: ShippingInfo;
   createdAt: string;
 }
 
@@ -91,6 +98,8 @@ export default function TradeDetailScreen() {
   const [trackingNumber, setTrackingNumber] = useState('');
   const [offerMessage, setOfferMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [rating, setRating] = useState(0);
+  const [showRatingModal, setShowRatingModal] = useState(false);
 
   useEffect(() => {
     console.log('TradeDetailScreen: Component mounted, trade ID:', id);
@@ -124,17 +133,15 @@ export default function TradeDetailScreen() {
       const data = await response.json();
       console.log('TradeDetailScreen: Fetched trade detail response:', data);
       
-      const tradeData = data?.trade || data;
-      
-      if (!tradeData) {
+      if (!data) {
         console.error('TradeDetailScreen: No trade data in response');
         setError('Trade not found');
         setLoading(false);
         return;
       }
 
-      console.log('TradeDetailScreen: Trade data loaded successfully, status:', tradeData.status);
-      setTrade(tradeData);
+      console.log('TradeDetailScreen: Trade data loaded successfully, status:', data.status);
+      setTrade(data);
       setError(null);
     } catch (error: any) {
       console.error('TradeDetailScreen: Error fetching trade detail:', error);
@@ -415,7 +422,10 @@ export default function TradeDetailScreen() {
               
               const responseData = data?.data || data;
               if (responseData?.tradeCompleted) {
-                Alert.alert('Trade Completed!', 'Both parties have received their coins. The trade is now complete!');
+                Alert.alert('Trade Completed!', 'Both parties have received their coins. Please rate your trading experience.', [
+                  { text: 'Rate Now', onPress: () => setShowRatingModal(true) },
+                  { text: 'Later', style: 'cancel' },
+                ]);
               } else {
                 Alert.alert('Success', 'Marked as received! Waiting for the other party to confirm receipt.');
               }
@@ -431,14 +441,47 @@ export default function TradeDetailScreen() {
     );
   };
 
+  const handleSubmitRating = async () => {
+    if (rating === 0) {
+      Alert.alert('Error', 'Please select a rating');
+      return;
+    }
+
+    console.log('TradeDetailScreen: User submitting rating:', rating);
+
+    try {
+      const response = await fetch(`${API_URL}/api/trades/${id}/rate`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ rating }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to submit rating');
+      }
+
+      console.log('TradeDetailScreen: Rating submitted successfully');
+      Alert.alert('Success', 'Thank you for rating this trade!');
+      setShowRatingModal(false);
+      setRating(0);
+      await fetchTradeDetail();
+    } catch (error) {
+      console.error('TradeDetailScreen: Error submitting rating:', error);
+      Alert.alert('Error', 'Failed to submit rating');
+    }
+  };
+
   const handleReportUser = () => {
     console.log('TradeDetailScreen: User initiating report');
     
     if (!trade) return;
 
-    const reportedUserId = trade.requester.id === user?.id 
-      ? trade.owner.id 
-      : trade.requester.id;
+    const reportedUserId = trade.initiator.id === user?.id 
+      ? trade.coinOwner.id 
+      : trade.initiator.id;
 
     Alert.prompt(
       'Report Trade Violation',
@@ -563,12 +606,24 @@ export default function TradeDetailScreen() {
     );
   }
 
-  const isRequester = trade.requester.id === user?.id;
-  const otherUser = isRequester ? trade.owner : trade.requester;
-  const canAcceptOffer = !isRequester && trade.status === 'pending';
-  const myShipping = trade.shipping?.find((s) => s.user.id === user?.id);
-  const theirShipping = trade.shipping?.find((s) => s.user.id === otherUser.id);
-  const bothShipped = myShipping?.shippedAt && theirShipping?.shippedAt;
+  const isInitiator = trade.initiator.id === user?.id;
+  const otherUser = isInitiator ? trade.coinOwner : trade.initiator;
+  const canAcceptOffer = !isInitiator && trade.status === 'pending';
+  
+  // Handle shipping info based on user role
+  const myShipped = isInitiator ? trade.shipping?.initiatorShipped : trade.shipping?.ownerShipped;
+  const myTrackingNumber = isInitiator ? trade.shipping?.initiatorTrackingNumber : trade.shipping?.ownerTrackingNumber;
+  const myShippedAt = isInitiator ? trade.shipping?.initiatorShippedAt : trade.shipping?.ownerShippedAt;
+  const myReceived = isInitiator ? trade.shipping?.initiatorReceived : trade.shipping?.ownerReceived;
+  const myReceivedAt = isInitiator ? trade.shipping?.initiatorReceivedAt : trade.shipping?.ownerReceivedAt;
+  
+  const theirShipped = isInitiator ? trade.shipping?.ownerShipped : trade.shipping?.initiatorShipped;
+  const theirTrackingNumber = isInitiator ? trade.shipping?.ownerTrackingNumber : trade.shipping?.initiatorTrackingNumber;
+  const theirShippedAt = isInitiator ? trade.shipping?.ownerShippedAt : trade.shipping?.initiatorShippedAt;
+  const theirReceived = isInitiator ? trade.shipping?.ownerReceived : trade.shipping?.initiatorReceived;
+  const theirReceivedAt = isInitiator ? trade.shipping?.ownerReceivedAt : trade.shipping?.initiatorReceivedAt;
+  
+  const bothShipped = myShipped && theirShipped;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -641,7 +696,7 @@ export default function TradeDetailScreen() {
                 <Text style={styles.coinDetails}>
                   {trade.coin.country} • {trade.coin.year}
                 </Text>
-                <Text style={styles.coinDetails}>Owner: @{trade.owner.username}</Text>
+                <Text style={styles.coinDetails}>Owner: @{trade.coinOwner.username}</Text>
               </View>
             </View>
           </View>
@@ -733,7 +788,7 @@ export default function TradeDetailScreen() {
                 }}
               >
                 <Text style={styles.buttonText}>
-                  {isRequester ? 'Offer a Coin' : 'Counter Offer'}
+                  {isInitiator ? 'Offer a Coin' : 'Counter Offer'}
                 </Text>
               </TouchableOpacity>
             )}
@@ -747,26 +802,28 @@ export default function TradeDetailScreen() {
               {/* My Shipping */}
               <View style={styles.shippingCard}>
                 <Text style={styles.shippingHeader}>Your Shipment</Text>
-                {myShipping?.shippedAt ? (
+                {myShipped ? (
                   <>
                     <View style={styles.shippingRow}>
                       <Text style={styles.shippingLabel}>Status:</Text>
                       <Text style={styles.shippingValue}>Shipped ✓</Text>
                     </View>
-                    {myShipping.trackingNumber && (
+                    {myTrackingNumber && (
                       <View style={styles.shippingRow}>
                         <Text style={styles.shippingLabel}>Tracking:</Text>
                         <Text style={styles.shippingValue}>
-                          {myShipping.trackingNumber}
+                          {myTrackingNumber}
                         </Text>
                       </View>
                     )}
-                    <View style={styles.shippingRow}>
-                      <Text style={styles.shippingLabel}>Shipped:</Text>
-                      <Text style={styles.shippingValue}>
-                        {formatDate(myShipping.shippedAt)}
-                      </Text>
-                    </View>
+                    {myShippedAt && (
+                      <View style={styles.shippingRow}>
+                        <Text style={styles.shippingLabel}>Shipped:</Text>
+                        <Text style={styles.shippingValue}>
+                          {formatDate(myShippedAt)}
+                        </Text>
+                      </View>
+                    )}
                   </>
                 ) : (
                   <>
@@ -792,29 +849,31 @@ export default function TradeDetailScreen() {
                 <Text style={styles.shippingHeader}>
                   {otherUser.displayName}&apos;s Shipment
                 </Text>
-                {theirShipping?.shippedAt ? (
+                {theirShipped ? (
                   <>
                     <View style={styles.shippingRow}>
                       <Text style={styles.shippingLabel}>Status:</Text>
                       <Text style={styles.shippingValue}>
-                        {theirShipping.receivedAt ? 'Received ✓' : 'Shipped ✓'}
+                        {theirReceived ? 'Received ✓' : 'Shipped ✓'}
                       </Text>
                     </View>
-                    {theirShipping.trackingNumber && (
+                    {theirTrackingNumber && (
                       <View style={styles.shippingRow}>
                         <Text style={styles.shippingLabel}>Tracking:</Text>
                         <Text style={styles.shippingValue}>
-                          {theirShipping.trackingNumber}
+                          {theirTrackingNumber}
                         </Text>
                       </View>
                     )}
-                    <View style={styles.shippingRow}>
-                      <Text style={styles.shippingLabel}>Shipped:</Text>
-                      <Text style={styles.shippingValue}>
-                        {formatDate(theirShipping.shippedAt)}
-                      </Text>
-                    </View>
-                    {!theirShipping.receivedAt && bothShipped && (
+                    {theirShippedAt && (
+                      <View style={styles.shippingRow}>
+                        <Text style={styles.shippingLabel}>Shipped:</Text>
+                        <Text style={styles.shippingValue}>
+                          {formatDate(theirShippedAt)}
+                        </Text>
+                      </View>
+                    )}
+                    {!theirReceived && bothShipped && (
                       <TouchableOpacity
                         style={[styles.actionButton, styles.primaryButton, { marginTop: 8 }]}
                         onPress={handleMarkReceived}
@@ -822,11 +881,11 @@ export default function TradeDetailScreen() {
                         <Text style={styles.buttonText}>Mark as Received</Text>
                       </TouchableOpacity>
                     )}
-                    {theirShipping.receivedAt && (
+                    {theirReceivedAt && (
                       <View style={styles.shippingRow}>
                         <Text style={styles.shippingLabel}>Received:</Text>
                         <Text style={styles.shippingValue}>
-                          {formatDate(theirShipping.receivedAt)}
+                          {formatDate(theirReceivedAt)}
                         </Text>
                       </View>
                     )}
@@ -1004,6 +1063,62 @@ export default function TradeDetailScreen() {
                 </View>
               }
             />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Rating Modal */}
+      <Modal
+        visible={showRatingModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowRatingModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '50%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Rate This Trade</Text>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => {
+                  setShowRatingModal(false);
+                  setRating(0);
+                }}
+              >
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={24}
+                  color={colors.text}
+                />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.ratingContainer}>
+              <Text style={styles.ratingText}>How was your trading experience?</Text>
+              <View style={styles.starsContainer}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <TouchableOpacity
+                    key={star}
+                    onPress={() => setRating(star)}
+                    style={styles.starButton}
+                  >
+                    <IconSymbol
+                      ios_icon_name={star <= rating ? 'star.fill' : 'star'}
+                      android_material_icon_name={star <= rating ? 'star' : 'star-border'}
+                      size={48}
+                      color={star <= rating ? '#FFD700' : colors.textSecondary}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TouchableOpacity
+                style={[styles.actionButton, styles.primaryButton, { marginTop: 24 }]}
+                onPress={handleSubmitRating}
+                disabled={rating === 0}
+              >
+                <Text style={styles.buttonText}>Submit Rating</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1305,5 +1420,22 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.background,
     marginLeft: 8,
+  },
+  ratingContainer: {
+    padding: 24,
+    alignItems: 'center',
+  },
+  ratingText: {
+    fontSize: 16,
+    color: colors.text,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  starsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  starButton: {
+    padding: 4,
   },
 });
