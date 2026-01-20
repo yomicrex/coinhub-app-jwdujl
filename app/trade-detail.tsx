@@ -6,6 +6,7 @@ import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import React, { useState, useEffect, useRef } from 'react';
+import * as ImagePicker from 'expo-image-picker';
 import {
   View,
   Text,
@@ -94,12 +95,21 @@ export default function TradeDetailScreen() {
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [showCoinPicker, setShowCoinPicker] = useState(false);
+  const [showUploadCoin, setShowUploadCoin] = useState(false);
   const [userCoins, setUserCoins] = useState<Coin[]>([]);
   const [trackingNumber, setTrackingNumber] = useState('');
   const [offerMessage, setOfferMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [rating, setRating] = useState(0);
   const [showRatingModal, setShowRatingModal] = useState(false);
+
+  // Upload coin form state
+  const [uploadImages, setUploadImages] = useState<string[]>([]);
+  const [uploadTitle, setUploadTitle] = useState('');
+  const [uploadCountry, setUploadCountry] = useState('');
+  const [uploadYear, setUploadYear] = useState('');
+  const [uploadDescription, setUploadDescription] = useState('');
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     console.log('TradeDetailScreen: Component mounted, trade ID:', id);
@@ -176,6 +186,127 @@ export default function TradeDetailScreen() {
     } catch (error) {
       console.error('TradeDetailScreen: Error fetching user coins:', error);
       Alert.alert('Error', 'Failed to load your coins');
+    }
+  };
+
+  const pickImages = async () => {
+    console.log('TradeDetailScreen: User tapped pick images for upload');
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      quality: 0.8,
+      selectionLimit: 5 - uploadImages.length,
+    });
+
+    if (!result.canceled && result.assets) {
+      console.log('TradeDetailScreen: User selected', result.assets.length, 'images');
+      const newImages = result.assets.map((asset) => asset.uri);
+      setUploadImages([...uploadImages, ...newImages].slice(0, 5));
+    }
+  };
+
+  const takePhoto = async () => {
+    console.log('TradeDetailScreen: User tapped take photo for upload');
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets && result.assets[0]) {
+      console.log('TradeDetailScreen: User took a photo');
+      setUploadImages([...uploadImages, result.assets[0].uri].slice(0, 5));
+    }
+  };
+
+  const removeUploadImage = (index: number) => {
+    console.log('TradeDetailScreen: User removed upload image at index:', index);
+    setUploadImages(uploadImages.filter((_, i) => i !== index));
+  };
+
+  const handleUploadCoinOffer = async () => {
+    console.log('TradeDetailScreen: User submitting uploaded coin offer');
+
+    if (uploadImages.length === 0) {
+      Alert.alert('Error', 'Please add at least one image');
+      return;
+    }
+
+    if (!uploadTitle.trim()) {
+      Alert.alert('Error', 'Please enter a title');
+      return;
+    }
+
+    if (!uploadCountry.trim()) {
+      Alert.alert('Error', 'Please enter a country');
+      return;
+    }
+
+    if (!uploadYear.trim() || isNaN(parseInt(uploadYear))) {
+      Alert.alert('Error', 'Please enter a valid year');
+      return;
+    }
+
+    setUploading(true);
+
+    try {
+      const formData = new FormData();
+
+      // Add images
+      for (let i = 0; i < uploadImages.length; i++) {
+        const uri = uploadImages[i];
+        const filename = uri.split('/').pop() || `image${i}.jpg`;
+        const match = /\.(\w+)$/.exec(filename);
+        const type = match ? `image/${match[1]}` : 'image/jpeg';
+
+        formData.append('images', {
+          uri,
+          name: filename,
+          type,
+        } as any);
+      }
+
+      // Add coin data
+      formData.append('title', uploadTitle.trim());
+      formData.append('country', uploadCountry.trim());
+      formData.append('year', uploadYear.trim());
+      if (uploadDescription.trim()) {
+        formData.append('description', uploadDescription.trim());
+      }
+      if (offerMessage.trim()) {
+        formData.append('message', offerMessage.trim());
+      }
+
+      console.log('TradeDetailScreen: Uploading temporary coin for trade');
+      const response = await fetch(`${API_URL}/api/trades/${id}/offers/upload`, {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('TradeDetailScreen: Failed to upload coin offer:', errorText);
+        throw new Error('Failed to upload coin offer');
+      }
+
+      console.log('TradeDetailScreen: Coin offer uploaded successfully');
+      Alert.alert('Success', 'Your coin offer has been sent!');
+      
+      // Reset form
+      setUploadImages([]);
+      setUploadTitle('');
+      setUploadCountry('');
+      setUploadYear('');
+      setUploadDescription('');
+      setOfferMessage('');
+      setShowUploadCoin(false);
+      
+      await fetchTradeDetail();
+    } catch (error) {
+      console.error('TradeDetailScreen: Error uploading coin offer:', error);
+      Alert.alert('Error', 'Failed to upload coin offer. Please try again.');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -780,17 +911,35 @@ export default function TradeDetailScreen() {
               ))
             )}
             {trade.status === 'pending' && (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.primaryButton, { marginTop: 12 }]}
-                onPress={() => {
-                  fetchUserCoins();
-                  setShowCoinPicker(true);
-                }}
-              >
-                <Text style={styles.buttonText}>
-                  {isInitiator ? 'Offer a Coin' : 'Counter Offer'}
-                </Text>
-              </TouchableOpacity>
+              <View style={styles.offerButtonsContainer}>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.primaryButton, { marginTop: 12, marginRight: 8 }]}
+                  onPress={() => {
+                    fetchUserCoins();
+                    setShowCoinPicker(true);
+                  }}
+                >
+                  <IconSymbol
+                    ios_icon_name="list.bullet"
+                    android_material_icon_name="list"
+                    size={18}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.buttonText}>Select from My Coins</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.secondaryButton, { marginTop: 12 }]}
+                  onPress={() => setShowUploadCoin(true)}
+                >
+                  <IconSymbol
+                    ios_icon_name="plus.circle"
+                    android_material_icon_name="add-circle"
+                    size={18}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.buttonText}>Upload New Coin</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
 
@@ -1067,6 +1216,171 @@ export default function TradeDetailScreen() {
         </View>
       </Modal>
 
+      {/* Upload Coin Modal */}
+      <Modal
+        visible={showUploadCoin}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowUploadCoin(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ flex: 1, justifyContent: 'flex-end' }}
+          >
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Upload Coin for Trade</Text>
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={() => {
+                    setShowUploadCoin(false);
+                    setUploadImages([]);
+                    setUploadTitle('');
+                    setUploadCountry('');
+                    setUploadYear('');
+                    setUploadDescription('');
+                    setOfferMessage('');
+                  }}
+                >
+                  <IconSymbol
+                    ios_icon_name="xmark"
+                    android_material_icon_name="close"
+                    size={24}
+                    color={colors.text}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={styles.uploadForm}>
+                {/* Images */}
+                <View style={styles.formSection}>
+                  <Text style={styles.formLabel}>Images (Required)</Text>
+                  <View style={styles.imagePickerContainer}>
+                    <TouchableOpacity style={styles.imagePickerButton} onPress={pickImages}>
+                      <IconSymbol
+                        ios_icon_name="photo.on.rectangle"
+                        android_material_icon_name="photo-library"
+                        size={24}
+                        color={colors.primary}
+                      />
+                      <Text style={styles.imagePickerText}>Choose from Library</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.imagePickerButton} onPress={takePhoto}>
+                      <IconSymbol
+                        ios_icon_name="camera"
+                        android_material_icon_name="camera-alt"
+                        size={24}
+                        color={colors.primary}
+                      />
+                      <Text style={styles.imagePickerText}>Take Photo</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {uploadImages.length > 0 && (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagePreviewContainer}>
+                      {uploadImages.map((uri, index) => (
+                        <View key={index} style={styles.imagePreview}>
+                          <Image source={{ uri }} style={styles.previewImage} />
+                          <TouchableOpacity
+                            style={styles.removeImageButton}
+                            onPress={() => removeUploadImage(index)}
+                          >
+                            <IconSymbol
+                              ios_icon_name="xmark.circle.fill"
+                              android_material_icon_name="cancel"
+                              size={24}
+                              color="#F44336"
+                            />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  )}
+                </View>
+
+                {/* Title */}
+                <View style={styles.formSection}>
+                  <Text style={styles.formLabel}>Title *</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    placeholder="Enter coin title"
+                    placeholderTextColor={colors.textSecondary}
+                    value={uploadTitle}
+                    onChangeText={setUploadTitle}
+                  />
+                </View>
+
+                {/* Country */}
+                <View style={styles.formSection}>
+                  <Text style={styles.formLabel}>Country *</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    placeholder="Enter country"
+                    placeholderTextColor={colors.textSecondary}
+                    value={uploadCountry}
+                    onChangeText={setUploadCountry}
+                  />
+                </View>
+
+                {/* Year */}
+                <View style={styles.formSection}>
+                  <Text style={styles.formLabel}>Year *</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    placeholder="Enter year"
+                    placeholderTextColor={colors.textSecondary}
+                    value={uploadYear}
+                    onChangeText={setUploadYear}
+                    keyboardType="numeric"
+                  />
+                </View>
+
+                {/* Description */}
+                <View style={styles.formSection}>
+                  <Text style={styles.formLabel}>Description</Text>
+                  <TextInput
+                    style={[styles.formInput, styles.textArea]}
+                    placeholder="Enter description (optional)"
+                    placeholderTextColor={colors.textSecondary}
+                    value={uploadDescription}
+                    onChangeText={setUploadDescription}
+                    multiline
+                    numberOfLines={4}
+                  />
+                </View>
+
+                {/* Offer Message */}
+                <View style={styles.formSection}>
+                  <Text style={styles.formLabel}>Message with Offer</Text>
+                  <TextInput
+                    style={[styles.formInput, styles.textArea]}
+                    placeholder="Add a message with your offer (optional)"
+                    placeholderTextColor={colors.textSecondary}
+                    value={offerMessage}
+                    onChangeText={setOfferMessage}
+                    multiline
+                    numberOfLines={3}
+                  />
+                </View>
+
+                {/* Submit Button */}
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.primaryButton, { marginTop: 16, marginBottom: 32 }]}
+                  onPress={handleUploadCoinOffer}
+                  disabled={uploading}
+                >
+                  {uploading ? (
+                    <ActivityIndicator size="small" color={colors.background} />
+                  ) : (
+                    <Text style={styles.buttonText}>Submit Offer</Text>
+                  )}
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
       {/* Rating Modal */}
       <Modal
         visible={showRatingModal}
@@ -1207,6 +1521,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
   },
   primaryButton: {
     backgroundColor: colors.primary,
@@ -1221,6 +1537,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.background,
+  },
+  offerButtonsContainer: {
+    flexDirection: 'row',
   },
   offerCard: {
     backgroundColor: colors.card,
@@ -1437,5 +1756,71 @@ const styles = StyleSheet.create({
   },
   starButton: {
     padding: 4,
+  },
+  uploadForm: {
+    flex: 1,
+    padding: 16,
+  },
+  formSection: {
+    marginBottom: 16,
+  },
+  formLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  formInput: {
+    backgroundColor: colors.card,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  textArea: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  imagePickerContainer: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  imagePickerButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 8,
+  },
+  imagePickerText: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '500',
+  },
+  imagePreviewContainer: {
+    marginTop: 12,
+  },
+  imagePreview: {
+    marginRight: 12,
+    position: 'relative',
+  },
+  previewImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
   },
 });
