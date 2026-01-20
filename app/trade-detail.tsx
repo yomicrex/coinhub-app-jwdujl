@@ -29,6 +29,14 @@ interface Coin {
   country: string;
   year: number;
   images: { url: string }[];
+  description?: string;
+  condition?: string;
+  unit?: string;
+  organization?: string;
+  agency?: string;
+  deployment?: string;
+  coinNumber?: string;
+  mintMark?: string;
 }
 
 interface User {
@@ -98,6 +106,8 @@ export default function TradeDetailScreen() {
   const [sending, setSending] = useState(false);
   const [showCoinPicker, setShowCoinPicker] = useState(false);
   const [showUploadCoin, setShowUploadCoin] = useState(false);
+  const [showCoinDetail, setShowCoinDetail] = useState(false);
+  const [selectedCoin, setSelectedCoin] = useState<Coin | null>(null);
   const [userCoins, setUserCoins] = useState<Coin[]>([]);
   const [loadingCoins, setLoadingCoins] = useState(false);
   const [trackingNumber, setTrackingNumber] = useState('');
@@ -209,6 +219,12 @@ export default function TradeDetailScreen() {
     console.log('TradeDetailScreen: User tapped "Select from My Coins" button');
     setShowCoinPicker(true);
     await fetchUserCoins();
+  };
+
+  const handleViewCoinDetail = (coin: Coin) => {
+    console.log('TradeDetailScreen: User viewing coin detail:', coin.id);
+    setSelectedCoin(coin);
+    setShowCoinDetail(true);
   };
 
   const pickImages = async () => {
@@ -832,10 +848,14 @@ export default function TradeDetailScreen() {
             )}
           </View>
 
-          {/* Requested Coin */}
+          {/* Up for Trade Coin */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Requested Coin</Text>
-            <View style={styles.coinCard}>
+            <Text style={styles.sectionTitle}>Up for Trade</Text>
+            <TouchableOpacity 
+              style={styles.coinCard}
+              onPress={() => handleViewCoinDetail(trade.coin)}
+              activeOpacity={0.7}
+            >
               {trade.coin.images && trade.coin.images.length > 0 && trade.coin.images[0]?.url ? (
                 <Image
                   source={{ uri: trade.coin.images[0].url }}
@@ -861,8 +881,11 @@ export default function TradeDetailScreen() {
                   {trade.coin.country} • {trade.coin.year}
                 </Text>
                 <Text style={styles.coinDetails}>Owner: @{trade.coinOwner.username}</Text>
+                <Text style={[styles.coinDetails, { color: colors.primary, marginTop: 4 }]}>
+                  Tap to view details
+                </Text>
               </View>
-            </View>
+            </TouchableOpacity>
           </View>
 
           {/* Offered Coins */}
@@ -895,7 +918,11 @@ export default function TradeDetailScreen() {
                         </View>
                       )}
                     </View>
-                    <View style={styles.coinCard}>
+                    <TouchableOpacity 
+                      style={styles.coinCard}
+                      onPress={() => handleViewCoinDetail(offerCoin)}
+                      activeOpacity={0.7}
+                    >
                       {offerCoin.images && offerCoin.images.length > 0 && offerCoin.images[0]?.url ? (
                         <Image
                           source={{ uri: offerCoin.images[0].url }}
@@ -920,8 +947,11 @@ export default function TradeDetailScreen() {
                         <Text style={styles.coinDetails}>
                           {offerCoin.country} • {offerCoin.year}
                         </Text>
+                        <Text style={[styles.coinDetails, { color: colors.primary, marginTop: 4 }]}>
+                          Tap to view details
+                        </Text>
                       </View>
-                    </View>
+                    </TouchableOpacity>
                     {offer.message && (
                       <Text style={styles.offerMessage}>{offer.message}</Text>
                     )}
@@ -1174,6 +1204,72 @@ export default function TradeDetailScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Coin Detail Modal */}
+      <Modal
+        visible={showCoinDetail}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowCoinDetail(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Coin Details</Text>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setShowCoinDetail(false)}
+              >
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={24}
+                  color={colors.text}
+                />
+              </TouchableOpacity>
+            </View>
+            {selectedCoin && (
+              <ScrollView style={styles.coinDetailScroll}>
+                {selectedCoin.images && selectedCoin.images.length > 0 && (
+                  <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}>
+                    {selectedCoin.images.map((img, index) => (
+                      <Image
+                        key={index}
+                        source={{ uri: img.url }}
+                        style={styles.coinDetailImage}
+                        resizeMode="contain"
+                      />
+                    ))}
+                  </ScrollView>
+                )}
+                <View style={styles.coinDetailInfo}>
+                  <Text style={styles.coinDetailTitle}>{selectedCoin.title}</Text>
+                  <View style={styles.coinDetailRow}>
+                    <Text style={styles.coinDetailLabel}>Country:</Text>
+                    <Text style={styles.coinDetailValue}>{selectedCoin.country}</Text>
+                  </View>
+                  <View style={styles.coinDetailRow}>
+                    <Text style={styles.coinDetailLabel}>Year:</Text>
+                    <Text style={styles.coinDetailValue}>{selectedCoin.year}</Text>
+                  </View>
+                  {selectedCoin.condition && (
+                    <View style={styles.coinDetailRow}>
+                      <Text style={styles.coinDetailLabel}>Condition:</Text>
+                      <Text style={styles.coinDetailValue}>{selectedCoin.condition}</Text>
+                    </View>
+                  )}
+                  {selectedCoin.description && (
+                    <View style={styles.coinDetailSection}>
+                      <Text style={styles.coinDetailLabel}>Description:</Text>
+                      <Text style={styles.coinDetailDescription}>{selectedCoin.description}</Text>
+                    </View>
+                  )}
+                </View>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       {/* Coin Picker Modal */}
       <Modal
@@ -1872,5 +1968,45 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -8,
     right: -8,
+  },
+  coinDetailScroll: {
+    flex: 1,
+  },
+  coinDetailImage: {
+    width: 400,
+    height: 300,
+    backgroundColor: colors.border,
+  },
+  coinDetailInfo: {
+    padding: 16,
+  },
+  coinDetailTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 16,
+  },
+  coinDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  coinDetailLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  coinDetailValue: {
+    fontSize: 16,
+    color: colors.text,
+  },
+  coinDetailSection: {
+    marginTop: 16,
+  },
+  coinDetailDescription: {
+    fontSize: 14,
+    color: colors.text,
+    marginTop: 8,
+    lineHeight: 20,
   },
 });
