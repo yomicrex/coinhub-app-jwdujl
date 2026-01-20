@@ -852,12 +852,59 @@ export function registerTradesRoutes(app: App) {
    * Create or counter a trade offer
    */
   app.fastify.post('/api/trades/:tradeId/offers', async (request: FastifyRequest, reply: FastifyReply) => {
-    const session = await requireAuth(request, reply);
-    if (!session) return;
-
     const { tradeId } = request.params as { tradeId: string };
 
-    app.logger.info({ tradeId, userId: session.user.id, body: request.body }, 'Creating trade offer');
+    app.logger.info({ tradeId }, 'POST /api/trades/:tradeId/offers - session extraction attempt');
+
+    let userId: string | null = null;
+
+    try {
+      // Extract session token from either Authorization header or cookies
+      const sessionToken = extractSessionToken(request);
+      app.logger.debug(
+        { tokenPresent: !!sessionToken, hasAuthHeader: !!request.headers.authorization, hasCookie: !!request.headers.cookie },
+        'Session token extraction result for trade offer'
+      );
+
+      if (!sessionToken) {
+        app.logger.warn({}, 'No session token found in request for trade offer');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'No active session' });
+      }
+
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken),
+      });
+
+      if (!sessionRecord) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session token not found in database');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid or expired' });
+      }
+
+      // Check if session is expired
+      if (new Date(sessionRecord.expiresAt) < new Date()) {
+        app.logger.warn({ token: sessionToken.substring(0, 20), expiresAt: sessionRecord.expiresAt }, 'Session token expired');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      }
+
+      // Get user from session
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId),
+      });
+
+      if (!userRecord) {
+        app.logger.warn({ userId: sessionRecord.userId }, 'User not found for valid session');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+      }
+
+      userId = userRecord.id;
+      app.logger.info({ userId, tradeId }, 'Session validated successfully for trade offer');
+    } catch (error) {
+      app.logger.error({ err: error }, 'Error validating session for trade offer');
+      return reply.status(500).send({ error: 'Internal server error', message: 'Session validation failed' });
+    }
+
+    app.logger.info({ tradeId, userId, body: request.body }, 'Creating trade offer');
 
     try {
       const body = CreateTradeOfferSchema.parse(request.body);
@@ -873,9 +920,9 @@ export function registerTradesRoutes(app: App) {
       }
 
       // Check access control
-      const hasAccess = trade.initiatorId === session.user.id || trade.coinOwnerId === session.user.id;
+      const hasAccess = trade.initiatorId === userId || trade.coinOwnerId === userId;
       if (!hasAccess) {
-        app.logger.warn({ tradeId, userId: session.user.id }, 'Unauthorized offer creation');
+        app.logger.warn({ tradeId, userId }, 'Unauthorized offer creation');
         return reply.status(403).send({ error: 'Unauthorized' });
       }
 
@@ -890,8 +937,8 @@ export function registerTradesRoutes(app: App) {
           return reply.status(404).send({ error: 'Offered coin not found' });
         }
 
-        if (offeredCoin.userId !== session.user.id) {
-          app.logger.warn({ coinId: body.offeredCoinId, userId: session.user.id }, 'Cannot offer other user\'s coin');
+        if (offeredCoin.userId !== userId) {
+          app.logger.warn({ coinId: body.offeredCoinId, userId }, 'Cannot offer other user\'s coin');
           return reply.status(403).send({ error: 'Can only offer your own coins' });
         }
       }
@@ -901,7 +948,7 @@ export function registerTradesRoutes(app: App) {
         .insert(schema.tradeOffers)
         .values({
           tradeId,
-          offererId: session.user.id,
+          offererId: userId,
           offeredCoinId: body.offeredCoinId || null,
           message: body.message || null,
           isCounterOffer: trade.status !== 'pending',
@@ -955,7 +1002,7 @@ export function registerTradesRoutes(app: App) {
         })
       );
 
-      app.logger.info({ offerId: newOffer.id, tradeId, userId: session.user.id }, 'Trade offer created');
+      app.logger.info({ offerId: newOffer.id, tradeId, userId }, 'Trade offer created');
 
       return {
         id: newOffer.id,
@@ -979,10 +1026,10 @@ export function registerTradesRoutes(app: App) {
       };
     } catch (error) {
       if (error instanceof z.ZodError) {
-        app.logger.warn({ error: error.issues }, 'Validation error');
+        app.logger.warn({ error: error.issues, userId }, 'Validation error');
         return reply.status(400).send({ error: 'Validation failed', details: error.issues });
       }
-      app.logger.error({ err: error, tradeId, userId: session.user.id }, 'Failed to create trade offer');
+      app.logger.error({ err: error, tradeId, userId }, 'Failed to create trade offer');
       throw error;
     }
   });
@@ -1184,12 +1231,59 @@ export function registerTradesRoutes(app: App) {
    * Send a message in a trade conversation
    */
   app.fastify.post('/api/trades/:tradeId/messages', async (request: FastifyRequest, reply: FastifyReply) => {
-    const session = await requireAuth(request, reply);
-    if (!session) return;
-
     const { tradeId } = request.params as { tradeId: string };
 
-    app.logger.info({ tradeId, userId: session.user.id, body: request.body }, 'Sending trade message');
+    app.logger.info({ tradeId }, 'POST /api/trades/:tradeId/messages - session extraction attempt');
+
+    let userId: string | null = null;
+
+    try {
+      // Extract session token from either Authorization header or cookies
+      const sessionToken = extractSessionToken(request);
+      app.logger.debug(
+        { tokenPresent: !!sessionToken, hasAuthHeader: !!request.headers.authorization, hasCookie: !!request.headers.cookie },
+        'Session token extraction result for trade message'
+      );
+
+      if (!sessionToken) {
+        app.logger.warn({}, 'No session token found in request for trade message');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'No active session' });
+      }
+
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken),
+      });
+
+      if (!sessionRecord) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session token not found in database');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid or expired' });
+      }
+
+      // Check if session is expired
+      if (new Date(sessionRecord.expiresAt) < new Date()) {
+        app.logger.warn({ token: sessionToken.substring(0, 20), expiresAt: sessionRecord.expiresAt }, 'Session token expired');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      }
+
+      // Get user from session
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId),
+      });
+
+      if (!userRecord) {
+        app.logger.warn({ userId: sessionRecord.userId }, 'User not found for valid session');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+      }
+
+      userId = userRecord.id;
+      app.logger.info({ userId, tradeId }, 'Session validated successfully for trade message');
+    } catch (error) {
+      app.logger.error({ err: error }, 'Error validating session for trade message');
+      return reply.status(500).send({ error: 'Internal server error', message: 'Session validation failed' });
+    }
+
+    app.logger.info({ tradeId, userId, body: request.body }, 'Sending trade message');
 
     try {
       const body = TradeMessageSchema.parse(request.body);
@@ -1205,9 +1299,9 @@ export function registerTradesRoutes(app: App) {
       }
 
       // Check access control
-      const hasAccess = trade.initiatorId === session.user.id || trade.coinOwnerId === session.user.id;
+      const hasAccess = trade.initiatorId === userId || trade.coinOwnerId === userId;
       if (!hasAccess) {
-        app.logger.warn({ tradeId, userId: session.user.id }, 'Unauthorized message send');
+        app.logger.warn({ tradeId, userId }, 'Unauthorized message send');
         return reply.status(403).send({ error: 'Unauthorized' });
       }
 
@@ -1216,7 +1310,7 @@ export function registerTradesRoutes(app: App) {
         .insert(schema.tradeMessages)
         .values({
           tradeId,
-          senderId: session.user.id,
+          senderId: userId,
           content: body.content,
         })
         .returning();
@@ -1243,7 +1337,7 @@ export function registerTradesRoutes(app: App) {
         }
       }
 
-      app.logger.info({ messageId: newMessage.id, tradeId, userId: session.user.id }, 'Trade message sent');
+      app.logger.info({ messageId: newMessage.id, tradeId, userId }, 'Trade message sent');
 
       return {
         id: newMessage.id,
@@ -1258,10 +1352,10 @@ export function registerTradesRoutes(app: App) {
       };
     } catch (error) {
       if (error instanceof z.ZodError) {
-        app.logger.warn({ error: error.issues }, 'Validation error');
+        app.logger.warn({ error: error.issues, userId }, 'Validation error');
         return reply.status(400).send({ error: 'Validation failed', details: error.issues });
       }
-      app.logger.error({ err: error, tradeId, userId: session.user.id }, 'Failed to send message');
+      app.logger.error({ err: error, tradeId, userId }, 'Failed to send message');
       throw error;
     }
   });
@@ -1566,12 +1660,59 @@ export function registerTradesRoutes(app: App) {
    * Cancel a trade (before completion)
    */
   app.fastify.post('/api/trades/:tradeId/cancel', async (request: FastifyRequest, reply: FastifyReply) => {
-    const session = await requireAuth(request, reply);
-    if (!session) return;
-
     const { tradeId } = request.params as { tradeId: string };
 
-    app.logger.info({ tradeId, userId: session.user.id }, 'Cancelling trade');
+    app.logger.info({ tradeId }, 'POST /api/trades/:tradeId/cancel - session extraction attempt');
+
+    let userId: string | null = null;
+
+    try {
+      // Extract session token from either Authorization header or cookies
+      const sessionToken = extractSessionToken(request);
+      app.logger.debug(
+        { tokenPresent: !!sessionToken, hasAuthHeader: !!request.headers.authorization, hasCookie: !!request.headers.cookie },
+        'Session token extraction result for trade cancellation'
+      );
+
+      if (!sessionToken) {
+        app.logger.warn({}, 'No session token found in request for trade cancellation');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'No active session' });
+      }
+
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken),
+      });
+
+      if (!sessionRecord) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session token not found in database');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid or expired' });
+      }
+
+      // Check if session is expired
+      if (new Date(sessionRecord.expiresAt) < new Date()) {
+        app.logger.warn({ token: sessionToken.substring(0, 20), expiresAt: sessionRecord.expiresAt }, 'Session token expired');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      }
+
+      // Get user from session
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId),
+      });
+
+      if (!userRecord) {
+        app.logger.warn({ userId: sessionRecord.userId }, 'User not found for valid session');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+      }
+
+      userId = userRecord.id;
+      app.logger.info({ userId, tradeId }, 'Session validated successfully for trade cancellation');
+    } catch (error) {
+      app.logger.error({ err: error }, 'Error validating session for trade cancellation');
+      return reply.status(500).send({ error: 'Internal server error', message: 'Session validation failed' });
+    }
+
+    app.logger.info({ tradeId, userId }, 'Cancelling trade');
 
     try {
       // Get trade
@@ -1586,11 +1727,11 @@ export function registerTradesRoutes(app: App) {
 
       // Only initiator can cancel pending/countered trades; either party for accepted
       const canCancel =
-        (trade.status === 'pending' || trade.status === 'countered') && trade.initiatorId === session.user.id ||
-        trade.status === 'accepted' && (trade.initiatorId === session.user.id || trade.coinOwnerId === session.user.id);
+        (trade.status === 'pending' || trade.status === 'countered') && trade.initiatorId === userId ||
+        trade.status === 'accepted' && (trade.initiatorId === userId || trade.coinOwnerId === userId);
 
       if (!canCancel) {
-        app.logger.warn({ tradeId, userId: session.user.id, status: trade.status }, 'Cannot cancel this trade');
+        app.logger.warn({ tradeId, userId, status: trade.status }, 'Cannot cancel this trade');
         return reply.status(400).send({ error: 'Cannot cancel this trade in its current status' });
       }
 
@@ -1601,7 +1742,7 @@ export function registerTradesRoutes(app: App) {
         .where(eq(schema.trades.id, tradeId))
         .returning();
 
-      app.logger.info({ tradeId, userId: session.user.id }, 'Trade cancelled');
+      app.logger.info({ tradeId, userId }, 'Trade cancelled');
 
       return {
         id: updatedTrade[0]?.id,
@@ -1609,7 +1750,7 @@ export function registerTradesRoutes(app: App) {
         message: 'Trade cancelled',
       };
     } catch (error) {
-      app.logger.error({ err: error, tradeId, userId: session.user.id }, 'Failed to cancel trade');
+      app.logger.error({ err: error, tradeId, userId }, 'Failed to cancel trade');
       throw error;
     }
   });

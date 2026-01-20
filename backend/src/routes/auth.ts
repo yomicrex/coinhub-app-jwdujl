@@ -1570,6 +1570,21 @@ export function registerAuthRoutes(app: App) {
 
       app.logger.info({ userId: authUser.id }, 'Email-only sign-in: user found');
 
+      // Get CoinHub user profile for this authenticated user
+      const coinHubProfile = await app.db.query.users.findFirst({
+        where: eq(schema.users.id, authUser.id)
+      });
+
+      if (!coinHubProfile) {
+        app.logger.warn({ userId: authUser.id, email: normalizedEmail }, 'Email-only sign-in: CoinHub profile not found for user');
+        return reply.status(404).send({ error: 'Profile not found - please complete your profile first' });
+      }
+
+      app.logger.info(
+        { userId: authUser.id, username: coinHubProfile.username },
+        'Email-only sign-in: CoinHub profile found'
+      );
+
       // Create session in Better Auth session table
       const sessionToken = randomUUID();
       const sessionId = randomUUID();
@@ -1589,7 +1604,7 @@ export function registerAuthRoutes(app: App) {
           .returning();
 
         app.logger.info(
-          { userId: authUser.id, email: normalizedEmail, sessionId, sessionToken: session[0].token },
+          { userId: authUser.id, email: normalizedEmail, username: coinHubProfile.username, sessionId, sessionToken: session[0].token },
           'Email-only sign-in successful: session created'
         );
 
@@ -1610,12 +1625,31 @@ export function registerAuthRoutes(app: App) {
         // Also set Access-Control headers to allow credentials
         reply.header('Access-Control-Allow-Credentials', 'true');
 
+        // Generate signed URL for avatar if it exists
+        let avatarUrl = coinHubProfile.avatarUrl;
+        if (avatarUrl) {
+          try {
+            const { url } = await app.storage.getSignedUrl(avatarUrl);
+            avatarUrl = url;
+          } catch (urlError) {
+            app.logger.warn({ err: urlError, userId: authUser.id }, 'Failed to generate avatar signed URL');
+            avatarUrl = null;
+          }
+        }
+
         // Return user data with session token for Authorization header fallback
         return {
           user: {
             id: authUser.id,
             email: authUser.email,
             name: authUser.name,
+          },
+          profile: {
+            id: coinHubProfile.id,
+            username: coinHubProfile.username,
+            displayName: coinHubProfile.displayName,
+            avatarUrl: avatarUrl,
+            role: coinHubProfile.role,
           },
           session: {
             token: sessionToken,
