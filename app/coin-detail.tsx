@@ -40,10 +40,11 @@ interface CoinDetail {
 }
 
 export default function CoinDetailScreen() {
-  const { coinId } = useLocalSearchParams<{ coinId: string }>();
+  const params = useLocalSearchParams<{ id?: string; coinId?: string }>();
+  const coinId = params.id || params.coinId;
   const [coin, setCoin] = useState<CoinDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const { getToken, user } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
 
   const fetchCoinDetail = useCallback(async () => {
@@ -76,10 +77,16 @@ export default function CoinDetailScreen() {
   useEffect(() => {
     console.log('CoinDetailScreen: Component mounted, coinId:', coinId);
     fetchCoinDetail();
-  }, [coinId]);
+  }, [fetchCoinDetail]);
 
   const handleLike = async () => {
     if (!coin) return;
+
+    if (!user) {
+      console.log('CoinDetailScreen: User not logged in, redirecting to auth');
+      router.push('/auth');
+      return;
+    }
 
     console.log('CoinDetailScreen: User tapped like/unlike button');
     try {
@@ -177,6 +184,13 @@ export default function CoinDetailScreen() {
           <Text style={styles.title}>{coin.title}</Text>
           <Text style={styles.meta}>{coin.country} • {coin.year}</Text>
 
+          {coin.tradeStatus === 'open_to_trade' && (
+            <View style={styles.tradeBadge}>
+              <IconSymbol ios_icon_name="arrow.2.squarepath" android_material_icon_name="sync" size={16} color={colors.success} />
+              <Text style={styles.tradeBadgeText}>Open to Trade</Text>
+            </View>
+          )}
+
           {coin.description && (
             <Text style={styles.description}>{coin.description}</Text>
           )}
@@ -198,7 +212,7 @@ export default function CoinDetailScreen() {
               <Image source={{ uri: coin.user.avatarUrl }} style={styles.avatar} />
             ) : (
               <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={20} color={colors.textMuted} />
+                <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={20} color={colors.textSecondary} />
               </View>
             )}
             <View>
@@ -228,6 +242,25 @@ export default function CoinDetailScreen() {
               <IconSymbol ios_icon_name="bubble.left" android_material_icon_name="chat-bubble-outline" size={24} color={colors.text} />
               <Text style={styles.actionText}>{coin.commentCount}</Text>
             </TouchableOpacity>
+
+            {coin.tradeStatus === 'open_to_trade' && coin.user.id !== user?.id && (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.tradeButton]}
+                onPress={() => {
+                  console.log('CoinDetailScreen: User tapped propose trade button');
+                  if (!user) {
+                    console.log('CoinDetailScreen: User not logged in, redirecting to auth');
+                    router.push('/auth');
+                    return;
+                  }
+                  // TODO: Implement trade initiation
+                  console.log('CoinDetailScreen: Trade initiation not yet implemented');
+                }}
+              >
+                <IconSymbol ios_icon_name="arrow.2.squarepath" android_material_icon_name="sync" size={24} color={colors.primary} />
+                <Text style={[styles.actionText, styles.tradeButtonText]}>Propose Trade</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </ScrollView>
@@ -272,7 +305,7 @@ const styles = StyleSheet.create({
   image: {
     width: width,
     height: width,
-    backgroundColor: colors.surfaceLight,
+    backgroundColor: colors.border,
   },
   content: {
     padding: 16,
@@ -286,7 +319,23 @@ const styles = StyleSheet.create({
   meta: {
     fontSize: 16,
     color: colors.textSecondary,
+    marginBottom: 12,
+  },
+  tradeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: `${colors.success}20`,
+    borderRadius: 16,
+    alignSelf: 'flex-start',
     marginBottom: 16,
+  },
+  tradeBadgeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.success,
+    marginLeft: 6,
   },
   description: {
     fontSize: 16,
@@ -310,7 +359,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   avatarPlaceholder: {
-    backgroundColor: colors.surfaceLight,
+    backgroundColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -325,6 +374,7 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 24,
   },
   actionButton: {
@@ -335,5 +385,15 @@ const styles = StyleSheet.create({
   actionText: {
     fontSize: 16,
     color: colors.text,
+  },
+  tradeButton: {
+    backgroundColor: `${colors.primary}20`,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  tradeButtonText: {
+    color: colors.primary,
+    fontWeight: '600',
   },
 });
