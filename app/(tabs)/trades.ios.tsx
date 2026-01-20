@@ -9,11 +9,11 @@ import {
   RefreshControl,
   ActivityIndicator,
   Image,
+  Alert,
 } from 'react-native';
 import Constants from 'expo-constants';
 import { colors } from '@/styles/commonStyles';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { authClient } from '@/lib/auth';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -51,18 +51,36 @@ export default function TradesScreen() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchTrades = useCallback(async () => {
     try {
       console.log('TradesScreen: Fetching trades from API');
+      setError(null);
       
-      // Use authClient.$fetch which handles authentication automatically
-      const data = await authClient.$fetch(`${API_URL}/api/trades`);
+      const response = await fetch(`${API_URL}/api/trades`, {
+        credentials: 'include',
+      });
       
-      console.log('TradesScreen: Fetched trades:', data);
-      setTrades(data.trades || []);
-    } catch (error) {
+      if (!response.ok) {
+        console.error('TradesScreen: Failed to fetch trades, status:', response.status);
+        throw new Error(`Failed to fetch trades: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('TradesScreen: Fetched trades response:', data);
+      
+      // Handle different response formats
+      const tradesData = data?.trades || data || [];
+      console.log('TradesScreen: Parsed trades data:', tradesData);
+      console.log('TradesScreen: Number of trades:', tradesData.length);
+      
+      setTrades(tradesData);
+    } catch (error: any) {
       console.error('TradesScreen: Error fetching trades:', error);
+      console.error('TradesScreen: Error message:', error.message);
+      setError(error.message || 'Failed to load trades');
+      Alert.alert('Error', 'Failed to load trades. Please try again.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -70,7 +88,7 @@ export default function TradesScreen() {
   }, []);
 
   useEffect(() => {
-    console.log('TradesScreen: Component mounted, fetching trades');
+    console.log('TradesScreen: Component mounted, user:', user?.username);
     fetchTrades();
   }, [fetchTrades]);
 
@@ -107,6 +125,11 @@ export default function TradesScreen() {
   };
 
   const renderTradeCard = ({ item }: { item: Trade }) => {
+    if (!item || !item.coin || !item.requester || !item.owner) {
+      console.error('TradesScreen: Invalid trade item:', item);
+      return null;
+    }
+
     const isRequester = item.requester.id === user?.id;
     const otherUser = isRequester ? item.owner : item.requester;
 
@@ -117,11 +140,25 @@ export default function TradesScreen() {
         onPress={() => handleTradePress(item.id)}
         activeOpacity={0.7}
       >
-        <Image
-          source={{ uri: item.coin.images[0]?.url }}
-          style={styles.coinImage}
-          resizeMode="cover"
-        />
+        {item.coin.images && item.coin.images.length > 0 && item.coin.images[0]?.url ? (
+          <Image
+            source={{ uri: item.coin.images[0].url }}
+            style={styles.coinImage}
+            resizeMode="cover"
+            onError={(e) => {
+              console.error('TradesScreen: Error loading coin image:', e.nativeEvent.error);
+            }}
+          />
+        ) : (
+          <View style={[styles.coinImage, { backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center' }]}>
+            <IconSymbol
+              ios_icon_name="photo"
+              android_material_icon_name="image"
+              size={32}
+              color={colors.textSecondary}
+            />
+          </View>
+        )}
         <View style={styles.tradeContent}>
           <View style={styles.tradeHeader}>
             <Text style={styles.coinTitle} numberOfLines={1}>
@@ -137,7 +174,7 @@ export default function TradesScreen() {
             </View>
           </View>
           <Text style={styles.tradeInfo}>
-            {isRequester ? 'You requested' : 'Requested by'} {otherUser.displayName}
+            {isRequester ? 'You requested from' : 'Requested by'} {otherUser.displayName}
           </Text>
           {item.lastMessage && (
             <Text style={styles.lastMessage} numberOfLines={1}>
@@ -145,11 +182,23 @@ export default function TradesScreen() {
             </Text>
           )}
           <View style={styles.userInfo}>
-            {otherUser.avatarUrl && (
+            {otherUser.avatarUrl ? (
               <Image
                 source={{ uri: otherUser.avatarUrl }}
                 style={styles.avatar}
+                onError={(e) => {
+                  console.error('TradesScreen: Error loading avatar:', e.nativeEvent.error);
+                }}
               />
+            ) : (
+              <View style={[styles.avatar, { backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center' }]}>
+                <IconSymbol
+                  ios_icon_name="person.fill"
+                  android_material_icon_name="person"
+                  size={12}
+                  color={colors.textSecondary}
+                />
+              </View>
             )}
             <Text style={styles.username}>@{otherUser.username}</Text>
           </View>
@@ -166,6 +215,36 @@ export default function TradesScreen() {
         </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading trades...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Trades</Text>
+        </View>
+        <View style={styles.emptyContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="warning"
+            size={64}
+            color={colors.textSecondary}
+          />
+          <Text style={styles.emptyText}>{error}</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => {
+              setLoading(true);
+              setError(null);
+              fetchTrades();
+            }}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -175,6 +254,9 @@ export default function TradesScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Trades</Text>
+        <Text style={styles.headerSubtitle}>
+          {trades.length} active trade{trades.length !== 1 ? 's' : ''}
+        </Text>
       </View>
       {trades.length === 0 ? (
         <View style={styles.emptyContainer}>
@@ -185,7 +267,7 @@ export default function TradesScreen() {
             color={colors.textSecondary}
           />
           <Text style={styles.emptyText}>
-            No trades yet. Find coins marked "Open to Trade" to start trading!
+            No trades yet. Find coins marked &quot;Open to Trade&quot; to start trading!
           </Text>
         </View>
       ) : (
@@ -200,6 +282,7 @@ export default function TradesScreen() {
               tintColor={colors.primary}
             />
           }
+          contentContainerStyle={{ paddingBottom: 20 }}
         />
       )}
     </SafeAreaView>
@@ -212,9 +295,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
@@ -224,6 +304,11 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: colors.text,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 4,
   },
   emptyContainer: {
     flex: 1,
@@ -241,6 +326,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: colors.textSecondary,
   },
   tradeCard: {
     flexDirection: 'row',
@@ -308,5 +398,17 @@ const styles = StyleSheet.create({
   username: {
     fontSize: 13,
     color: colors.textSecondary,
+  },
+  retryButton: {
+    marginTop: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.background,
   },
 });

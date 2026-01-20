@@ -6,18 +6,17 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  ActivityIndicator,
   RefreshControl,
+  ActivityIndicator,
   Image,
+  Alert,
 } from 'react-native';
+import Constants from 'expo-constants';
+import { colors } from '@/styles/commonStyles';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { IconSymbol } from '@/components/IconSymbol';
-import { colors } from '@/styles/commonStyles';
-import Constants from 'expo-constants';
 import { useAuth } from '@/contexts/AuthContext';
-
-const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
+import { IconSymbol } from '@/components/IconSymbol';
 
 interface Trade {
   id: string;
@@ -44,32 +43,44 @@ interface Trade {
   updatedAt: string;
 }
 
+const API_URL = Constants.expoConfig?.extra?.backendUrl || 'http://localhost:3000';
+
 export default function TradesScreen() {
+  const router = useRouter();
+  const { user } = useAuth();
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const router = useRouter();
-  const { user } = useAuth();
+  const [error, setError] = useState<string | null>(null);
 
   const fetchTrades = useCallback(async () => {
-    console.log('TradesScreen: Fetching trades');
     try {
+      console.log('TradesScreen: Fetching trades from API');
+      setError(null);
+      
       const response = await fetch(`${API_URL}/api/trades`, {
         credentials: 'include',
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('TradesScreen: Fetched', data.trades?.length || 0, 'trades');
-        setTrades(data.trades || []);
-      } else {
+      
+      if (!response.ok) {
         console.error('TradesScreen: Failed to fetch trades, status:', response.status);
-        if (response.status === 401) {
-          console.log('TradesScreen: User not authenticated');
-        }
+        throw new Error(`Failed to fetch trades: ${response.status}`);
       }
-    } catch (error) {
+
+      const data = await response.json();
+      console.log('TradesScreen: Fetched trades response:', data);
+      
+      // Handle different response formats
+      const tradesData = data?.trades || data || [];
+      console.log('TradesScreen: Parsed trades data:', tradesData);
+      console.log('TradesScreen: Number of trades:', tradesData.length);
+      
+      setTrades(tradesData);
+    } catch (error: any) {
       console.error('TradesScreen: Error fetching trades:', error);
+      console.error('TradesScreen: Error message:', error.message);
+      setError(error.message || 'Failed to load trades');
+      Alert.alert('Error', 'Failed to load trades. Please try again.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -77,14 +88,9 @@ export default function TradesScreen() {
   }, []);
 
   useEffect(() => {
-    console.log('TradesScreen: Component mounted');
-    if (user) {
-      fetchTrades();
-    } else {
-      console.log('TradesScreen: No user, skipping fetch');
-      setLoading(false);
-    }
-  }, [user, fetchTrades]);
+    console.log('TradesScreen: Component mounted, user:', user?.username);
+    fetchTrades();
+  }, [fetchTrades]);
 
   const onRefresh = () => {
     console.log('TradesScreen: User initiated refresh');
@@ -118,26 +124,41 @@ export default function TradesScreen() {
     router.push(`/trade-detail?id=${tradeId}`);
   };
 
-  const renderTrade = ({ item }: { item: Trade }) => {
+  const renderTradeCard = ({ item }: { item: Trade }) => {
+    if (!item || !item.coin || !item.requester || !item.owner) {
+      console.error('TradesScreen: Invalid trade item:', item);
+      return null;
+    }
+
     const isRequester = item.requester.id === user?.id;
     const otherUser = isRequester ? item.owner : item.requester;
 
     return (
       <TouchableOpacity
+        key={item.id}
         style={styles.tradeCard}
         onPress={() => handleTradePress(item.id)}
+        activeOpacity={0.7}
       >
-        {item.coin.images && item.coin.images.length > 0 ? (
+        {item.coin.images && item.coin.images.length > 0 && item.coin.images[0]?.url ? (
           <Image
             source={{ uri: item.coin.images[0].url }}
             style={styles.coinImage}
+            resizeMode="cover"
+            onError={(e) => {
+              console.error('TradesScreen: Error loading coin image:', e.nativeEvent.error);
+            }}
           />
         ) : (
-          <View style={[styles.coinImage, styles.coinImagePlaceholder]}>
-            <IconSymbol ios_icon_name="photo" android_material_icon_name="image" size={24} color={colors.textSecondary} />
+          <View style={[styles.coinImage, { backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center' }]}>
+            <IconSymbol
+              ios_icon_name="photo"
+              android_material_icon_name="image"
+              size={32}
+              color={colors.textSecondary}
+            />
           </View>
         )}
-
         <View style={styles.tradeContent}>
           <View style={styles.tradeHeader}>
             <Text style={styles.coinTitle} numberOfLines={1}>
@@ -152,23 +173,31 @@ export default function TradesScreen() {
               <Text style={styles.statusText}>{getStatusLabel(item.status)}</Text>
             </View>
           </View>
-
           <Text style={styles.tradeInfo}>
             {isRequester ? 'You requested from' : 'Requested by'} {otherUser.displayName}
           </Text>
-
           {item.lastMessage && (
             <Text style={styles.lastMessage} numberOfLines={1}>
               {item.lastMessage}
             </Text>
           )}
-
           <View style={styles.userInfo}>
             {otherUser.avatarUrl ? (
-              <Image source={{ uri: otherUser.avatarUrl }} style={styles.avatar} />
+              <Image
+                source={{ uri: otherUser.avatarUrl }}
+                style={styles.avatar}
+                onError={(e) => {
+                  console.error('TradesScreen: Error loading avatar:', e.nativeEvent.error);
+                }}
+              />
             ) : (
-              <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={12} color={colors.textSecondary} />
+              <View style={[styles.avatar, { backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center' }]}>
+                <IconSymbol
+                  ios_icon_name="person.fill"
+                  android_material_icon_name="person"
+                  size={12}
+                  color={colors.textSecondary}
+                />
               </View>
             )}
             <Text style={styles.username}>@{otherUser.username}</Text>
@@ -177,29 +206,6 @@ export default function TradesScreen() {
       </TouchableOpacity>
     );
   };
-
-  if (!user) {
-    return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Trades</Text>
-        </View>
-        <View style={styles.emptyContainer}>
-          <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={64} color={colors.textSecondary} />
-          <Text style={styles.emptyText}>Sign in to view your trades</Text>
-          <TouchableOpacity
-            style={styles.signInButton}
-            onPress={() => {
-              console.log('TradesScreen: User tapped sign in button');
-              router.push('/auth');
-            }}
-          >
-            <Text style={styles.signInButtonText}>Sign In</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   if (loading) {
     return (
@@ -215,33 +221,70 @@ export default function TradesScreen() {
     );
   }
 
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Trades</Text>
+        </View>
+        <View style={styles.emptyContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="warning"
+            size={64}
+            color={colors.textSecondary}
+          />
+          <Text style={styles.emptyText}>{error}</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => {
+              setLoading(true);
+              setError(null);
+              fetchTrades();
+            }}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Trades</Text>
+        <Text style={styles.headerSubtitle}>
+          {trades.length} active trade{trades.length !== 1 ? 's' : ''}
+        </Text>
       </View>
-      <FlatList
-        data={trades}
-        renderItem={renderTrade}
-        keyExtractor={(item) => item.id}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
+      {trades.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <IconSymbol
+            ios_icon_name="arrow.left.arrow.right"
+            android_material_icon_name="swap-horiz"
+            size={64}
+            color={colors.textSecondary}
           />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <IconSymbol ios_icon_name="arrow.left.arrow.right" android_material_icon_name="swap-horiz" size={64} color={colors.textSecondary} />
-            <Text style={styles.emptyText}>No trades yet</Text>
-            <Text style={styles.emptySubtext}>
-              Find coins marked "Open to Trade" to start trading!
-            </Text>
-          </View>
-        }
-        contentContainerStyle={trades.length === 0 ? styles.emptyList : undefined}
-      />
+          <Text style={styles.emptyText}>
+            No trades yet. Find coins marked &quot;Open to Trade&quot; to start trading!
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={trades}
+          renderItem={renderTradeCard}
+          keyExtractor={(item) => item.id}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+            />
+          }
+          contentContainerStyle={{ paddingBottom: 20 }}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -252,19 +295,32 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: colors.text,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 4,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 16,
   },
   loadingContainer: {
     flex: 1,
@@ -272,61 +328,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: colors.textSecondary,
-  },
-  emptyList: {
-    flexGrow: 1,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 40,
-    paddingVertical: 60,
-  },
-  emptyText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: colors.text,
     marginTop: 16,
-    textAlign: 'center',
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  signInButton: {
-    marginTop: 24,
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    backgroundColor: colors.primary,
-    borderRadius: 24,
-  },
-  signInButtonText: {
-    color: colors.background,
     fontSize: 16,
-    fontWeight: '600',
+    color: colors.textSecondary,
   },
   tradeCard: {
     flexDirection: 'row',
-    padding: 12,
+    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.background,
   },
   coinImage: {
     width: 60,
     height: 60,
     borderRadius: 8,
     backgroundColor: colors.border,
-  },
-  coinImagePlaceholder: {
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   tradeContent: {
     flex: 1,
@@ -362,10 +379,9 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   lastMessage: {
-    fontSize: 13,
+    fontSize: 14,
     color: colors.textSecondary,
     fontStyle: 'italic',
-    marginBottom: 4,
   },
   userInfo: {
     flexDirection: 'row',
@@ -376,15 +392,23 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    marginRight: 6,
-  },
-  avatarPlaceholder: {
     backgroundColor: colors.border,
-    justifyContent: 'center',
-    alignItems: 'center',
+    marginRight: 6,
   },
   username: {
     fontSize: 13,
     color: colors.textSecondary,
+  },
+  retryButton: {
+    marginTop: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.background,
   },
 });
