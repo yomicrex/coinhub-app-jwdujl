@@ -222,7 +222,10 @@ export function registerCoinsRoutes(app: App) {
         return reply.status(403).send({ error: 'Coin is private' });
       }
 
-      app.logger.info({ coinId: id }, 'Coin fetched successfully');
+      app.logger.info(
+        { coinId: id, userId, isLiked: userId ? coin.likes.some((like: any) => like.userId === userId) : false },
+        'Coin fetched successfully'
+      );
 
       // Generate signed URLs for images
       const imagesWithUrls = await Promise.all(
@@ -281,6 +284,7 @@ export function registerCoinsRoutes(app: App) {
         images: imagesWithUrls,
         likeCount: coin.likes.length,
         commentCount: coin.comments.length,
+        isLiked: userId ? coin.likes.some((like: any) => like.userId === userId) : false,
         createdAt: coin.createdAt,
       };
     } catch (error) {
