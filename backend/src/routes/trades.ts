@@ -333,8 +333,8 @@ export function registerTradesRoutes(app: App) {
             })
           );
 
-          // Get the last message (most recent)
-          const lastMessage = trade.messages && trade.messages.length > 0 ? trade.messages[trade.messages.length - 1] : null;
+          // Get the last message content (most recent message, return just the content string)
+          const lastMessage = trade.messages && trade.messages.length > 0 ? trade.messages[trade.messages.length - 1].content : null;
 
           return {
             id: trade.id,
@@ -358,7 +358,7 @@ export function registerTradesRoutes(app: App) {
               avatarUrl: ownerAvatarUrl,
             },
             status: trade.status,
-            lastMessage: lastMessage ? { id: lastMessage.id, content: lastMessage.content, createdAt: lastMessage.createdAt } : null,
+            lastMessage: lastMessage,
             createdAt: trade.createdAt,
             updatedAt: trade.updatedAt,
           };
