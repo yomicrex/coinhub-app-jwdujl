@@ -8,6 +8,62 @@ import { randomUUID } from 'crypto';
 
 export function registerAdminRoutes(app: App) {
   /**
+   * GET /api/admin/accounts
+   * List all user accounts with core details
+   * Returns: { accounts: [ { userId, email, username, displayName, role, createdAt } ] }
+   * Ordered by created_at DESC (newest first)
+   * Requires authentication
+   */
+  app.fastify.get('/api/admin/accounts', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.info('Admin: Fetching list of all user accounts');
+
+    try {
+      // Get all users from CoinHub users table with their details
+      const allAccounts = await app.db.query.users.findMany({
+        columns: {
+          id: true,
+          email: true,
+          username: true,
+          displayName: true,
+          role: true,
+          createdAt: true,
+        },
+        orderBy: (users) => users.createdAt,
+      });
+
+      // Sort by createdAt descending (newest first)
+      allAccounts.sort((a, b) => {
+        const dateA = new Date(a.createdAt).getTime();
+        const dateB = new Date(b.createdAt).getTime();
+        return dateB - dateA;
+      });
+
+      // Format response with camelCase
+      const accounts = allAccounts.map((user) => ({
+        userId: user.id,
+        email: user.email,
+        username: user.username,
+        displayName: user.displayName,
+        role: user.role,
+        createdAt: user.createdAt,
+      }));
+
+      app.logger.info(
+        { totalAccounts: accounts.length },
+        'Admin: Account list fetched successfully'
+      );
+
+      return { accounts, total: accounts.length };
+    } catch (error) {
+      app.logger.error(
+        { err: error },
+        'Admin: Failed to fetch account list'
+      );
+      return reply.status(500).send({ error: 'Failed to fetch account list', details: String(error) });
+    }
+  });
+
+  /**
    * GET /api/admin/users/list
    * List all user accounts with their details
    *
