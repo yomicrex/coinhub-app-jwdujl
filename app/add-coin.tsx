@@ -10,6 +10,8 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
@@ -104,16 +106,16 @@ export default function AddCoinScreen() {
     setLoading(true);
 
     try {
-      // Get session token from Better Auth
-      const session = await authClient.getSession();
-      console.log('AddCoinScreen: Session retrieved:', session ? 'valid' : 'invalid');
-
-      if (!session) {
-        console.error('AddCoinScreen: No valid session found');
+      // Verify user is logged in
+      if (!user) {
+        console.error('AddCoinScreen: No user found');
         Alert.alert('Error', 'You must be logged in to add a coin');
         setLoading(false);
+        router.push('/auth');
         return;
       }
+
+      console.log('AddCoinScreen: User is logged in:', user.id);
 
       // Create coin with all fields
       const coinData = {
@@ -133,6 +135,7 @@ export default function AddCoinScreen() {
 
       console.log('AddCoinScreen: Sending coin data to backend:', coinData);
 
+      // Better Auth automatically includes session cookies with credentials: 'include'
       const coinResponse = await fetch(`${API_URL}/api/coins`, {
         method: 'POST',
         headers: {
@@ -213,7 +216,15 @@ export default function AddCoinScreen() {
         }}
       />
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardAvoid}
+        keyboardVerticalOffset={100}
+      >
+        <ScrollView 
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
         <View style={styles.section}>
           <Text style={styles.label}>Images *</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
@@ -400,6 +411,7 @@ export default function AddCoinScreen() {
           </View>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -409,8 +421,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  keyboardAvoid: {
+    flex: 1,
+  },
   content: {
     padding: 16,
+    paddingBottom: 40,
   },
   section: {
     marginBottom: 20,
