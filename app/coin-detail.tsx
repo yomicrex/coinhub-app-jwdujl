@@ -25,6 +25,12 @@ interface CoinDetail {
   title: string;
   country: string;
   year: number;
+  agency?: string;
+  unit?: string;
+  coinNumber?: string;
+  deployment?: string;
+  version?: string;
+  manufacturer?: string;
   description?: string;
   user: {
     id: string;
@@ -169,6 +175,28 @@ export default function CoinDetailScreen() {
           headerShown: true,
           title: coin.title,
           headerBackTitle: 'Back',
+          headerRight: () => {
+            // Show edit button only if user owns the coin
+            if (coin.user.id === user?.id) {
+              return (
+                <TouchableOpacity
+                  onPress={() => {
+                    console.log('CoinDetailScreen: User tapped edit button');
+                    router.push(`/edit-coin?id=${coin.id}`);
+                  }}
+                  style={{ marginRight: 8 }}
+                >
+                  <IconSymbol
+                    ios_icon_name="pencil"
+                    android_material_icon_name="edit"
+                    size={20}
+                    color={colors.primary}
+                  />
+                </TouchableOpacity>
+              );
+            }
+            return null;
+          },
         }}
       />
       <ScrollView>
@@ -188,6 +216,48 @@ export default function CoinDetailScreen() {
             <View style={styles.tradeBadge}>
               <IconSymbol ios_icon_name="arrow.2.squarepath" android_material_icon_name="sync" size={16} color={colors.success} />
               <Text style={styles.tradeBadgeText}>Open to Trade</Text>
+            </View>
+          )}
+
+          {/* Coin Details Section */}
+          {(coin.agency || coin.unit || coin.coinNumber || coin.deployment || coin.version || coin.manufacturer) && (
+            <View style={styles.detailsSection}>
+              {coin.agency && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Agency:</Text>
+                  <Text style={styles.detailValue}>{coin.agency}</Text>
+                </View>
+              )}
+              {coin.unit && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Unit:</Text>
+                  <Text style={styles.detailValue}>{coin.unit}</Text>
+                </View>
+              )}
+              {coin.coinNumber && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Coin Number:</Text>
+                  <Text style={styles.detailValue}>{coin.coinNumber}</Text>
+                </View>
+              )}
+              {coin.deployment && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Deployment:</Text>
+                  <Text style={styles.detailValue}>{coin.deployment}</Text>
+                </View>
+              )}
+              {coin.version && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Version:</Text>
+                  <Text style={styles.detailValue}>{coin.version}</Text>
+                </View>
+              )}
+              {coin.manufacturer && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Manufacturer:</Text>
+                  <Text style={styles.detailValue}>{coin.manufacturer}</Text>
+                </View>
+              )}
             </View>
           )}
 
@@ -336,6 +406,29 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.success,
     marginLeft: 6,
+  },
+  detailsSection: {
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    padding: 16,
+    marginVertical: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  detailLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    width: 120,
+  },
+  detailValue: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text,
   },
   description: {
     fontSize: 16,

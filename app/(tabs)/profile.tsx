@@ -51,21 +51,21 @@ export default function ProfileScreen() {
     if (!user) return;
 
     try {
-      console.log('Fetching user coins');
-      const token = await getToken();
+      console.log('ProfileScreen: Fetching user coins for user ID:', user.id);
       const response = await fetch(`${API_URL}/api/users/${user.id}/coins`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        credentials: 'include',
       });
 
       if (response.ok) {
         const data = await response.json();
-        console.log('Fetched', data.coins?.length || 0, 'user coins');
-        setCoins(data.coins || []);
+        console.log('ProfileScreen: Fetched', data.length || 0, 'user coins');
+        // The API returns an array directly, not wrapped in a coins property
+        setCoins(Array.isArray(data) ? data : []);
+      } else {
+        console.error('ProfileScreen: Failed to fetch coins, status:', response.status);
       }
     } catch (error) {
-      console.error('Error fetching user coins:', error);
+      console.error('ProfileScreen: Error fetching user coins:', error);
     } finally {
       setLoading(false);
     }

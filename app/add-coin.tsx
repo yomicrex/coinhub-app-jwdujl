@@ -18,13 +18,20 @@ import * as ImagePicker from 'expo-image-picker';
 import { colors } from '@/styles/commonStyles';
 import Constants from 'expo-constants';
 import { useAuth } from '@/contexts/AuthContext';
+import { authClient } from '@/lib/auth';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 
 export default function AddCoinScreen() {
   const [title, setTitle] = useState('');
+  const [agency, setAgency] = useState('');
+  const [unit, setUnit] = useState('');
+  const [coinNumber, setCoinNumber] = useState('');
+  const [deployment, setDeployment] = useState('');
   const [country, setCountry] = useState('');
   const [year, setYear] = useState('');
+  const [version, setVersion] = useState('');
+  const [manufacturer, setManufacturer] = useState('');
   const [description, setDescription] = useState('');
   const [tradeStatus, setTradeStatus] = useState<'not_for_trade' | 'open_to_trade'>('not_for_trade');
   const [images, setImages] = useState<string[]>([]);
@@ -66,10 +73,12 @@ export default function AddCoinScreen() {
 
   const handleSubmit = async () => {
     console.log('AddCoinScreen: User tapped save button');
+    console.log('AddCoinScreen: Backend URL:', API_URL);
     
-    if (!title || !country || !year) {
+    // Validate required fields
+    if (!agency || !country || !year) {
       console.log('AddCoinScreen: Missing required fields');
-      Alert.alert('Error', 'Please fill in title, country, and year');
+      Alert.alert('Error', 'Please fill in Agency, Country, and Year (all are required)');
       return;
     }
 
@@ -79,34 +88,68 @@ export default function AddCoinScreen() {
       return;
     }
 
-    console.log('AddCoinScreen: Creating coin with data:', { title, country, year, description, tradeStatus });
+    console.log('AddCoinScreen: Creating coin with data:', { 
+      title, 
+      agency, 
+      unit, 
+      coinNumber, 
+      deployment, 
+      country, 
+      year, 
+      version, 
+      manufacturer, 
+      description, 
+      tradeStatus 
+    });
     setLoading(true);
 
     try {
-      // Create coin
+      // Get session token from Better Auth
+      const session = await authClient.getSession();
+      console.log('AddCoinScreen: Session retrieved:', session ? 'valid' : 'invalid');
+
+      if (!session) {
+        console.error('AddCoinScreen: No valid session found');
+        Alert.alert('Error', 'You must be logged in to add a coin');
+        setLoading(false);
+        return;
+      }
+
+      // Create coin with all fields
+      const coinData = {
+        title: title || `${agency} Coin`,
+        agency,
+        unit: unit || undefined,
+        coinNumber: coinNumber || undefined,
+        deployment: deployment || undefined,
+        country,
+        year: parseInt(year),
+        version: version || undefined,
+        manufacturer: manufacturer || undefined,
+        description: description || undefined,
+        visibility: 'public',
+        tradeStatus,
+      };
+
+      console.log('AddCoinScreen: Sending coin data to backend:', coinData);
+
       const coinResponse = await fetch(`${API_URL}/api/coins`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         credentials: 'include',
-        body: JSON.stringify({
-          title,
-          country,
-          year: parseInt(year),
-          description,
-          visibility: 'public',
-          tradeStatus,
-        }),
+        body: JSON.stringify(coinData),
       });
 
       if (!coinResponse.ok) {
         const errorText = await coinResponse.text();
         console.error('AddCoinScreen: Failed to create coin, status:', coinResponse.status, 'error:', errorText);
-        throw new Error('Failed to create coin');
+        throw new Error(`Failed to create coin: ${errorText}`);
       }
 
-      const { coin } = await coinResponse.json();
+      const responseData = await coinResponse.json();
+      const coin = responseData.coin || responseData;
       console.log('AddCoinScreen: Coin created with ID:', coin.id);
 
       // Upload images
@@ -134,6 +177,8 @@ export default function AddCoinScreen() {
 
         if (!imageResponse.ok) {
           console.error('AddCoinScreen: Failed to upload image', i + 1);
+        } else {
+          console.log('AddCoinScreen: Image', i + 1, 'uploaded successfully');
         }
       }
 
@@ -195,19 +240,52 @@ export default function AddCoinScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.label}>Title *</Text>
+          <Text style={styles.label}>Agency * (Required)</Text>
           <TextInput
             style={styles.input}
-            placeholder="e.g., Navy Challenge Coin"
+            placeholder="e.g., U.S. Navy, U.S. Army, FBI"
             placeholderTextColor={colors.textSecondary}
-            value={title}
-            onChangeText={setTitle}
+            value={agency}
+            onChangeText={setAgency}
+          />
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.label}>Unit</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g., 1st Battalion, 5th Regiment"
+            placeholderTextColor={colors.textSecondary}
+            value={unit}
+            onChangeText={setUnit}
+          />
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.label}>Coin Number</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g., #123, Serial 456"
+            placeholderTextColor={colors.textSecondary}
+            value={coinNumber}
+            onChangeText={setCoinNumber}
+          />
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.label}>Deployment</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g., Operation Desert Storm, Afghanistan 2010"
+            placeholderTextColor={colors.textSecondary}
+            value={deployment}
+            onChangeText={setDeployment}
           />
         </View>
 
         <View style={styles.row}>
           <View style={[styles.section, styles.flex]}>
-            <Text style={styles.label}>Country *</Text>
+            <Text style={styles.label}>Country * (Required)</Text>
             <TextInput
               style={styles.input}
               placeholder="USA"
@@ -218,7 +296,7 @@ export default function AddCoinScreen() {
           </View>
 
           <View style={[styles.section, styles.flex]}>
-            <Text style={styles.label}>Year *</Text>
+            <Text style={styles.label}>Year * (Required)</Text>
             <TextInput
               style={styles.input}
               placeholder="2024"
@@ -231,10 +309,32 @@ export default function AddCoinScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.label}>Description</Text>
+          <Text style={styles.label}>Version</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g., Limited Edition, Version 2.0"
+            placeholderTextColor={colors.textSecondary}
+            value={version}
+            onChangeText={setVersion}
+          />
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.label}>Manufacturer</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g., Northwest Territorial Mint"
+            placeholderTextColor={colors.textSecondary}
+            value={manufacturer}
+            onChangeText={setManufacturer}
+          />
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.label}>Additional Information</Text>
           <TextInput
             style={[styles.input, styles.textArea]}
-            placeholder="Tell us about this coin..."
+            placeholder="Tell us more about this coin..."
             placeholderTextColor={colors.textSecondary}
             value={description}
             onChangeText={setDescription}

@@ -74,6 +74,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     console.log('HomeScreen: Component mounted, user:', user?.username);
+    console.log('HomeScreen: Backend URL:', API_URL);
     console.log('HomeScreen: Starting initial data fetch');
     fetchCoins();
   }, []);
