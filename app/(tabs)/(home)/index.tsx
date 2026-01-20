@@ -3,7 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -44,36 +44,42 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const fetchCoins = useCallback(async () => {
+  const fetchCoins = async () => {
     console.log('HomeScreen: Fetching public coins feed from /api/coins/feed');
     try {
       const response = await fetch(`${API_URL}/api/coins/feed`, {
         credentials: 'include',
       });
 
+      console.log('HomeScreen: Feed response status:', response.status);
+
       if (response.ok) {
         const data = await response.json();
         console.log('HomeScreen: Fetched', data.coins?.length || 0, 'coins');
+        console.log('HomeScreen: Coins data:', JSON.stringify(data.coins?.slice(0, 2), null, 2));
         setCoins(data.coins || []);
       } else {
         console.error('HomeScreen: Failed to fetch coins, status:', response.status);
         const errorText = await response.text();
         console.error('HomeScreen: Error response:', errorText);
+        setCoins([]);
       }
     } catch (error) {
       console.error('HomeScreen: Error fetching coins:', error);
+      setCoins([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
   useEffect(() => {
     console.log('HomeScreen: Component mounted, user:', user?.username);
+    console.log('HomeScreen: Starting initial data fetch');
     fetchCoins();
-  }, [fetchCoins]);
+  }, []);
 
   const onRefresh = async () => {
-    console.log('HomeScreen: Refreshing feed');
+    console.log('HomeScreen: User pulled to refresh');
     setRefreshing(true);
     await fetchCoins();
     setRefreshing(false);

@@ -58,35 +58,42 @@ export default function FeedScreen() {
   const [activeImageIndices, setActiveImageIndices] = useState<{ [key: string]: number }>({});
   const scrollViewRefs = useRef<{ [key: string]: ScrollView | null }>({});
 
-  const fetchCoins = useCallback(async () => {
+  const fetchCoins = async () => {
     console.log('FeedScreen: Fetching public coins feed from /api/coins/feed');
     try {
       const response = await fetch(`${API_URL}/api/coins/feed`, {
         credentials: 'include',
       });
 
+      console.log('FeedScreen: Feed response status:', response.status);
+
       if (response.ok) {
         const data = await response.json();
         console.log('FeedScreen: Fetched', data.coins?.length || 0, 'public coins');
+        console.log('FeedScreen: Coins data:', JSON.stringify(data.coins?.slice(0, 2), null, 2));
         setCoins(data.coins || []);
       } else {
         console.error('FeedScreen: Failed to fetch coins, status:', response.status);
         const errorText = await response.text();
         console.error('FeedScreen: Error response:', errorText);
+        setCoins([]);
       }
     } catch (error) {
       console.error('FeedScreen: Error fetching coins:', error);
+      setCoins([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
-  const fetchTradeCoins = useCallback(async () => {
+  const fetchTradeCoins = async () => {
     console.log('FeedScreen: Fetching coins up for trade from /api/coins/feed/trade');
     try {
       const response = await fetch(`${API_URL}/api/coins/feed/trade`, {
         credentials: 'include',
       });
+
+      console.log('FeedScreen: Trade feed response status:', response.status);
 
       if (response.ok) {
         const data = await response.json();
@@ -96,20 +103,23 @@ export default function FeedScreen() {
         console.error('FeedScreen: Failed to fetch trade coins, status:', response.status);
         const errorText = await response.text();
         console.error('FeedScreen: Error response:', errorText);
+        setTradeCoins([]);
       }
     } catch (error) {
       console.error('FeedScreen: Error fetching trade coins:', error);
+      setTradeCoins([]);
     }
-  }, []);
+  };
 
   useEffect(() => {
     console.log('FeedScreen: Component mounted, user:', user?.username);
+    console.log('FeedScreen: Starting initial data fetch');
     fetchCoins();
     fetchTradeCoins();
-  }, [fetchCoins, fetchTradeCoins, user?.username]);
+  }, []);
 
   const onRefresh = async () => {
-    console.log('FeedScreen: Refreshing feed');
+    console.log('FeedScreen: User pulled to refresh');
     setRefreshing(true);
     await Promise.all([fetchCoins(), fetchTradeCoins()]);
     setRefreshing(false);
