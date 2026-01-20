@@ -506,15 +506,28 @@ export function registerAuthRoutes(app: App) {
         'GET /api/auth/me - Auth user retrieved'
       );
 
-      // Get CoinHub user profile using EXACTLY the user ID from the session
-      const profile = await app.db.query.users.findFirst({
+      // Get CoinHub user profile by matching email (supports multiple profiles per email during beta testing)
+      // First try exact match by user ID, then fall back to email lookup
+      let profile = await app.db.query.users.findFirst({
         where: eq(schema.users.id, userRecord.id),
       });
+
+      // If no profile found by ID, try by email as fallback
+      if (!profile) {
+        app.logger.debug(
+          { userId: userRecord.id, email: userRecord.email },
+          'GET /api/auth/me - Profile not found by ID, trying email lookup'
+        );
+        profile = await app.db.query.users.findFirst({
+          where: eq(schema.users.email, userRecord.email),
+        });
+      }
 
       app.logger.info(
         {
           sessionUserId: sessionRecord.userId,
           authUserId: userRecord.id,
+          authUserEmail: userRecord.email,
           profileId: profile?.id,
           profileUsername: profile?.username,
           profileEmail: profile?.email,
@@ -1321,6 +1334,7 @@ export function registerAuthRoutes(app: App) {
           });
 
           if (authUser) {
+            // First try exact match by user ID
             coinHubUser = await app.db.query.users.findFirst({
               where: eq(schema.users.id, authUser.id),
               columns: {
@@ -1338,6 +1352,31 @@ export function registerAuthRoutes(app: App) {
                 updatedAt: true,
               },
             });
+
+            // If not found by ID, try by email (supports multiple profiles per email during beta testing)
+            if (!coinHubUser) {
+              app.logger.debug(
+                { authUserId: authUser.id, email },
+                'Sign-in: Profile not found by ID, trying email lookup'
+              );
+              coinHubUser = await app.db.query.users.findFirst({
+                where: sql`LOWER(${schema.users.email}) = LOWER(${email})`,
+                columns: {
+                  id: true,
+                  email: true,
+                  username: true,
+                  displayName: true,
+                  avatarUrl: true,
+                  bio: true,
+                  location: true,
+                  collectionPrivacy: true,
+                  role: true,
+                  inviteCodeUsed: true,
+                  createdAt: true,
+                  updatedAt: true,
+                },
+              });
+            }
           }
         } catch (lookupError) {
           app.logger.error({ err: lookupError, email }, 'Error looking up user by email');
@@ -1591,12 +1630,24 @@ export function registerAuthRoutes(app: App) {
         return reply.status(404).send({ error: 'No account found with this email address' });
       }
 
-      app.logger.info({ userId: authUser.id }, 'Email-only sign-in: user found');
+      app.logger.info({ userId: authUser.id, email: normalizedEmail }, 'Email-only sign-in: user found');
 
       // Get CoinHub user profile for this authenticated user
-      const coinHubProfile = await app.db.query.users.findFirst({
+      // First try exact match by user ID, then fall back to email lookup
+      let coinHubProfile = await app.db.query.users.findFirst({
         where: eq(schema.users.id, authUser.id)
       });
+
+      // If no profile found by ID, try by email as fallback (supports multiple profiles per email during beta testing)
+      if (!coinHubProfile) {
+        app.logger.debug(
+          { userId: authUser.id, email: normalizedEmail },
+          'Email-only sign-in: Profile not found by ID, trying email lookup'
+        );
+        coinHubProfile = await app.db.query.users.findFirst({
+          where: eq(schema.users.email, normalizedEmail)
+        });
+      }
 
       if (!coinHubProfile) {
         app.logger.warn({ userId: authUser.id, email: normalizedEmail }, 'Email-only sign-in: CoinHub profile not found for user');
@@ -1604,7 +1655,7 @@ export function registerAuthRoutes(app: App) {
       }
 
       app.logger.info(
-        { userId: authUser.id, username: coinHubProfile.username },
+        { userId: authUser.id, email: normalizedEmail, username: coinHubProfile.username, profileId: coinHubProfile.id },
         'Email-only sign-in: CoinHub profile found'
       );
 
