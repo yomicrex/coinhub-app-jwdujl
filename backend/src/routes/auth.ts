@@ -5,6 +5,7 @@ import * as authSchema from '../db/auth-schema.js';
 import type { App } from '../index.js';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
+import { extractSessionToken } from '../utils/auth-utils.js';
 
 /**
  * CoinHub Auth Routes
@@ -459,18 +460,15 @@ export function registerAuthRoutes(app: App) {
     app.logger.info('GET /api/auth/me - fetching current user');
 
     try {
-      // Get session token from cookie header
-      const cookieHeader = request.headers.cookie || '';
-      const sessionToken = cookieHeader
-        .split(';')
-        .find(cookie => cookie.trim().startsWith('session='))
-        ?.split('=')[1]
-        ?.trim();
+      // Extract session token using utility (supports both cookies and Authorization header)
+      const sessionToken = extractSessionToken(request);
 
       if (!sessionToken) {
-        app.logger.warn('No session cookie found');
+        app.logger.warn('GET /api/auth/me - No session token found in request');
         return reply.status(401).send({ error: 'Unauthorized', message: 'No active session' });
       }
+
+      app.logger.info({ token: sessionToken.substring(0, 20) }, 'GET /api/auth/me - Profile request - session token received');
 
       // Look up session in database
       const sessionRecord = await app.db.query.session.findFirst({
@@ -478,32 +476,52 @@ export function registerAuthRoutes(app: App) {
       });
 
       if (!sessionRecord) {
-        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session token not found in database');
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'GET /api/auth/me - Session token not found in database');
         return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid' });
       }
 
+      app.logger.info(
+        { token: sessionToken.substring(0, 20), sessionUserId: sessionRecord.userId },
+        'GET /api/auth/me - Session found for user ID'
+      );
+
       // Check if session is expired
       if (new Date(sessionRecord.expiresAt) < new Date()) {
-        app.logger.info({ token: sessionToken.substring(0, 20) }, 'Session expired');
+        app.logger.info({ token: sessionToken.substring(0, 20) }, 'GET /api/auth/me - Session expired');
         return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
       }
 
-      // Get user record
+      // Get user record from Better Auth
       const userRecord = await app.db.query.user.findFirst({
         where: eq(authSchema.user.id, sessionRecord.userId)
       });
 
       if (!userRecord) {
-        app.logger.warn({ userId: sessionRecord.userId }, 'User not found for valid session');
+        app.logger.warn({ userId: sessionRecord.userId }, 'GET /api/auth/me - User not found for valid session');
         return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
       }
 
-      app.logger.info({ userId: userRecord.id, email: userRecord.email }, 'Session validation successful');
+      app.logger.info(
+        { userId: userRecord.id, authUserEmail: userRecord.email },
+        'GET /api/auth/me - Auth user retrieved'
+      );
 
-      // Get CoinHub user profile
+      // Get CoinHub user profile using EXACTLY the user ID from the session
       const profile = await app.db.query.users.findFirst({
         where: eq(schema.users.id, userRecord.id),
       });
+
+      app.logger.info(
+        {
+          sessionUserId: sessionRecord.userId,
+          authUserId: userRecord.id,
+          profileId: profile?.id,
+          profileUsername: profile?.username,
+          profileEmail: profile?.email,
+          match: sessionRecord.userId === userRecord.id && userRecord.id === profile?.id
+        },
+        'GET /api/auth/me - Profile lookup complete'
+      );
 
       // Generate signed URL for avatar if it exists
       let profileWithAvatar = profile;
@@ -518,8 +536,13 @@ export function registerAuthRoutes(app: App) {
       }
 
       app.logger.info(
-        { userId: userRecord.id, hasProfile: !!profile, username: profile?.username },
-        'Current user profile fetched successfully'
+        {
+          userId: userRecord.id,
+          username: profile?.username,
+          email: userRecord.email,
+          hasProfile: !!profile
+        },
+        'GET /api/auth/me - Returning profile for user'
       );
 
       return {
@@ -535,7 +558,7 @@ export function registerAuthRoutes(app: App) {
         profile: profileWithAvatar
       };
     } catch (error) {
-      app.logger.error({ err: error }, 'Failed to fetch current user');
+      app.logger.error({ err: error }, 'GET /api/auth/me - Failed to fetch current user');
       return reply.status(500).send({ error: 'Failed to fetch user' });
     }
   });
@@ -1759,6 +1782,194 @@ export function registerAuthRoutes(app: App) {
         incomingCookie: cookies.substring(0, 150),
         incomingAuthHeader: authHeader.substring(0, 100)
       };
+    });
+
+    /**
+     * DEBUG ENDPOINT: GET /api/debug/session-profile
+     * Comprehensive session-to-profile tracing
+     * Query params: token (optional - session token) or uses cookie
+     * Shows the full chain: token → session → user ID → auth user → CoinHub profile
+     */
+    app.fastify.get('/api/debug/session-profile', async (request: FastifyRequest, reply: FastifyReply) => {
+      const query = request.query as Record<string, string | undefined>;
+      let sessionToken = query.token;
+
+      // If no token provided, try to extract from request
+      if (!sessionToken) {
+        sessionToken = extractSessionToken(request);
+      }
+
+      if (!sessionToken) {
+        return {
+          success: false,
+          message: 'No session token provided. Use ?token=<token> or send session cookie',
+          hint: 'Example: GET /api/debug/session-profile?token=<session-token>'
+        };
+      }
+
+      app.logger.info(
+        { token: sessionToken.substring(0, 20) },
+        'DEBUG: Session-to-profile trace started'
+      );
+
+      try {
+        // Step 1: Look up session
+        app.logger.info({ token: sessionToken.substring(0, 20) }, 'DEBUG: Step 1 - Looking up session by token');
+        const sessionRecord = await app.db.query.session.findFirst({
+          where: eq(authSchema.session.token, sessionToken)
+        });
+
+        if (!sessionRecord) {
+          app.logger.warn({ token: sessionToken.substring(0, 20) }, 'DEBUG: Session not found');
+          return {
+            success: false,
+            token: sessionToken.substring(0, 20),
+            step: 1,
+            message: 'Session token not found in database',
+            chain: {
+              token: 'NOT_FOUND'
+            }
+          };
+        }
+
+        app.logger.info(
+          { token: sessionToken.substring(0, 20), sessionUserId: sessionRecord.userId },
+          'DEBUG: Step 1 - Session found'
+        );
+
+        // Step 2: Check session expiration
+        const isExpired = new Date(sessionRecord.expiresAt) < new Date();
+        if (isExpired) {
+          app.logger.warn({ expiresAt: sessionRecord.expiresAt }, 'DEBUG: Session is expired');
+          return {
+            success: false,
+            token: sessionToken.substring(0, 20),
+            step: 2,
+            message: 'Session is expired',
+            chain: {
+              token: sessionToken.substring(0, 20),
+              sessionId: sessionRecord.id,
+              sessionUserId: sessionRecord.userId,
+              expiresAt: sessionRecord.expiresAt,
+              isExpired: true
+            }
+          };
+        }
+
+        // Step 3: Get auth user record
+        app.logger.info(
+          { userId: sessionRecord.userId },
+          'DEBUG: Step 3 - Looking up auth user by ID'
+        );
+        const authUser = await app.db.query.user.findFirst({
+          where: eq(authSchema.user.id, sessionRecord.userId)
+        });
+
+        if (!authUser) {
+          app.logger.warn({ userId: sessionRecord.userId }, 'DEBUG: Auth user not found');
+          return {
+            success: false,
+            token: sessionToken.substring(0, 20),
+            step: 3,
+            message: 'Auth user not found for session userId',
+            chain: {
+              token: sessionToken.substring(0, 20),
+              sessionId: sessionRecord.id,
+              sessionUserId: sessionRecord.userId,
+              authUserFound: false
+            }
+          };
+        }
+
+        app.logger.info(
+          { userId: authUser.id, email: authUser.email },
+          'DEBUG: Step 3 - Auth user found'
+        );
+
+        // Step 4: Get CoinHub profile
+        app.logger.info(
+          { userId: authUser.id },
+          'DEBUG: Step 4 - Looking up CoinHub profile by user ID'
+        );
+        const coinHubProfile = await app.db.query.users.findFirst({
+          where: eq(schema.users.id, authUser.id)
+        });
+
+        if (!coinHubProfile) {
+          app.logger.warn({ userId: authUser.id }, 'DEBUG: CoinHub profile not found');
+          return {
+            success: false,
+            token: sessionToken.substring(0, 20),
+            step: 4,
+            message: 'CoinHub profile not found for auth user',
+            chain: {
+              token: sessionToken.substring(0, 20),
+              sessionId: sessionRecord.id,
+              sessionUserId: sessionRecord.userId,
+              authUserId: authUser.id,
+              authUserEmail: authUser.email,
+              coinHubProfileFound: false
+            }
+          };
+        }
+
+        app.logger.info(
+          { userId: coinHubProfile.id, username: coinHubProfile.username, email: coinHubProfile.email },
+          'DEBUG: Step 4 - CoinHub profile found'
+        );
+
+        // Step 5: Verify chain consistency
+        const chainConsistent =
+          sessionRecord.userId === authUser.id &&
+          authUser.id === coinHubProfile.id &&
+          authUser.email === coinHubProfile.email;
+
+        app.logger.info(
+          {
+            sessionUserId: sessionRecord.userId,
+            authUserId: authUser.id,
+            profileId: coinHubProfile.id,
+            consistent: chainConsistent
+          },
+          'DEBUG: Step 5 - Chain verification'
+        );
+
+        return {
+          success: true,
+          token: sessionToken.substring(0, 20),
+          chain: {
+            token: sessionToken.substring(0, 20),
+            session: {
+              id: sessionRecord.id,
+              userId: sessionRecord.userId,
+              expiresAt: sessionRecord.expiresAt,
+              isExpired: false
+            },
+            authUser: {
+              id: authUser.id,
+              email: authUser.email,
+              name: authUser.name
+            },
+            coinHubProfile: {
+              id: coinHubProfile.id,
+              username: coinHubProfile.username,
+              displayName: coinHubProfile.displayName,
+              email: coinHubProfile.email,
+              role: coinHubProfile.role
+            },
+            chainConsistent,
+            warning: chainConsistent ? null : 'CHAIN INCONSISTENCY DETECTED - IDs do not match!'
+          }
+        };
+      } catch (error) {
+        app.logger.error({ err: error, token: sessionToken.substring(0, 20) }, 'DEBUG: Error during trace');
+        return {
+          success: false,
+          token: sessionToken.substring(0, 20),
+          error: String(error),
+          message: 'Error occurred during session-to-profile trace'
+        };
+      }
     });
   }
 
