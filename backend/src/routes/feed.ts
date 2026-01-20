@@ -1,7 +1,9 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { eq, desc, and } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
+import * as authSchema from '../db/auth-schema.js';
 import type { App } from '../index.js';
+import { extractSessionToken } from '../utils/auth-utils.js';
 
 /**
  * Feed Routes
@@ -331,10 +333,20 @@ export function registerFeedRoutes(app: App) {
       // Try to get current user session if authenticated
       let currentUserId: string | null = null;
       try {
-        const requireAuth = app.requireAuth();
-        const session = await requireAuth(request, reply);
-        if (session) {
-          currentUserId = session.user.id;
+        const sessionToken = extractSessionToken(request);
+        if (sessionToken) {
+          const sessionRecord = await app.db.query.session.findFirst({
+            where: eq(authSchema.session.token, sessionToken),
+          });
+
+          if (sessionRecord && new Date(sessionRecord.expiresAt) > new Date()) {
+            const userRecord = await app.db.query.user.findFirst({
+              where: eq(authSchema.user.id, sessionRecord.userId),
+            });
+            if (userRecord) {
+              currentUserId = userRecord.id;
+            }
+          }
         }
       } catch {
         // Not authenticated, that's fine - feed is public
