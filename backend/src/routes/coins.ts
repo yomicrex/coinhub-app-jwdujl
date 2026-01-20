@@ -12,12 +12,14 @@ const CreateCoinSchema = z.object({
   year: z.number().int().min(1800).max(new Date().getFullYear()),
   unit: z.string().max(100).optional(),
   organization: z.string().max(100).optional(),
-  agency: z.string().max(100).optional(),
+  agency: z.string().min(1).max(100), // Required field for new coins
   deployment: z.string().max(100).optional(),
   coinNumber: z.string().max(100).optional(),
   mintMark: z.string().max(50).optional(),
   condition: z.string().max(100).optional(),
   description: z.string().max(2000).optional(),
+  version: z.string().max(100).optional(),
+  manufacturer: z.string().max(100).optional(),
   visibility: z.enum(['public', 'private']).default('public'),
   tradeStatus: z.enum(['not_for_trade', 'open_to_trade']).default('not_for_trade'),
   images: z.array(z.object({
@@ -38,6 +40,8 @@ const UpdateCoinSchema = z.object({
   mintMark: z.string().max(50).optional().nullable(),
   condition: z.string().max(100).optional().nullable(),
   description: z.string().max(2000).optional().nullable(),
+  version: z.string().max(100).optional().nullable(),
+  manufacturer: z.string().max(100).optional().nullable(),
   visibility: z.enum(['public', 'private']).optional(),
   tradeStatus: z.enum(['not_for_trade', 'open_to_trade']).optional(),
   images: z.array(z.object({
@@ -71,12 +75,14 @@ export function registerCoinsRoutes(app: App) {
           year: body.year,
           unit: body.unit || null,
           organization: body.organization || null,
-          agency: body.agency || null,
+          agency: body.agency,
           deployment: body.deployment || null,
           coinNumber: body.coinNumber || null,
           mintMark: body.mintMark || null,
           condition: body.condition || null,
           description: body.description || null,
+          version: body.version || null,
+          manufacturer: body.manufacturer || null,
           visibility: body.visibility,
           tradeStatus: body.tradeStatus,
         })
@@ -211,6 +217,8 @@ export function registerCoinsRoutes(app: App) {
         mintMark: coin.mintMark,
         condition: coin.condition,
         description: coin.description,
+        version: coin.version,
+        manufacturer: coin.manufacturer,
         visibility: coin.visibility,
         tradeStatus: coin.tradeStatus,
         user: {
@@ -273,6 +281,8 @@ export function registerCoinsRoutes(app: App) {
       if (body.mintMark !== undefined) updates.mintMark = body.mintMark;
       if (body.condition !== undefined) updates.condition = body.condition;
       if (body.description !== undefined) updates.description = body.description;
+      if (body.version !== undefined) updates.version = body.version;
+      if (body.manufacturer !== undefined) updates.manufacturer = body.manufacturer;
       if (body.visibility !== undefined) updates.visibility = body.visibility;
       if (body.tradeStatus !== undefined) updates.tradeStatus = body.tradeStatus;
 
@@ -485,6 +495,9 @@ export function registerCoinsRoutes(app: App) {
               title: coin.title,
               country: coin.country,
               year: coin.year,
+              agency: coin.agency,
+              version: coin.version,
+              manufacturer: coin.manufacturer,
               user: { ...coin.user, avatarUrl: userAvatarUrl },
               images: imagesWithUrls,
               likeCount: coin.likes.length,
@@ -584,6 +597,9 @@ export function registerCoinsRoutes(app: App) {
             title: coin.title,
             country: coin.country,
             year: coin.year,
+            agency: coin.agency,
+            version: coin.version,
+            manufacturer: coin.manufacturer,
             images: imagesWithUrls,
             likeCount: coin.likes.length,
             commentCount: coin.comments.length,

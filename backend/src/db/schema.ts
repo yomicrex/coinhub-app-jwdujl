@@ -92,6 +92,8 @@ export const coins = pgTable(
     mintMark: text('mint_mark'),
     condition: text('condition'), // mint, excellent, good, fair, poor
     description: text('description'),
+    version: text('version'),
+    manufacturer: text('manufacturer'),
     visibility: text('visibility', {
       enum: ['public', 'private'],
     })
