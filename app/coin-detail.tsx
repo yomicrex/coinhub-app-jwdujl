@@ -57,6 +57,7 @@ export default function CoinDetailScreen() {
   const [coin, setCoin] = useState<CoinDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [isLiked, setIsLiked] = useState(false);
+  const [proposingTrade, setProposingTrade] = useState(false);
   const { user } = useAuth();
   const router = useRouter();
 
@@ -160,6 +161,63 @@ export default function CoinDetailScreen() {
     router.push(`/coin-comments?coinId=${coin.id}`);
   };
 
+  const handleProposeTrade = async () => {
+    if (!user) {
+      console.log('CoinDetailScreen: User not logged in, redirecting to auth');
+      router.push('/auth');
+      return;
+    }
+
+    if (!coin) return;
+
+    console.log('CoinDetailScreen: User tapped propose trade button for coin:', coin.id);
+    setProposingTrade(true);
+
+    try {
+      const response = await fetch(`${API_URL}/api/trades/initiate`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          coinId: coin.id,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('CoinDetailScreen: Failed to initiate trade:', errorData);
+        throw new Error(errorData.message || 'Failed to initiate trade');
+      }
+
+      const data = await response.json();
+      console.log('CoinDetailScreen: Trade initiated successfully:', data);
+
+      Alert.alert(
+        'Trade Initiated!',
+        'Your trade request has been created. You can now offer coins to the owner.',
+        [
+          {
+            text: 'View Trade',
+            onPress: () => {
+              const tradeId = data.trade?.id || data.id;
+              if (tradeId) {
+                router.push(`/trade-detail?id=${tradeId}`);
+              }
+            },
+          },
+          { text: 'OK', style: 'cancel' },
+        ]
+      );
+    } catch (error: any) {
+      console.error('CoinDetailScreen: Error initiating trade:', error);
+      Alert.alert('Error', error.message || 'Failed to initiate trade. Please try again.');
+    } finally {
+      setProposingTrade(false);
+    }
+  };
+
   const handleUserPress = () => {
     if (!coin) return;
     console.log('CoinDetailScreen: User tapped on user profile:', coin.user.username);
@@ -254,6 +312,7 @@ export default function CoinDetailScreen() {
   }
 
   const isOwner = user?.id === coin.user.id;
+  const canProposeTrade = !isOwner && coin.tradeStatus === 'open_to_trade' && user;
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -377,6 +436,31 @@ export default function CoinDetailScreen() {
             </View>
           )}
         </View>
+
+        {/* Propose Trade Button */}
+        {canProposeTrade && (
+          <View style={styles.tradeButtonContainer}>
+            <TouchableOpacity
+              style={[styles.proposeTradeButton, proposingTrade && styles.proposeTradeButtonDisabled]}
+              onPress={handleProposeTrade}
+              disabled={proposingTrade}
+            >
+              {proposingTrade ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <IconSymbol
+                    ios_icon_name="arrow.2.squarepath"
+                    android_material_icon_name="swap-horiz"
+                    size={20}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.proposeTradeButtonText}>Propose Trade</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Coin Details */}
         <View style={styles.detailsSection}>
@@ -606,6 +690,30 @@ const styles = StyleSheet.create({
   tradeBadgeText: {
     color: '#FFFFFF',
     fontSize: 12,
+    fontWeight: '600',
+  },
+  tradeButtonContainer: {
+    padding: 16,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  proposeTradeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    gap: 8,
+  },
+  proposeTradeButtonDisabled: {
+    opacity: 0.6,
+  },
+  proposeTradeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
     fontWeight: '600',
   },
   detailsSection: {
