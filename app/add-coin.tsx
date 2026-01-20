@@ -20,7 +20,6 @@ import * as ImagePicker from 'expo-image-picker';
 import { colors } from '@/styles/commonStyles';
 import Constants from 'expo-constants';
 import { useAuth } from '@/contexts/AuthContext';
-import { authClient } from '@/lib/auth';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 
@@ -90,6 +89,15 @@ export default function AddCoinScreen() {
       return;
     }
 
+    // Verify user is logged in
+    if (!user) {
+      console.error('AddCoinScreen: No user found');
+      Alert.alert('Error', 'You must be logged in to add a coin');
+      router.push('/auth');
+      return;
+    }
+
+    console.log('AddCoinScreen: User is logged in:', user.id);
     console.log('AddCoinScreen: Creating coin with data:', { 
       title, 
       agency, 
@@ -103,20 +111,10 @@ export default function AddCoinScreen() {
       description, 
       tradeStatus 
     });
+    
     setLoading(true);
 
     try {
-      // Verify user is logged in
-      if (!user) {
-        console.error('AddCoinScreen: No user found');
-        Alert.alert('Error', 'You must be logged in to add a coin');
-        setLoading(false);
-        router.push('/auth');
-        return;
-      }
-
-      console.log('AddCoinScreen: User is logged in:', user.id);
-
       // Create coin with all fields
       const coinData = {
         title: title || `${agency} Coin`,
@@ -135,19 +133,28 @@ export default function AddCoinScreen() {
 
       console.log('AddCoinScreen: Sending coin data to backend:', coinData);
 
-      // Better Auth automatically includes session cookies with credentials: 'include'
       const coinResponse = await fetch(`${API_URL}/api/coins`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
         credentials: 'include',
         body: JSON.stringify(coinData),
       });
 
+      console.log('AddCoinScreen: Coin creation response status:', coinResponse.status);
+
       if (!coinResponse.ok) {
         const errorText = await coinResponse.text();
         console.error('AddCoinScreen: Failed to create coin, status:', coinResponse.status, 'error:', errorText);
+        
+        if (coinResponse.status === 401) {
+          Alert.alert('Authentication Error', 'Your session has expired. Please sign in again.');
+          router.push('/auth');
+          return;
+        }
+        
         throw new Error(`Failed to create coin: ${errorText}`);
       }
 
@@ -156,39 +163,68 @@ export default function AddCoinScreen() {
       console.log('AddCoinScreen: Coin created with ID:', coin.id);
 
       // Upload images
+      let uploadedCount = 0;
+      let failedCount = 0;
+      
       for (let i = 0; i < images.length; i++) {
         console.log('AddCoinScreen: Uploading image', i + 1, 'of', images.length);
-        const formData = new FormData();
-        const uri = images[i];
-        const filename = uri.split('/').pop() || 'image.jpg';
-        const match = /\.(\w+)$/.exec(filename);
-        const type = match ? `image/${match[1]}` : 'image/jpeg';
+        
+        try {
+          const formData = new FormData();
+          const uri = images[i];
+          const filename = uri.split('/').pop() || 'image.jpg';
+          const match = /\.(\w+)$/.exec(filename);
+          const type = match ? `image/${match[1]}` : 'image/jpeg';
 
-        formData.append('image', {
-          uri,
-          name: filename,
-          type,
-        } as any);
+          formData.append('image', {
+            uri,
+            name: filename,
+            type,
+          } as any);
 
-        formData.append('orderIndex', i.toString());
+          formData.append('orderIndex', i.toString());
 
-        const imageResponse = await fetch(`${API_URL}/api/coins/${coin.id}/images`, {
-          method: 'POST',
-          credentials: 'include',
-          body: formData,
-        });
+          console.log('AddCoinScreen: Uploading to:', `${API_URL}/api/coins/${coin.id}/images`);
+          
+          const imageResponse = await fetch(`${API_URL}/api/coins/${coin.id}/images`, {
+            method: 'POST',
+            credentials: 'include',
+            body: formData,
+          });
 
-        if (!imageResponse.ok) {
-          console.error('AddCoinScreen: Failed to upload image', i + 1);
-        } else {
-          console.log('AddCoinScreen: Image', i + 1, 'uploaded successfully');
+          console.log('AddCoinScreen: Image', i + 1, 'upload response status:', imageResponse.status);
+
+          if (!imageResponse.ok) {
+            const errorText = await imageResponse.text();
+            console.error('AddCoinScreen: Failed to upload image', i + 1, 'error:', errorText);
+            failedCount++;
+          } else {
+            console.log('AddCoinScreen: Image', i + 1, 'uploaded successfully');
+            uploadedCount++;
+          }
+        } catch (error) {
+          console.error('AddCoinScreen: Error uploading image', i + 1, ':', error);
+          failedCount++;
         }
       }
 
-      console.log('AddCoinScreen: Coin created successfully');
-      Alert.alert('Success', 'Coin added successfully!', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
+      console.log('AddCoinScreen: Upload complete -', uploadedCount, 'succeeded,', failedCount, 'failed');
+
+      if (uploadedCount > 0) {
+        const message = failedCount > 0 
+          ? `Coin added! ${uploadedCount} image(s) uploaded successfully, ${failedCount} failed.`
+          : 'Coin added successfully!';
+        
+        Alert.alert('Success', message, [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
+      } else {
+        Alert.alert(
+          'Partial Success',
+          'Coin was created but all images failed to upload. You can edit the coin to add images later.',
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+      }
     } catch (error: any) {
       console.error('AddCoinScreen: Error creating coin:', error);
       Alert.alert('Error', error.message || 'Failed to create coin');

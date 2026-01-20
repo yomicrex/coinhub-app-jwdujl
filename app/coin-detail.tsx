@@ -85,6 +85,9 @@ export default function CoinDetailScreen() {
       
       const response = await fetch(`${API_URL}/api/coins/${actualId}`, {
         credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+        },
       });
 
       console.log('CoinDetailScreen: Response status:', response.status);
@@ -137,6 +140,7 @@ export default function CoinDetailScreen() {
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
         body: method === 'POST' ? JSON.stringify({}) : undefined,
       });
@@ -175,6 +179,7 @@ export default function CoinDetailScreen() {
   const handleProposeTrade = async () => {
     if (!user) {
       console.log('CoinDetailScreen: User not logged in, redirecting to auth');
+      Alert.alert('Sign In Required', 'Please sign in to propose a trade');
       router.push('/auth');
       return;
     }
@@ -182,24 +187,60 @@ export default function CoinDetailScreen() {
     if (!coin) return;
 
     console.log('CoinDetailScreen: User tapped propose trade button for coin:', coin.id);
+    console.log('CoinDetailScreen: User ID:', user.id);
+    console.log('CoinDetailScreen: User email:', user.email);
+    console.log('CoinDetailScreen: User username:', user.username);
     setProposingTrade(true);
 
     try {
+      console.log('CoinDetailScreen: Sending trade initiate request to:', `${API_URL}/api/trades/initiate`);
+      console.log('CoinDetailScreen: Request body:', JSON.stringify({ coinId: coin.id }));
+      
       const response = await fetch(`${API_URL}/api/trades/initiate`, {
         method: 'POST',
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
         body: JSON.stringify({
           coinId: coin.id,
         }),
       });
 
+      console.log('CoinDetailScreen: Trade initiate response status:', response.status);
+      console.log('CoinDetailScreen: Response headers:', JSON.stringify(Object.fromEntries(response.headers.entries())));
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('CoinDetailScreen: Failed to initiate trade:', errorData);
-        throw new Error(errorData.message || 'Failed to initiate trade');
+        const errorText = await response.text();
+        console.error('CoinDetailScreen: Failed to initiate trade, status:', response.status, 'error:', errorText);
+        
+        if (response.status === 401) {
+          console.error('CoinDetailScreen: 401 Unauthorized - Session may be invalid or expired');
+          console.error('CoinDetailScreen: User object:', JSON.stringify(user));
+          Alert.alert(
+            'Authentication Error', 
+            'Your session has expired or is invalid. Please sign in again.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Sign In', onPress: () => router.push('/auth') }
+            ]
+          );
+          return;
+        }
+        
+        let errorMessage = 'Failed to initiate trade';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.message || errorData.error || errorMessage;
+          console.error('CoinDetailScreen: Parsed error:', errorData);
+        } catch (e) {
+          // If parsing fails, use the raw text
+          errorMessage = errorText || errorMessage;
+          console.error('CoinDetailScreen: Raw error text:', errorText);
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
@@ -258,6 +299,9 @@ export default function CoinDetailScreen() {
               const response = await fetch(`${API_URL}/api/coins/${coin.id}`, {
                 method: 'DELETE',
                 credentials: 'include',
+                headers: {
+                  'Accept': 'application/json',
+                },
               });
 
               if (!response.ok) {

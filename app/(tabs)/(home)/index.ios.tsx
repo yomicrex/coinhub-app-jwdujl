@@ -71,6 +71,9 @@ export default function FeedScreen() {
       console.log('FeedScreen: Fetching public coins feed from', `${API_URL}/api/coins/feed`);
       const response = await fetch(`${API_URL}/api/coins/feed`, {
         credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+        },
       });
 
       console.log('FeedScreen: Feed response status:', response.status);
@@ -96,6 +99,9 @@ export default function FeedScreen() {
       console.log('FeedScreen: Fetching trade coins from', `${API_URL}/api/coins/feed/trade`);
       const response = await fetch(`${API_URL}/api/coins/feed/trade`, {
         credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+        },
       });
 
       console.log('FeedScreen: Trade feed response status:', response.status);
@@ -137,6 +143,7 @@ export default function FeedScreen() {
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
         body: JSON.stringify({}),
       });
@@ -180,17 +187,25 @@ export default function FeedScreen() {
     
     if (!user) {
       console.log('FeedScreen: User not logged in, redirecting to auth');
+      Alert.alert('Sign In Required', 'Please sign in to propose a trade');
       router.push('/auth');
       return;
     }
 
     try {
       console.log('FeedScreen: Initiating trade for coin:', coinId);
+      console.log('FeedScreen: User ID:', user.id);
+      console.log('FeedScreen: User email:', user.email);
+      console.log('FeedScreen: User username:', user.username);
+      console.log('FeedScreen: Sending request to:', `${API_URL}/api/trades/initiate`);
+      console.log('FeedScreen: Request body:', JSON.stringify({ coinId }));
+      
       const response = await fetch(`${API_URL}/api/trades/initiate`, {
         method: 'POST',
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
         body: JSON.stringify({
           coinId: coinId,
@@ -198,11 +213,37 @@ export default function FeedScreen() {
       });
 
       console.log('FeedScreen: Trade initiate response status:', response.status);
+      console.log('FeedScreen: Response headers:', JSON.stringify(Object.fromEntries(response.headers.entries())));
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('FeedScreen: Failed to initiate trade:', errorData);
-        throw new Error(errorData.message || 'Failed to initiate trade');
+        const errorText = await response.text();
+        console.error('FeedScreen: Failed to initiate trade, status:', response.status, 'error:', errorText);
+        
+        if (response.status === 401) {
+          console.error('FeedScreen: 401 Unauthorized - Session may be invalid or expired');
+          console.error('FeedScreen: User object:', JSON.stringify(user));
+          Alert.alert(
+            'Authentication Error', 
+            'Your session has expired or is invalid. Please sign in again.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Sign In', onPress: () => router.push('/auth') }
+            ]
+          );
+          return;
+        }
+        
+        let errorMessage = 'Failed to initiate trade';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.message || errorData.error || errorMessage;
+          console.error('FeedScreen: Parsed error:', errorData);
+        } catch (e) {
+          errorMessage = errorText || errorMessage;
+          console.error('FeedScreen: Raw error text:', errorText);
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
@@ -210,7 +251,17 @@ export default function FeedScreen() {
 
       const tradeId = data.trade?.id || data.id;
       if (tradeId) {
-        router.push(`/trade-detail?id=${tradeId}`);
+        Alert.alert(
+          'Trade Initiated!',
+          'Your trade request has been created.',
+          [
+            {
+              text: 'View Trade',
+              onPress: () => router.push(`/trade-detail?id=${tradeId}`),
+            },
+            { text: 'OK', style: 'cancel' },
+          ]
+        );
       }
     } catch (error: any) {
       console.error('FeedScreen: Error initiating trade:', error);
