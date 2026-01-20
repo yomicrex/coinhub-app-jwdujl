@@ -58,18 +58,69 @@ export function registerCoinsRoutes(app: App) {
    * Create a new coin (requires authentication)
    */
   app.fastify.post('/api/coins', async (request: FastifyRequest, reply: FastifyReply) => {
-    const session = await requireAuth(request, reply);
-    if (!session) return;
+    app.logger.info({ cookies: request.headers.cookie ? 'present' : 'missing', authHeader: request.headers.authorization ? 'present' : 'missing' }, 'POST /api/coins - session extraction attempt');
 
-    app.logger.info({ userId: session.user.id, body: request.body }, 'Creating coin');
+    let userId: string | null = null;
+
+    try {
+      // Extract session token from either Authorization header or cookies
+      const sessionToken = extractSessionToken(request);
+      app.logger.debug({ tokenPresent: !!sessionToken }, 'Session token extraction result');
+
+      if (!sessionToken) {
+        app.logger.warn({ cookieHeader: request.headers.cookie?.substring(0, 100), authHeader: request.headers.authorization?.substring(0, 50) }, 'No session token found in request');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'No active session - session token not found in cookies or Authorization header' });
+      }
+
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken),
+      });
+
+      app.logger.debug({ sessionFound: !!sessionRecord }, 'Session lookup result');
+
+      if (!sessionRecord) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session token not found in database');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid - token not found in database' });
+      }
+
+      // Check if session is expired
+      const expiresAt = new Date(sessionRecord.expiresAt);
+      const now = new Date();
+      app.logger.debug({ expiresAt: expiresAt.toISOString(), now: now.toISOString(), expired: expiresAt < now }, 'Session expiration check');
+
+      if (expiresAt < now) {
+        app.logger.warn({ expiresAt: expiresAt.toISOString() }, 'Session expired');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      }
+
+      // Get user record
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId),
+      });
+
+      app.logger.debug({ userFound: !!userRecord, userId: sessionRecord.userId }, 'User lookup result');
+
+      if (!userRecord) {
+        app.logger.warn({ userId: sessionRecord.userId }, 'User not found for valid session');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+      }
+
+      userId = userRecord.id;
+      app.logger.info({ userId }, 'Session validated successfully for coin creation');
+    } catch (sessionError) {
+      app.logger.error({ err: sessionError }, 'Error during session validation');
+      return reply.status(500).send({ error: 'Internal server error', message: 'Failed to validate session' });
+    }
 
     try {
       const body = CreateCoinSchema.parse(request.body);
+      app.logger.info({ userId, title: body.title, country: body.country, year: body.year }, 'Creating coin with validated session');
 
       const [coin] = await app.db
         .insert(schema.coins)
         .values({
-          userId: session.user.id,
+          userId,
           title: body.title,
           country: body.country,
           year: body.year,
@@ -105,14 +156,14 @@ export function registerCoinsRoutes(app: App) {
         with: { images: true },
       });
 
-      app.logger.info({ coinId: coin.id, userId: session.user.id }, 'Coin created successfully');
+      app.logger.info({ coinId: coin.id, userId }, 'Coin created successfully');
       return fullCoin;
     } catch (error) {
       if (error instanceof z.ZodError) {
-        app.logger.warn({ error: error.issues }, 'Validation error');
+        app.logger.warn({ error: error.issues, userId }, 'Validation error creating coin');
         return reply.status(400).send({ error: 'Validation failed', details: error.issues });
       }
-      app.logger.error({ err: error, userId: session.user.id }, 'Failed to create coin');
+      app.logger.error({ err: error, userId }, 'Failed to create coin');
       throw error;
     }
   });
@@ -243,12 +294,54 @@ export function registerCoinsRoutes(app: App) {
    * Update a coin (owner only)
    */
   app.fastify.put('/api/coins/:id', async (request: FastifyRequest, reply: FastifyReply) => {
-    const session = await requireAuth(request, reply);
-    if (!session) return;
-
     const { id } = request.params as { id: string };
 
-    app.logger.info({ coinId: id, userId: session.user.id, body: request.body }, 'Updating coin');
+    app.logger.info({ coinId: id }, 'PUT /api/coins/:id - session extraction attempt');
+
+    let userId: string | null = null;
+
+    try {
+      // Extract session token from either Authorization header or cookies
+      const sessionToken = extractSessionToken(request);
+      app.logger.debug({ tokenPresent: !!sessionToken }, 'Session token extraction result');
+
+      if (!sessionToken) {
+        app.logger.warn({}, 'No session token found in request for coin update');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'No active session' });
+      }
+
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken),
+      });
+
+      if (!sessionRecord) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session token not found in database');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid' });
+      }
+
+      // Check if session is expired
+      if (new Date(sessionRecord.expiresAt) < new Date()) {
+        app.logger.warn({}, 'Session expired for coin update');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      }
+
+      // Get user record
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId),
+      });
+
+      if (!userRecord) {
+        app.logger.warn({ userId: sessionRecord.userId }, 'User not found for valid session');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+      }
+
+      userId = userRecord.id;
+      app.logger.info({ userId }, 'Session validated successfully for coin update');
+    } catch (sessionError) {
+      app.logger.error({ err: sessionError }, 'Error during session validation');
+      return reply.status(500).send({ error: 'Internal server error', message: 'Failed to validate session' });
+    }
 
     try {
       const body = UpdateCoinSchema.parse(request.body);
@@ -263,8 +356,8 @@ export function registerCoinsRoutes(app: App) {
         return reply.status(404).send({ error: 'Coin not found' });
       }
 
-      if (coin.userId !== session.user.id) {
-        app.logger.warn({ coinId: id, userId: session.user.id, ownerId: coin.userId }, 'Unauthorized coin update');
+      if (coin.userId !== userId) {
+        app.logger.warn({ coinId: id, userId, ownerId: coin.userId }, 'Unauthorized coin update');
         return reply.status(403).send({ error: 'Unauthorized' });
       }
 
@@ -315,14 +408,14 @@ export function registerCoinsRoutes(app: App) {
         with: { images: true, likes: true, comments: true },
       });
 
-      app.logger.info({ coinId: id, userId: session.user.id }, 'Coin updated successfully');
+      app.logger.info({ coinId: id, userId }, 'Coin updated successfully');
       return fullCoin;
     } catch (error) {
       if (error instanceof z.ZodError) {
         app.logger.warn({ error: error.issues }, 'Validation error');
         return reply.status(400).send({ error: 'Validation failed', details: error.issues });
       }
-      app.logger.error({ err: error, coinId: id, userId: session.user.id }, 'Failed to update coin');
+      app.logger.error({ err: error, coinId: id, userId }, 'Failed to update coin');
       throw error;
     }
   });
@@ -332,12 +425,54 @@ export function registerCoinsRoutes(app: App) {
    * Delete a coin (owner only)
    */
   app.fastify.delete('/api/coins/:id', async (request: FastifyRequest, reply: FastifyReply) => {
-    const session = await requireAuth(request, reply);
-    if (!session) return;
-
     const { id } = request.params as { id: string };
 
-    app.logger.info({ coinId: id, userId: session.user.id }, 'Deleting coin');
+    app.logger.info({ coinId: id }, 'DELETE /api/coins/:id - session extraction attempt');
+
+    let userId: string | null = null;
+
+    try {
+      // Extract session token from either Authorization header or cookies
+      const sessionToken = extractSessionToken(request);
+      app.logger.debug({ tokenPresent: !!sessionToken }, 'Session token extraction result');
+
+      if (!sessionToken) {
+        app.logger.warn({}, 'No session token found in request for coin deletion');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'No active session' });
+      }
+
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken),
+      });
+
+      if (!sessionRecord) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session token not found in database');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid' });
+      }
+
+      // Check if session is expired
+      if (new Date(sessionRecord.expiresAt) < new Date()) {
+        app.logger.warn({}, 'Session expired for coin deletion');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      }
+
+      // Get user record
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId),
+      });
+
+      if (!userRecord) {
+        app.logger.warn({ userId: sessionRecord.userId }, 'User not found for valid session');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+      }
+
+      userId = userRecord.id;
+      app.logger.info({ userId }, 'Session validated successfully for coin deletion');
+    } catch (sessionError) {
+      app.logger.error({ err: sessionError }, 'Error during session validation');
+      return reply.status(500).send({ error: 'Internal server error', message: 'Failed to validate session' });
+    }
 
     try {
       // Check ownership
@@ -350,18 +485,18 @@ export function registerCoinsRoutes(app: App) {
         return reply.status(404).send({ error: 'Coin not found' });
       }
 
-      if (coin.userId !== session.user.id) {
-        app.logger.warn({ coinId: id, userId: session.user.id, ownerId: coin.userId }, 'Unauthorized coin deletion');
+      if (coin.userId !== userId) {
+        app.logger.warn({ coinId: id, userId, ownerId: coin.userId }, 'Unauthorized coin deletion');
         return reply.status(403).send({ error: 'Unauthorized' });
       }
 
       // Delete coin (cascade will handle images, likes, comments)
       await app.db.delete(schema.coins).where(eq(schema.coins.id, id));
 
-      app.logger.info({ coinId: id, userId: session.user.id }, 'Coin deleted successfully');
+      app.logger.info({ coinId: id, userId }, 'Coin deleted successfully');
       return { success: true };
     } catch (error) {
-      app.logger.error({ err: error, coinId: id, userId: session.user.id }, 'Failed to delete coin');
+      app.logger.error({ err: error, coinId: id, userId }, 'Failed to delete coin');
       throw error;
     }
   });
