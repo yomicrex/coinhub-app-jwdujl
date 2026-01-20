@@ -193,27 +193,74 @@ export function registerTradesRoutes(app: App) {
    * Query params: status (filter by status), role (initiator/owner)
    */
   app.fastify.get('/api/trades', async (request: FastifyRequest, reply: FastifyReply) => {
-    const session = await requireAuth(request, reply);
-    if (!session) return;
+    app.logger.info({}, 'GET /api/trades - session extraction attempt');
+
+    let userId: string | null = null;
+
+    try {
+      // Extract session token from either Authorization header or cookies
+      const sessionToken = extractSessionToken(request);
+      app.logger.debug(
+        { tokenPresent: !!sessionToken, hasAuthHeader: !!request.headers.authorization, hasCookie: !!request.headers.cookie },
+        'Session token extraction result for trades list'
+      );
+
+      if (!sessionToken) {
+        app.logger.warn({}, 'No session token found in request for trades list');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'No active session' });
+      }
+
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken),
+      });
+
+      if (!sessionRecord) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session token not found in database');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid or expired' });
+      }
+
+      // Check if session is expired
+      if (new Date(sessionRecord.expiresAt) < new Date()) {
+        app.logger.warn({ token: sessionToken.substring(0, 20), expiresAt: sessionRecord.expiresAt }, 'Session token expired');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      }
+
+      // Get user from session
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId),
+      });
+
+      if (!userRecord) {
+        app.logger.warn({ userId: sessionRecord.userId }, 'User not found for valid session');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+      }
+
+      userId = userRecord.id;
+      app.logger.info({ userId }, 'Session validated successfully for trades list');
+    } catch (error) {
+      app.logger.error({ err: error }, 'Error validating session for trades list');
+      return reply.status(500).send({ error: 'Internal server error', message: 'Session validation failed' });
+    }
 
     const query = request.query as Record<string, string | undefined>;
     const status = query.status;
     const role = query.role; // 'initiator', 'owner', or undefined (both)
 
-    app.logger.info({ userId: session.user.id, status, role }, 'Fetching trades');
+    app.logger.info({ userId, status, role }, 'Fetching trades');
 
     try {
       const whereConditions: any[] = [];
 
       if (role === 'initiator') {
-        whereConditions.push(eq(schema.trades.initiatorId, session.user.id));
+        whereConditions.push(eq(schema.trades.initiatorId, userId));
       } else if (role === 'owner') {
-        whereConditions.push(eq(schema.trades.coinOwnerId, session.user.id));
+        whereConditions.push(eq(schema.trades.coinOwnerId, userId));
       } else {
         whereConditions.push(
           or(
-            eq(schema.trades.initiatorId, session.user.id),
-            eq(schema.trades.coinOwnerId, session.user.id)
+            eq(schema.trades.initiatorId, userId),
+            eq(schema.trades.coinOwnerId, userId)
           )
         );
       }
@@ -316,10 +363,10 @@ export function registerTradesRoutes(app: App) {
         })
       );
 
-      app.logger.info({ userId: session.user.id, count: tradesWithSignedUrls.length }, 'Trades fetched');
+      app.logger.info({ userId, count: tradesWithSignedUrls.length }, 'Trades fetched');
       return { trades: tradesWithSignedUrls };
     } catch (error) {
-      app.logger.error({ err: error, userId: session.user.id }, 'Failed to fetch trades');
+      app.logger.error({ err: error, userId }, 'Failed to fetch trades');
       throw error;
     }
   });
@@ -329,12 +376,59 @@ export function registerTradesRoutes(app: App) {
    * Get detailed trade information with all offers, messages, and shipping status
    */
   app.fastify.get('/api/trades/:tradeId', async (request: FastifyRequest, reply: FastifyReply) => {
-    const session = await requireAuth(request, reply);
-    if (!session) return;
-
     const { tradeId } = request.params as { tradeId: string };
 
-    app.logger.info({ tradeId, userId: session.user.id }, 'Fetching trade detail');
+    app.logger.info({ tradeId }, 'GET /api/trades/:tradeId - session extraction attempt');
+
+    let userId: string | null = null;
+
+    try {
+      // Extract session token from either Authorization header or cookies
+      const sessionToken = extractSessionToken(request);
+      app.logger.debug(
+        { tokenPresent: !!sessionToken, hasAuthHeader: !!request.headers.authorization, hasCookie: !!request.headers.cookie },
+        'Session token extraction result for trade detail'
+      );
+
+      if (!sessionToken) {
+        app.logger.warn({}, 'No session token found in request for trade detail');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'No active session' });
+      }
+
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken),
+      });
+
+      if (!sessionRecord) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session token not found in database');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid or expired' });
+      }
+
+      // Check if session is expired
+      if (new Date(sessionRecord.expiresAt) < new Date()) {
+        app.logger.warn({ token: sessionToken.substring(0, 20), expiresAt: sessionRecord.expiresAt }, 'Session token expired');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      }
+
+      // Get user from session
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId),
+      });
+
+      if (!userRecord) {
+        app.logger.warn({ userId: sessionRecord.userId }, 'User not found for valid session');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+      }
+
+      userId = userRecord.id;
+      app.logger.info({ userId, tradeId }, 'Session validated successfully for trade detail');
+    } catch (error) {
+      app.logger.error({ err: error }, 'Error validating session for trade detail');
+      return reply.status(500).send({ error: 'Internal server error', message: 'Session validation failed' });
+    }
+
+    app.logger.info({ tradeId, userId }, 'Fetching trade detail');
 
     try {
       const trade = await app.db.query.trades.findFirst({
@@ -375,9 +469,9 @@ export function registerTradesRoutes(app: App) {
       }
 
       // Check access control
-      const hasAccess = trade.initiatorId === session.user.id || trade.coinOwnerId === session.user.id;
+      const hasAccess = trade.initiatorId === userId || trade.coinOwnerId === userId;
       if (!hasAccess) {
-        app.logger.warn({ tradeId, userId: session.user.id }, 'Unauthorized trade access');
+        app.logger.warn({ tradeId, userId }, 'Unauthorized trade access');
         return reply.status(403).send({ error: 'Unauthorized' });
       }
 
@@ -477,7 +571,7 @@ export function registerTradesRoutes(app: App) {
         })
       );
 
-      app.logger.info({ tradeId, userId: session.user.id }, 'Trade detail fetched');
+      app.logger.info({ tradeId, userId }, 'Trade detail fetched');
 
       return {
         ...trade,
@@ -488,7 +582,7 @@ export function registerTradesRoutes(app: App) {
         messages: messagesWithAvatars,
       };
     } catch (error) {
-      app.logger.error({ err: error, tradeId, userId: session.user.id }, 'Failed to fetch trade detail');
+      app.logger.error({ err: error, tradeId, userId }, 'Failed to fetch trade detail');
       throw error;
     }
   });

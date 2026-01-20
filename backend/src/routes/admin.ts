@@ -1,5 +1,5 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, ilike } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import * as authSchema from '../db/auth-schema.js';
 import type { App } from '../index.js';
@@ -60,6 +60,152 @@ export function registerAdminRoutes(app: App) {
         'Admin: Failed to fetch account list'
       );
       return reply.status(500).send({ error: 'Failed to fetch account list', details: String(error) });
+    }
+  });
+
+  /**
+   * GET /api/admin/verify-account/:email
+   * Verify account information for a specific email
+   * Returns: user record, CoinHub user record, and all accounts with password info
+   * Admin only endpoint - helps diagnose email-to-username mapping issues
+   */
+  app.fastify.get('/api/admin/verify-account/:email', async (request: FastifyRequest, reply: FastifyReply) => {
+    const { email } = request.params as { email: string };
+
+    app.logger.info({ email }, 'Admin: Verifying account information');
+
+    try {
+      // Get Better Auth user record
+      const authUser = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.email, email),
+      });
+
+      if (!authUser) {
+        app.logger.warn({ email }, 'Admin: Auth user not found');
+        return reply.status(404).send({ error: 'User not found', email });
+      }
+
+      // Get CoinHub user record
+      const coinHubUser = await app.db.query.users.findFirst({
+        where: eq(schema.users.id, authUser.id),
+      });
+
+      if (!coinHubUser) {
+        app.logger.warn({ userId: authUser.id, email }, 'Admin: CoinHub user not found');
+        return reply.status(404).send({ error: 'CoinHub user not found', userId: authUser.id });
+      }
+
+      // Get all accounts for this user
+      const allAccounts = await app.db.query.account.findMany({
+        where: eq(authSchema.account.userId, authUser.id),
+      });
+
+      // Format account info (hide sensitive password data)
+      const accountsInfo = allAccounts.map((account) => ({
+        id: account.id,
+        providerId: account.providerId,
+        hasPassword: !!account.password,
+        createdAt: account.createdAt,
+      }));
+
+      app.logger.info(
+        { email, userId: authUser.id, totalAccounts: allAccounts.length },
+        'Admin: Account verification completed'
+      );
+
+      return {
+        authUser: {
+          id: authUser.id,
+          email: authUser.email,
+          name: authUser.name,
+          emailVerified: authUser.emailVerified,
+        },
+        coinHubUser: {
+          id: coinHubUser.id,
+          email: coinHubUser.email,
+          username: coinHubUser.username,
+          displayName: coinHubUser.displayName,
+          role: coinHubUser.role,
+        },
+        accounts: accountsInfo,
+        totalAccounts: allAccounts.length,
+      };
+    } catch (error) {
+      app.logger.error(
+        { err: error, email },
+        'Admin: Failed to verify account'
+      );
+      return reply.status(500).send({ error: 'Failed to verify account', details: String(error) });
+    }
+  });
+
+  /**
+   * GET /api/admin/check-duplicate-accounts
+   * Find all users with duplicate/similar emails (case-insensitive)
+   * Groups users by normalized email and shows potential duplicates
+   * Admin only endpoint - helps identify account consolidation issues
+   */
+  app.fastify.get('/api/admin/check-duplicate-accounts', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.info('Admin: Checking for duplicate accounts');
+
+    try {
+      // Get all users from CoinHub users table
+      const allUsers = await app.db.query.users.findMany({
+        columns: {
+          id: true,
+          email: true,
+          username: true,
+          displayName: true,
+          role: true,
+          createdAt: true,
+        },
+      });
+
+      // Group users by normalized email (lowercase)
+      const emailGroups: Record<string, typeof allUsers> = {};
+
+      for (const user of allUsers) {
+        const normalizedEmail = user.email.toLowerCase();
+        if (!emailGroups[normalizedEmail]) {
+          emailGroups[normalizedEmail] = [];
+        }
+        emailGroups[normalizedEmail].push(user);
+      }
+
+      // Filter to only groups with duplicates
+      const duplicateAccounts = Object.entries(emailGroups)
+        .filter(([_, users]) => users.length > 1)
+        .map(([email, users]) => ({
+          email,
+          count: users.length,
+          accounts: users.map((user) => ({
+            userId: user.id,
+            username: user.username,
+            displayName: user.displayName,
+            email: user.email,
+            role: user.role,
+            createdAt: user.createdAt,
+          })),
+        }))
+        .sort((a, b) => b.count - a.count);
+
+      app.logger.info(
+        { totalUsers: allUsers.length, duplicateGroups: duplicateAccounts.length },
+        'Admin: Duplicate account check completed'
+      );
+
+      return {
+        totalUsers: allUsers.length,
+        duplicateGroups: duplicateAccounts.length,
+        duplicates: duplicateAccounts,
+        message: duplicateAccounts.length === 0 ? 'No duplicate accounts found' : `Found ${duplicateAccounts.length} groups with duplicate emails`,
+      };
+    } catch (error) {
+      app.logger.error(
+        { err: error },
+        'Admin: Failed to check duplicate accounts'
+      );
+      return reply.status(500).send({ error: 'Failed to check duplicate accounts', details: String(error) });
     }
   });
 
