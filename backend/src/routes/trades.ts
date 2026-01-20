@@ -166,80 +166,16 @@ export function registerTradesRoutes(app: App) {
 
       app.logger.info({ tradeId: newTrade.id, userId, coinId: body.coinId }, 'Trade initiated successfully');
 
-      // Fetch full trade details with coin and user info
-      const fullTrade = await app.db.query.trades.findFirst({
-        where: eq(schema.trades.id, newTrade.id),
-        with: {
-          coin: {
-            with: { images: true },
-          },
-          initiator: {
-            columns: { id: true, username: true, displayName: true, avatarUrl: true },
-          },
-          coinOwner: {
-            columns: { id: true, username: true, displayName: true, avatarUrl: true },
-          },
-        },
-      });
-
-      // Generate signed URLs for avatars and coin images
-      let initiatorAvatarUrl = fullTrade?.initiator.avatarUrl;
-      if (initiatorAvatarUrl) {
-        try {
-          const { url } = await app.storage.getSignedUrl(initiatorAvatarUrl);
-          initiatorAvatarUrl = url;
-        } catch (urlError) {
-          app.logger.warn({ err: urlError }, 'Failed to generate avatar signed URL');
-          initiatorAvatarUrl = null;
-        }
-      }
-
-      let ownerAvatarUrl = fullTrade?.coinOwner.avatarUrl;
-      if (ownerAvatarUrl) {
-        try {
-          const { url } = await app.storage.getSignedUrl(ownerAvatarUrl);
-          ownerAvatarUrl = url;
-        } catch (urlError) {
-          app.logger.warn({ err: urlError }, 'Failed to generate avatar signed URL');
-          ownerAvatarUrl = null;
-        }
-      }
-
-      const coinImagesWithUrls = await Promise.all(
-        (fullTrade?.coin.images || []).map(async (img) => {
-          try {
-            const { url } = await app.storage.getSignedUrl(img.url);
-            return { ...img, url };
-          } catch (urlError) {
-            app.logger.warn({ err: urlError }, 'Failed to generate image signed URL');
-            return img;
-          }
-        })
-      );
-
       return {
-        id: newTrade.id,
-        coin: {
-          id: fullTrade?.coin.id,
-          title: fullTrade?.coin.title,
-          country: fullTrade?.coin.country,
-          year: fullTrade?.coin.year,
-          images: coinImagesWithUrls,
+        trade: {
+          id: newTrade.id,
+          status: newTrade.status,
+          coinId: newTrade.coinId,
+          initiatorId: newTrade.initiatorId,
+          coinOwnerId: newTrade.coinOwnerId,
+          createdAt: newTrade.createdAt,
         },
-        requester: {
-          id: fullTrade?.initiator.id,
-          username: fullTrade?.initiator.username,
-          displayName: fullTrade?.initiator.displayName,
-          avatarUrl: initiatorAvatarUrl,
-        },
-        owner: {
-          id: fullTrade?.coinOwner.id,
-          username: fullTrade?.coinOwner.username,
-          displayName: fullTrade?.coinOwner.displayName,
-          avatarUrl: ownerAvatarUrl,
-        },
-        status: newTrade.status,
-        createdAt: newTrade.createdAt,
+        message: 'Trade initiated successfully',
       };
     } catch (error) {
       if (error instanceof z.ZodError) {

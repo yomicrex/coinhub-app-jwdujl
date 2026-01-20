@@ -748,7 +748,7 @@ export function registerCoinsRoutes(app: App) {
       );
 
       app.logger.info({ userId: id, count: result.length }, 'User coins fetched');
-      return result;
+      return { coins: result, total: result.length };
     } catch (error) {
       app.logger.error({ err: error, userId: id }, 'Failed to fetch user coins');
       throw error;

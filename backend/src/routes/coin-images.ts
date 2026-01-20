@@ -200,7 +200,7 @@ export function registerCoinImagesRoutes(app: App) {
       return {
         id: image.id,
         url: signedUrl,
-        storageKey: image.url, // Internal reference
+        coinId: image.coinId,
         orderIndex: image.orderIndex,
         createdAt: image.createdAt,
       };
