@@ -2,7 +2,6 @@
 import Constants from 'expo-constants';
 import { colors } from '@/styles/commonStyles';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { authClient } from '@/lib/auth';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -113,10 +112,19 @@ export default function TradeDetailScreen() {
 
     try {
       console.log('TradeDetailScreen: Fetching trade detail for ID:', id);
-      const response = await authClient.$fetch(`${API_URL}/api/trades/${id}`);
+      const response = await fetch(`${API_URL}/api/trades/${id}`, {
+        credentials: 'include',
+      });
       
-      console.log('TradeDetailScreen: Fetched trade detail response:', response);
-      const tradeData = response?.trade || response?.data || response;
+      if (!response.ok) {
+        console.error('TradeDetailScreen: Failed to fetch trade, status:', response.status);
+        throw new Error('Failed to load trade');
+      }
+
+      const data = await response.json();
+      console.log('TradeDetailScreen: Fetched trade detail response:', data);
+      
+      const tradeData = data?.trade || data;
       
       if (!tradeData) {
         console.error('TradeDetailScreen: No trade data in response');
@@ -130,7 +138,7 @@ export default function TradeDetailScreen() {
       setError(null);
     } catch (error: any) {
       console.error('TradeDetailScreen: Error fetching trade detail:', error);
-      console.error('TradeDetailScreen: Error details:', error.message, error.status);
+      console.error('TradeDetailScreen: Error details:', error.message);
       setError('Failed to load trade details');
       Alert.alert('Error', 'Failed to load trade details. Please try again.');
     } finally {
@@ -146,9 +154,16 @@ export default function TradeDetailScreen() {
         return;
       }
 
-      const response = await authClient.$fetch(`${API_URL}/api/users/${user.id}/coins`);
-      
-      const coinsData = response?.coins || response || [];
+      const response = await fetch(`${API_URL}/api/users/${user.id}/coins`, {
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch coins');
+      }
+
+      const data = await response.json();
+      const coinsData = data?.coins || data || [];
       console.log('TradeDetailScreen: Fetched', coinsData.length, 'user coins');
       setUserCoins(coinsData);
     } catch (error) {
@@ -164,13 +179,18 @@ export default function TradeDetailScreen() {
     setSending(true);
 
     try {
-      await authClient.$fetch(`${API_URL}/api/trades/${id}/messages`, {
+      const response = await fetch(`${API_URL}/api/trades/${id}/messages`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ message: message.trim() }),
       });
+
+      if (!response.ok) {
+        throw new Error('Failed to send message');
+      }
 
       console.log('TradeDetailScreen: Message sent successfully');
       setMessage('');
@@ -193,8 +213,9 @@ export default function TradeDetailScreen() {
     setShowCoinPicker(false);
 
     try {
-      await authClient.$fetch(`${API_URL}/api/trades/${id}/offers`, {
+      const response = await fetch(`${API_URL}/api/trades/${id}/offers`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -203,6 +224,10 @@ export default function TradeDetailScreen() {
           message: offerMessage.trim() || undefined,
         }),
       });
+
+      if (!response.ok) {
+        throw new Error('Failed to send offer');
+      }
 
       console.log('TradeDetailScreen: Offer created successfully');
       Alert.alert('Success', 'Your coin offer has been sent!');
@@ -226,13 +251,18 @@ export default function TradeDetailScreen() {
           text: 'Accept',
           onPress: async () => {
             try {
-              await authClient.$fetch(`${API_URL}/api/trades/${id}/offers/${offerId}/accept`, {
+              const response = await fetch(`${API_URL}/api/trades/${id}/offers/${offerId}/accept`, {
                 method: 'POST',
+                credentials: 'include',
                 headers: {
                   'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({}),
               });
+
+              if (!response.ok) {
+                throw new Error('Failed to accept offer');
+              }
 
               console.log('TradeDetailScreen: Offer accepted successfully');
               Alert.alert('Success', 'Offer accepted! You can now proceed with shipping.');
@@ -260,13 +290,18 @@ export default function TradeDetailScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await authClient.$fetch(`${API_URL}/api/trades/${id}/offers/${offerId}/reject`, {
+              const response = await fetch(`${API_URL}/api/trades/${id}/offers/${offerId}/reject`, {
                 method: 'POST',
+                credentials: 'include',
                 headers: {
                   'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({}),
               });
+
+              if (!response.ok) {
+                throw new Error('Failed to reject offer');
+              }
 
               console.log('TradeDetailScreen: Offer rejected successfully');
               Alert.alert('Success', 'Offer rejected.');
@@ -294,13 +329,18 @@ export default function TradeDetailScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await authClient.$fetch(`${API_URL}/api/trades/${id}/cancel`, {
+              const response = await fetch(`${API_URL}/api/trades/${id}/cancel`, {
                 method: 'POST',
+                credentials: 'include',
                 headers: {
                   'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({}),
               });
+
+              if (!response.ok) {
+                throw new Error('Failed to cancel trade');
+              }
 
               console.log('TradeDetailScreen: Trade canceled successfully');
               Alert.alert('Success', 'Trade canceled.', [
@@ -320,8 +360,9 @@ export default function TradeDetailScreen() {
     console.log('TradeDetailScreen: User marking coin as shipped with tracking:', trackingNumber);
 
     try {
-      await authClient.$fetch(`${API_URL}/api/trades/${id}/shipping/initiate`, {
+      const response = await fetch(`${API_URL}/api/trades/${id}/shipping/initiate`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -329,6 +370,10 @@ export default function TradeDetailScreen() {
           trackingNumber: trackingNumber.trim() || undefined,
         }),
       });
+
+      if (!response.ok) {
+        throw new Error('Failed to update shipping');
+      }
 
       console.log('TradeDetailScreen: Shipping updated successfully');
       Alert.alert('Success', 'Marked as shipped!');
@@ -352,17 +397,23 @@ export default function TradeDetailScreen() {
           text: 'Yes, Received',
           onPress: async () => {
             try {
-              const response = await authClient.$fetch(`${API_URL}/api/trades/${id}/shipping/received`, {
+              const response = await fetch(`${API_URL}/api/trades/${id}/shipping/received`, {
                 method: 'POST',
+                credentials: 'include',
                 headers: {
                   'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({}),
               });
 
+              if (!response.ok) {
+                throw new Error('Failed to update received status');
+              }
+
+              const data = await response.json();
               console.log('TradeDetailScreen: Received status updated successfully');
               
-              const responseData = response?.data || response;
+              const responseData = data?.data || data;
               if (responseData?.tradeCompleted) {
                 Alert.alert('Trade Completed!', 'Both parties have received their coins. The trade is now complete!');
               } else {
@@ -403,8 +454,9 @@ export default function TradeDetailScreen() {
             }
 
             try {
-              await authClient.$fetch(`${API_URL}/api/trades/${id}/report`, {
+              const response = await fetch(`${API_URL}/api/trades/${id}/report`, {
                 method: 'POST',
+                credentials: 'include',
                 headers: {
                   'Content-Type': 'application/json',
                 },
@@ -414,6 +466,10 @@ export default function TradeDetailScreen() {
                   description: description.trim(),
                 }),
               });
+
+              if (!response.ok) {
+                throw new Error('Failed to submit report');
+              }
 
               console.log('TradeDetailScreen: Report submitted successfully');
               Alert.alert('Success', 'Report submitted. Our moderation team will review it.');
@@ -561,11 +617,25 @@ export default function TradeDetailScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Requested Coin</Text>
             <View style={styles.coinCard}>
-              <Image
-                source={{ uri: trade.coin.images[0]?.url }}
-                style={styles.coinImage}
-                resizeMode="cover"
-              />
+              {trade.coin.images && trade.coin.images.length > 0 && trade.coin.images[0]?.url ? (
+                <Image
+                  source={{ uri: trade.coin.images[0].url }}
+                  style={styles.coinImage}
+                  resizeMode="cover"
+                  onError={(e) => {
+                    console.error('TradeDetailScreen: Error loading coin image:', e.nativeEvent.error);
+                  }}
+                />
+              ) : (
+                <View style={[styles.coinImage, { backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center' }]}>
+                  <IconSymbol
+                    ios_icon_name="photo"
+                    android_material_icon_name="image"
+                    size={32}
+                    color={colors.textSecondary}
+                  />
+                </View>
+              )}
               <View style={styles.coinInfo}>
                 <Text style={styles.coinTitle}>{trade.coin.title}</Text>
                 <Text style={styles.coinDetails}>
@@ -595,11 +665,25 @@ export default function TradeDetailScreen() {
                     )}
                   </View>
                   <View style={styles.coinCard}>
-                    <Image
-                      source={{ uri: offer.coin.images[0]?.url }}
-                      style={styles.coinImage}
-                      resizeMode="cover"
-                    />
+                    {offer.coin.images && offer.coin.images.length > 0 && offer.coin.images[0]?.url ? (
+                      <Image
+                        source={{ uri: offer.coin.images[0].url }}
+                        style={styles.coinImage}
+                        resizeMode="cover"
+                        onError={(e) => {
+                          console.error('TradeDetailScreen: Error loading offer coin image:', e.nativeEvent.error);
+                        }}
+                      />
+                    ) : (
+                      <View style={[styles.coinImage, { backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center' }]}>
+                        <IconSymbol
+                          ios_icon_name="photo"
+                          android_material_icon_name="image"
+                          size={32}
+                          color={colors.textSecondary}
+                        />
+                      </View>
+                    )}
                     <View style={styles.coinInfo}>
                       <Text style={styles.coinTitle}>{offer.coin.title}</Text>
                       <Text style={styles.coinDetails}>
@@ -885,11 +969,25 @@ export default function TradeDetailScreen() {
                   style={styles.coinListItem}
                   onPress={() => handleOfferCoin(item.id)}
                 >
-                  <Image
-                    source={{ uri: item.images[0]?.url }}
-                    style={styles.coinImage}
-                    resizeMode="cover"
-                  />
+                  {item.images && item.images.length > 0 && item.images[0]?.url ? (
+                    <Image
+                      source={{ uri: item.images[0].url }}
+                      style={styles.coinImage}
+                      resizeMode="cover"
+                      onError={(e) => {
+                        console.error('TradeDetailScreen: Error loading coin picker image:', e.nativeEvent.error);
+                      }}
+                    />
+                  ) : (
+                    <View style={[styles.coinImage, { backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center' }]}>
+                      <IconSymbol
+                        ios_icon_name="photo"
+                        android_material_icon_name="image"
+                        size={32}
+                        color={colors.textSecondary}
+                      />
+                    </View>
+                  )}
                   <View style={styles.coinInfo}>
                     <Text style={styles.coinTitle}>{item.title}</Text>
                     <Text style={styles.coinDetails}>

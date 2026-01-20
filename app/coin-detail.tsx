@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
@@ -56,13 +57,15 @@ export default function CoinDetailScreen() {
   const actualId = id || coinId;
   const [coin, setCoin] = useState<CoinDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [proposingTrade, setProposingTrade] = useState(false);
+  const [imageErrors, setImageErrors] = useState<{ [key: number]: boolean }>({});
   const { user } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    console.log('CoinDetailScreen: Component mounted, coin ID:', actualId);
+    console.log('CoinDetailScreen: Component mounted, coinId:', actualId);
     
     if (!actualId) {
       console.error('CoinDetailScreen: No coin ID provided');
@@ -77,7 +80,7 @@ export default function CoinDetailScreen() {
     if (!actualId) return;
 
     try {
-      console.log('CoinDetailScreen: Fetching coin detail for ID:', actualId);
+      console.log('CoinDetailScreen: Fetching coin detail for coinId:', actualId);
       console.log('CoinDetailScreen: API URL:', API_URL);
       
       const response = await fetch(`${API_URL}/api/coins/${actualId}`, {
@@ -93,16 +96,24 @@ export default function CoinDetailScreen() {
       }
 
       const data = await response.json();
-      console.log('CoinDetailScreen: Coin data received:', JSON.stringify(data, null, 2));
+      console.log('CoinDetailScreen: Coin data received, images count:', data.images?.length || 0);
       
       setCoin(data);
       setIsLiked(data.isLiked || false);
+      setImageErrors({});
       setLoading(false);
     } catch (error) {
       console.error('CoinDetailScreen: Error fetching coin detail:', error);
       Alert.alert('Error', 'Failed to load coin details');
       setLoading(false);
     }
+  };
+
+  const onRefresh = async () => {
+    console.log('CoinDetailScreen: User pulled to refresh');
+    setRefreshing(true);
+    await fetchCoinDetail();
+    setRefreshing(false);
   };
 
   const handleLike = async () => {
@@ -267,6 +278,11 @@ export default function CoinDetailScreen() {
     );
   };
 
+  const handleImageError = (index: number) => {
+    console.error('CoinDetailScreen: Image failed to load at index:', index);
+    setImageErrors((prev) => ({ ...prev, [index]: true }));
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -346,7 +362,17 @@ export default function CoinDetailScreen() {
         }}
       />
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.scrollView} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
+      >
         {/* User Info */}
         <TouchableOpacity style={styles.userInfo} onPress={handleUserPress}>
           <View style={styles.avatarContainer}>
@@ -382,12 +408,26 @@ export default function CoinDetailScreen() {
             style={styles.imageScroller}
           >
             {coin.images.map((image, index) => (
-              <Image
-                key={index}
-                source={{ uri: image.url }}
-                style={styles.coinImage}
-                resizeMode="cover"
-              />
+              <View key={index} style={styles.imageContainer}>
+                {!imageErrors[index] ? (
+                  <Image
+                    source={{ uri: image.url }}
+                    style={styles.coinImage}
+                    resizeMode="cover"
+                    onError={() => handleImageError(index)}
+                  />
+                ) : (
+                  <View style={[styles.coinImage, styles.imagePlaceholder]}>
+                    <IconSymbol
+                      ios_icon_name="photo"
+                      android_material_icon_name="image"
+                      size={64}
+                      color={colors.textSecondary}
+                    />
+                    <Text style={styles.imageErrorText}>Image unavailable</Text>
+                  </View>
+                )}
+              </View>
             ))}
           </ScrollView>
         ) : (
@@ -640,6 +680,10 @@ const styles = StyleSheet.create({
   imageScroller: {
     height: 400,
   },
+  imageContainer: {
+    width: width,
+    height: 400,
+  },
   coinImage: {
     width: width,
     height: 400,
@@ -655,6 +699,11 @@ const styles = StyleSheet.create({
   imagePlaceholderText: {
     marginTop: 12,
     fontSize: 16,
+    color: colors.textSecondary,
+  },
+  imageErrorText: {
+    marginTop: 12,
+    fontSize: 14,
     color: colors.textSecondary,
   },
   actions: {
