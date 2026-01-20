@@ -77,7 +77,7 @@ interface TradeDetail {
   status: string;
   offers: TradeOffer[];
   messages: TradeMessage[];
-  shipping: ShippingInfo;
+  shipping: ShippingInfo | null;
   createdAt: string;
 }
 
@@ -610,17 +610,17 @@ export default function TradeDetailScreen() {
   const otherUser = isInitiator ? trade.coinOwner : trade.initiator;
   const canAcceptOffer = !isInitiator && trade.status === 'pending';
   
-  // Handle shipping info based on user role
-  const myShipped = isInitiator ? trade.shipping?.initiatorShipped : trade.shipping?.ownerShipped;
+  // Handle shipping info based on user role - with null safety
+  const myShipped = isInitiator ? (trade.shipping?.initiatorShipped || false) : (trade.shipping?.ownerShipped || false);
   const myTrackingNumber = isInitiator ? trade.shipping?.initiatorTrackingNumber : trade.shipping?.ownerTrackingNumber;
   const myShippedAt = isInitiator ? trade.shipping?.initiatorShippedAt : trade.shipping?.ownerShippedAt;
-  const myReceived = isInitiator ? trade.shipping?.initiatorReceived : trade.shipping?.ownerReceived;
+  const myReceived = isInitiator ? (trade.shipping?.initiatorReceived || false) : (trade.shipping?.ownerReceived || false);
   const myReceivedAt = isInitiator ? trade.shipping?.initiatorReceivedAt : trade.shipping?.ownerReceivedAt;
   
-  const theirShipped = isInitiator ? trade.shipping?.ownerShipped : trade.shipping?.initiatorShipped;
+  const theirShipped = isInitiator ? (trade.shipping?.ownerShipped || false) : (trade.shipping?.initiatorShipped || false);
   const theirTrackingNumber = isInitiator ? trade.shipping?.ownerTrackingNumber : trade.shipping?.initiatorTrackingNumber;
   const theirShippedAt = isInitiator ? trade.shipping?.ownerShippedAt : trade.shipping?.initiatorShippedAt;
-  const theirReceived = isInitiator ? trade.shipping?.ownerReceived : trade.shipping?.initiatorReceived;
+  const theirReceived = isInitiator ? (trade.shipping?.ownerReceived || false) : (trade.shipping?.initiatorReceived || false);
   const theirReceivedAt = isInitiator ? trade.shipping?.ownerReceivedAt : trade.shipping?.initiatorReceivedAt;
   
   const bothShipped = myShipped && theirShipped;
