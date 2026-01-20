@@ -3,7 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -44,7 +44,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const fetchCoins = async () => {
+  const fetchCoins = useCallback(async () => {
     console.log('HomeScreen: Fetching public coins feed from /api/coins/feed');
     try {
       const response = await fetch(`${API_URL}/api/coins/feed`, {
@@ -70,14 +70,14 @@ export default function HomeScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     console.log('HomeScreen: Component mounted, user:', user?.username);
     console.log('HomeScreen: Backend URL:', API_URL);
     console.log('HomeScreen: Starting initial data fetch');
     fetchCoins();
-  }, []);
+  }, [fetchCoins, user?.username]);
 
   const onRefresh = async () => {
     console.log('HomeScreen: User pulled to refresh');

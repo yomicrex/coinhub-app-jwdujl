@@ -90,7 +90,7 @@ export default function TradesScreen() {
   useEffect(() => {
     console.log('TradesScreen: Component mounted, user:', user?.username);
     fetchTrades();
-  }, [fetchTrades]);
+  }, [fetchTrades, user?.username]);
 
   const onRefresh = () => {
     console.log('TradesScreen: User initiated refresh');

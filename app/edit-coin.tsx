@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -42,19 +42,7 @@ export default function EditCoinScreen() {
   const router = useRouter();
   const { user } = useAuth();
 
-  useEffect(() => {
-    console.log('EditCoinScreen: Component mounted, coinId:', id);
-    if (!id) {
-      console.error('EditCoinScreen: No coin ID provided');
-      Alert.alert('Error', 'No coin ID provided');
-      router.back();
-      return;
-    }
-
-    fetchCoinData();
-  }, [id]);
-
-  const fetchCoinData = async () => {
+  const fetchCoinData = useCallback(async () => {
     try {
       console.log('EditCoinScreen: Fetching coin data for ID:', id);
       const response = await fetch(`${API_URL}/api/coins/${id}`, {
@@ -90,7 +78,19 @@ export default function EditCoinScreen() {
       setLoading(false);
       router.back();
     }
-  };
+  }, [id, router]);
+
+  useEffect(() => {
+    console.log('EditCoinScreen: Component mounted, coinId:', id);
+    if (!id) {
+      console.error('EditCoinScreen: No coin ID provided');
+      Alert.alert('Error', 'No coin ID provided');
+      router.back();
+      return;
+    }
+
+    fetchCoinData();
+  }, [id, router, fetchCoinData]);
 
   const pickImages = async () => {
     console.log('EditCoinScreen: User tapped pick images');

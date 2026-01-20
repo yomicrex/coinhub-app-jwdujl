@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -64,19 +64,7 @@ export default function CoinDetailScreen() {
   const { user } = useAuth();
   const router = useRouter();
 
-  useEffect(() => {
-    console.log('CoinDetailScreen: Component mounted, coinId:', actualId);
-    
-    if (!actualId) {
-      console.error('CoinDetailScreen: No coin ID provided');
-      setLoading(false);
-      return;
-    }
-
-    fetchCoinDetail();
-  }, [actualId]);
-
-  const fetchCoinDetail = async () => {
+  const fetchCoinDetail = useCallback(async () => {
     if (!actualId) return;
 
     try {
@@ -110,7 +98,19 @@ export default function CoinDetailScreen() {
       Alert.alert('Error', 'Failed to load coin details');
       setLoading(false);
     }
-  };
+  }, [actualId]);
+
+  useEffect(() => {
+    console.log('CoinDetailScreen: Component mounted, coinId:', actualId);
+    
+    if (!actualId) {
+      console.error('CoinDetailScreen: No coin ID provided');
+      setLoading(false);
+      return;
+    }
+
+    fetchCoinDetail();
+  }, [fetchCoinDetail]);
 
   const onRefresh = async () => {
     console.log('CoinDetailScreen: User pulled to refresh');

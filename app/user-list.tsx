@@ -60,7 +60,7 @@ export default function UserListScreen() {
   useEffect(() => {
     console.log('UserListScreen: Fetching', type, 'for user:', userId);
     fetchUsers();
-  }, [userId, type]);
+  }, [fetchUsers]);
 
   const handleUserPress = (user: User) => {
     console.log('UserListScreen: User tapped on:', user.username, 'userId:', user.id);

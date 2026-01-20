@@ -99,7 +99,7 @@ export default function SearchUsersScreen() {
     }, 300);
 
     return () => clearTimeout(delaySearch);
-  }, [searchQuery]);
+  }, [searchQuery, searchUsers]);
 
   const handleFollowToggle = async (userId: string) => {
     console.log('SearchUsersScreen: Toggle follow for user:', userId);
