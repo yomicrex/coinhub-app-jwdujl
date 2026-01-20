@@ -104,6 +104,7 @@ export const coins = pgTable(
     })
       .default('not_for_trade')
       .notNull(),
+    isTemporaryTradeCoin: boolean('is_temporary_trade_coin').default(false).notNull(),
     likeCount: integer('like_count').default(0).notNull(),
     commentCount: integer('comment_count').default(0).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),

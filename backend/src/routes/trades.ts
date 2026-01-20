@@ -588,6 +588,266 @@ export function registerTradesRoutes(app: App) {
   });
 
   /**
+   * POST /api/trades/:tradeId/offers/upload
+   * Upload a temporary coin as a trade offer (with images)
+   * Creates a temporary trade coin and immediately creates an offer for it
+   *
+   * Accepts multipart form data with:
+   * - images[] (1-5 images, required)
+   * - title, country, year (required)
+   * - unit, organization, agency, deployment, coinNumber, mintMark, condition, description, version, manufacturer (optional)
+   * - message (optional - message to include with offer)
+   *
+   * Returns: { success: true, offer: { id, coin: {...}, message, status, createdAt } }
+   */
+  app.fastify.post('/api/trades/:tradeId/offers/upload', async (request: FastifyRequest, reply: FastifyReply) => {
+    const { tradeId } = request.params as { tradeId: string };
+
+    app.logger.info({ tradeId }, 'POST /api/trades/:tradeId/offers/upload - session extraction attempt');
+
+    let userId: string | null = null;
+
+    try {
+      // Extract session token from either Authorization header or cookies
+      const sessionToken = extractSessionToken(request);
+      app.logger.debug(
+        { tokenPresent: !!sessionToken, hasAuthHeader: !!request.headers.authorization, hasCookie: !!request.headers.cookie },
+        'Session token extraction result for offer upload'
+      );
+
+      if (!sessionToken) {
+        app.logger.warn({}, 'No session token found in request for offer upload');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'No active session' });
+      }
+
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken),
+      });
+
+      if (!sessionRecord) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session token not found in database');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid or expired' });
+      }
+
+      // Check if session is expired
+      if (new Date(sessionRecord.expiresAt) < new Date()) {
+        app.logger.warn({ token: sessionToken.substring(0, 20), expiresAt: sessionRecord.expiresAt }, 'Session token expired');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      }
+
+      // Get user from session
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId),
+      });
+
+      if (!userRecord) {
+        app.logger.warn({ userId: sessionRecord.userId }, 'User not found for valid session');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+      }
+
+      userId = userRecord.id;
+      app.logger.info({ userId, tradeId }, 'Session validated successfully for offer upload');
+    } catch (error) {
+      app.logger.error({ err: error }, 'Error validating session for offer upload');
+      return reply.status(500).send({ error: 'Internal server error', message: 'Session validation failed' });
+    }
+
+    app.logger.info({ tradeId, userId }, 'Processing offer upload');
+
+    try {
+      // Verify trade exists and user is a participant
+      const trade = await app.db.query.trades.findFirst({
+        where: eq(schema.trades.id, tradeId),
+      });
+
+      if (!trade) {
+        app.logger.warn({ tradeId }, 'Trade not found');
+        return reply.status(404).send({ error: 'Trade not found' });
+      }
+
+      const isParticipant = trade.initiatorId === userId || trade.coinOwnerId === userId;
+      if (!isParticipant) {
+        app.logger.warn({ tradeId, userId }, 'User is not a participant in this trade');
+        return reply.status(403).send({ error: 'Unauthorized - not a trade participant' });
+      }
+
+      // Parse multipart form data
+      const data = await request.file({ limits: { fileSize: 10 * 1024 * 1024 } });
+
+      if (!data) {
+        app.logger.warn({ tradeId, userId }, 'No form data provided');
+        return reply.status(400).send({ error: 'Form data required' });
+      }
+
+      // Parse fields from form data
+      const fields: Record<string, string> = {};
+      const images: Buffer[] = [];
+      const imageFilenames: string[] = [];
+
+      // Read all form fields and files
+      let fileCount = 0;
+      for await (const part of request.parts()) {
+        if (part.type === 'field') {
+          fields[part.fieldname] = part.value as string;
+        } else if (part.type === 'file') {
+          fileCount++;
+          if (fileCount > 5) {
+            app.logger.warn({ tradeId, userId }, 'Too many images provided (max 5)');
+            return reply.status(400).send({ error: 'Maximum 5 images allowed' });
+          }
+          const buffer = await part.toBuffer();
+          const ext = part.filename.split('.').pop()?.toLowerCase();
+          if (!ext || !['jpg', 'jpeg', 'png', 'webp'].includes(ext)) {
+            app.logger.warn({ tradeId, filename: part.filename }, 'Invalid image format');
+            return reply.status(400).send({ error: 'Invalid image format. Allowed: jpg, jpeg, png, webp' });
+          }
+          images.push(buffer);
+          imageFilenames.push(part.filename);
+        }
+      }
+
+      if (images.length === 0) {
+        app.logger.warn({ tradeId, userId }, 'No images provided');
+        return reply.status(400).send({ error: 'At least 1 image required' });
+      }
+
+      // Validate required fields
+      const CreateUploadOfferSchema = z.object({
+        title: z.string().min(1).max(255),
+        country: z.string().min(1).max(100),
+        year: z.coerce.number().int().min(1800).max(new Date().getFullYear()),
+        unit: z.string().max(100).optional(),
+        organization: z.string().max(100).optional(),
+        agency: z.string().max(100).optional(),
+        deployment: z.string().max(100).optional(),
+        coinNumber: z.string().max(100).optional(),
+        mintMark: z.string().max(50).optional(),
+        condition: z.string().max(100).optional(),
+        description: z.string().max(2000).optional(),
+        version: z.string().max(100).optional(),
+        manufacturer: z.string().max(100).optional(),
+        message: z.string().max(1000).optional(),
+      });
+
+      const validationResult = CreateUploadOfferSchema.safeParse(fields);
+      if (!validationResult.success) {
+        app.logger.warn({ tradeId, userId, errors: validationResult.error.issues }, 'Validation failed');
+        return reply.status(400).send({ error: 'Validation failed', details: validationResult.error.issues });
+      }
+
+      const coinData = validationResult.data;
+
+      // Create temporary trade coin
+      const [newCoin] = await app.db
+        .insert(schema.coins)
+        .values({
+          userId,
+          title: coinData.title,
+          country: coinData.country,
+          year: coinData.year,
+          unit: coinData.unit,
+          organization: coinData.organization,
+          agency: coinData.agency,
+          deployment: coinData.deployment,
+          coinNumber: coinData.coinNumber,
+          mintMark: coinData.mintMark,
+          condition: coinData.condition,
+          description: coinData.description,
+          version: coinData.version,
+          manufacturer: coinData.manufacturer,
+          visibility: 'private',
+          tradeStatus: 'not_for_trade',
+          isTemporaryTradeCoin: true,
+        })
+        .returning();
+
+      app.logger.info({ tradeId, userId, coinId: newCoin.id }, 'Temporary trade coin created');
+
+      // Upload images
+      try {
+        for (let i = 0; i < images.length; i++) {
+          const timestamp = Date.now();
+          const cleanFilename = imageFilenames[i].replace(/[^a-zA-Z0-9.-]/g, '_');
+          const key = `coins/${newCoin.id}/${timestamp}-${i}-${cleanFilename}`;
+          const storageKey = await app.storage.upload(key, images[i]);
+
+          // Save image record
+          await app.db.insert(schema.coinImages).values({
+            coinId: newCoin.id,
+            url: storageKey,
+            orderIndex: i,
+          });
+        }
+        app.logger.info({ coinId: newCoin.id, imageCount: images.length }, 'Images uploaded successfully');
+      } catch (imageError) {
+        app.logger.error({ err: imageError, coinId: newCoin.id }, 'Error uploading images');
+        // Delete the coin since image upload failed
+        await app.db.delete(schema.coins).where(eq(schema.coins.id, newCoin.id));
+        return reply.status(503).send({ error: 'Failed to upload images' });
+      }
+
+      // Create trade offer
+      const [newOffer] = await app.db
+        .insert(schema.tradeOffers)
+        .values({
+          tradeId,
+          offererId: userId,
+          offeredCoinId: newCoin.id,
+          message: coinData.message,
+          status: 'pending',
+        })
+        .returning();
+
+      app.logger.info({ tradeId, offerId: newOffer.id, coinId: newCoin.id, userId }, 'Trade offer created with uploaded coin');
+
+      // Get coin with images for response
+      const coinWithImages = await app.db.query.coins.findFirst({
+        where: eq(schema.coins.id, newCoin.id),
+        with: {
+          images: { orderBy: (img) => img.orderIndex },
+        },
+      });
+
+      // Generate signed URLs for images
+      const imagesWithUrls = await Promise.all(
+        (coinWithImages?.images || []).map(async (img) => {
+          try {
+            const { url } = await app.storage.getSignedUrl(img.url);
+            return { id: img.id, url, orderIndex: img.orderIndex };
+          } catch (urlError) {
+            app.logger.warn({ err: urlError, imageId: img.id }, 'Failed to generate signed URL');
+            return { id: img.id, url: null, orderIndex: img.orderIndex };
+          }
+        })
+      );
+
+      return {
+        success: true,
+        offer: {
+          id: newOffer.id,
+          coin: {
+            id: newCoin.id,
+            title: newCoin.title,
+            country: newCoin.country,
+            year: newCoin.year,
+            agency: newCoin.agency,
+            version: newCoin.version,
+            manufacturer: newCoin.manufacturer,
+            images: imagesWithUrls,
+          },
+          message: newOffer.message,
+          status: newOffer.status,
+          createdAt: newOffer.createdAt,
+        },
+      };
+    } catch (error) {
+      app.logger.error({ err: error, tradeId, userId }, 'Failed to upload offer');
+      throw error;
+    }
+  });
+
+  /**
    * POST /api/trades/:tradeId/offers
    * Create or counter a trade offer
    */

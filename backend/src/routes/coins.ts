@@ -695,10 +695,14 @@ export function registerCoinsRoutes(app: App) {
 
       const isOwnProfile = currentUserId === id;
 
-      // If viewing own profile, show all coins; otherwise show only public
+      // If viewing own profile, show all coins except temporary trade coins; otherwise show only public non-temporary coins
       const whereClause = isOwnProfile
-        ? eq(schema.coins.userId, id)
-        : and(eq(schema.coins.userId, id), eq(schema.coins.visibility, 'public'));
+        ? and(eq(schema.coins.userId, id), eq(schema.coins.isTemporaryTradeCoin, false))
+        : and(
+            eq(schema.coins.userId, id),
+            eq(schema.coins.visibility, 'public'),
+            eq(schema.coins.isTemporaryTradeCoin, false)
+          );
 
       const coins = await app.db.query.coins.findMany({
         where: whereClause,

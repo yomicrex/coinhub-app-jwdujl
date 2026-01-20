@@ -1,0 +1,1 @@
+ALTER TABLE "coins" ADD COLUMN "is_temporary_trade_coin" boolean DEFAULT false NOT NULL;

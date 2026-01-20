@@ -1,5 +1,5 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { eq, desc, and } from 'drizzle-orm';
+import { eq, desc, and, or } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import * as authSchema from '../db/auth-schema.js';
 import type { App } from '../index.js';
@@ -36,8 +36,11 @@ export function registerFeedRoutes(app: App) {
     );
 
     try {
-      // Build where conditions - only public coins
-      const whereConditions: any[] = [eq(schema.coins.visibility, 'public')];
+      // Build where conditions - only public coins that are not temporary trade coins
+      const whereConditions: any[] = [
+        eq(schema.coins.visibility, 'public'),
+        eq(schema.coins.isTemporaryTradeCoin, false),
+      ];
 
       if (country) {
         whereConditions.push(eq(schema.coins.country, country));
@@ -194,12 +197,13 @@ export function registerFeedRoutes(app: App) {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-      // Fetch all public coins created in the last 7 days with like counts
+      // Fetch all public coins created in the last 7 days with like counts (excluding temporary trade coins)
       let allCoins: any[] = [];
       try {
         allCoins = await app.db.query.coins.findMany({
           where: and(
-            eq(schema.coins.visibility, 'public')
+            eq(schema.coins.visibility, 'public'),
+            eq(schema.coins.isTemporaryTradeCoin, false)
           ),
           with: {
             user: {
@@ -358,10 +362,11 @@ export function registerFeedRoutes(app: App) {
         // Not authenticated, that's fine - feed is public
       }
 
-      // Build where conditions - only public coins marked as open_to_trade
+      // Build where conditions - only public coins marked as open_to_trade (excluding temporary trade coins)
       const whereConditions: any[] = [
         eq(schema.coins.visibility, 'public'),
         eq(schema.coins.tradeStatus, 'open_to_trade'),
+        eq(schema.coins.isTemporaryTradeCoin, false),
       ];
 
       if (country) {
