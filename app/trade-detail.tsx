@@ -144,7 +144,13 @@ export default function TradeDetailScreen() {
       }
 
       const data = await response.json();
-      console.log('TradeDetailScreen: Fetched trade detail response:', data);
+      console.log('TradeDetailScreen: Fetched trade detail response:', {
+        id: data.id,
+        status: data.status,
+        offerCount: data.offers?.length || 0,
+        messageCount: data.messages?.length || 0,
+        hasShipping: !!data.shipping
+      });
       
       if (!data) {
         console.error('TradeDetailScreen: No trade data in response');
@@ -153,7 +159,9 @@ export default function TradeDetailScreen() {
         return;
       }
 
-      console.log('TradeDetailScreen: Trade data loaded successfully, status:', data.status);
+      console.log('TradeDetailScreen: Trade data loaded successfully');
+      console.log('TradeDetailScreen: Offers:', data.offers);
+      console.log('TradeDetailScreen: Messages:', data.messages);
       setTrade(data);
       setError(null);
     } catch (error: any) {
@@ -325,7 +333,10 @@ export default function TradeDetailScreen() {
   };
 
   const handleSendMessage = async () => {
-    if (!message.trim() || sending) return;
+    if (!message.trim() || sending) {
+      console.log('TradeDetailScreen: Cannot send message - empty or already sending');
+      return;
+    }
 
     console.log('TradeDetailScreen: User sending message:', message);
     setSending(true);
@@ -342,11 +353,12 @@ export default function TradeDetailScreen() {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('TradeDetailScreen: Failed to send message:', errorText);
+        console.error('TradeDetailScreen: Failed to send message, status:', response.status, 'error:', errorText);
         throw new Error('Failed to send message');
       }
 
-      console.log('TradeDetailScreen: Message sent successfully');
+      const result = await response.json();
+      console.log('TradeDetailScreen: Message sent successfully, response:', result);
       setMessage('');
       await fetchTradeDetail();
       
@@ -356,7 +368,7 @@ export default function TradeDetailScreen() {
       }, 100);
     } catch (error) {
       console.error('TradeDetailScreen: Error sending message:', error);
-      Alert.alert('Error', 'Failed to send message');
+      Alert.alert('Error', 'Failed to send message. Please try again.');
     } finally {
       setSending(false);
     }

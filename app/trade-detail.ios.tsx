@@ -99,6 +99,7 @@ export default function TradeDetailScreen() {
   const [showCoinPicker, setShowCoinPicker] = useState(false);
   const [showUploadCoin, setShowUploadCoin] = useState(false);
   const [userCoins, setUserCoins] = useState<Coin[]>([]);
+  const [loadingCoins, setLoadingCoins] = useState(false);
   const [trackingNumber, setTrackingNumber] = useState('');
   const [offerMessage, setOfferMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -143,7 +144,13 @@ export default function TradeDetailScreen() {
       }
 
       const data = await response.json();
-      console.log('TradeDetailScreen: Fetched trade detail response:', data);
+      console.log('TradeDetailScreen: Fetched trade detail response:', {
+        id: data.id,
+        status: data.status,
+        offerCount: data.offers?.length || 0,
+        messageCount: data.messages?.length || 0,
+        hasShipping: !!data.shipping
+      });
       
       if (!data) {
         console.error('TradeDetailScreen: No trade data in response');
@@ -152,7 +159,9 @@ export default function TradeDetailScreen() {
         return;
       }
 
-      console.log('TradeDetailScreen: Trade data loaded successfully, status:', data.status);
+      console.log('TradeDetailScreen: Trade data loaded successfully');
+      console.log('TradeDetailScreen: Offers:', data.offers);
+      console.log('TradeDetailScreen: Messages:', data.messages);
       setTrade(data);
       setError(null);
     } catch (error: any) {
@@ -173,6 +182,7 @@ export default function TradeDetailScreen() {
         return;
       }
 
+      setLoadingCoins(true);
       const response = await fetch(`${API_URL}/api/users/${user.id}/coins`, {
         credentials: 'include',
       });
@@ -188,6 +198,8 @@ export default function TradeDetailScreen() {
     } catch (error) {
       console.error('TradeDetailScreen: Error fetching user coins:', error);
       Alert.alert('Error', 'Failed to load your coins');
+    } finally {
+      setLoadingCoins(false);
     }
   };
 
@@ -313,7 +325,10 @@ export default function TradeDetailScreen() {
   };
 
   const handleSendMessage = async () => {
-    if (!message.trim() || sending) return;
+    if (!message.trim() || sending) {
+      console.log('TradeDetailScreen: Cannot send message - empty or already sending');
+      return;
+    }
 
     console.log('TradeDetailScreen: User sending message:', message);
     setSending(true);
@@ -330,11 +345,12 @@ export default function TradeDetailScreen() {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('TradeDetailScreen: Failed to send message:', errorText);
+        console.error('TradeDetailScreen: Failed to send message, status:', response.status, 'error:', errorText);
         throw new Error('Failed to send message');
       }
 
-      console.log('TradeDetailScreen: Message sent successfully');
+      const result = await response.json();
+      console.log('TradeDetailScreen: Message sent successfully, response:', result);
       setMessage('');
       await fetchTradeDetail();
       
@@ -344,7 +360,7 @@ export default function TradeDetailScreen() {
       }, 100);
     } catch (error) {
       console.error('TradeDetailScreen: Error sending message:', error);
-      Alert.alert('Error', 'Failed to send message');
+      Alert.alert('Error', 'Failed to send message. Please try again.');
     } finally {
       setSending(false);
     }
@@ -1191,49 +1207,56 @@ export default function TradeDetailScreen() {
                 maxLength={200}
               />
             </View>
-            <FlatList
-              data={userCoins}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.coinListItem}
-                  onPress={() => handleOfferCoin(item.id)}
-                >
-                  {item.images && item.images.length > 0 && item.images[0]?.url ? (
-                    <Image
-                      source={{ uri: item.images[0].url }}
-                      style={styles.coinImage}
-                      resizeMode="cover"
-                      onError={(e) => {
-                        console.error('TradeDetailScreen: Error loading coin picker image:', e.nativeEvent.error);
-                      }}
-                    />
-                  ) : (
-                    <View style={[styles.coinImage, { backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center' }]}>
-                      <IconSymbol
-                        ios_icon_name="photo"
-                        android_material_icon_name="image"
-                        size={32}
-                        color={colors.textSecondary}
+            {loadingCoins ? (
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={[styles.emptyText, { marginTop: 16 }]}>Loading your coins...</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={userCoins}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.coinListItem}
+                    onPress={() => handleOfferCoin(item.id)}
+                  >
+                    {item.images && item.images.length > 0 && item.images[0]?.url ? (
+                      <Image
+                        source={{ uri: item.images[0].url }}
+                        style={styles.coinImage}
+                        resizeMode="cover"
+                        onError={(e) => {
+                          console.error('TradeDetailScreen: Error loading coin picker image:', e.nativeEvent.error);
+                        }}
                       />
+                    ) : (
+                      <View style={[styles.coinImage, { backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center' }]}>
+                        <IconSymbol
+                          ios_icon_name="photo"
+                          android_material_icon_name="image"
+                          size={32}
+                          color={colors.textSecondary}
+                        />
+                      </View>
+                    )}
+                    <View style={styles.coinInfo}>
+                      <Text style={styles.coinTitle}>{item.title}</Text>
+                      <Text style={styles.coinDetails}>
+                        {item.country} • {item.year}
+                      </Text>
                     </View>
-                  )}
-                  <View style={styles.coinInfo}>
-                    <Text style={styles.coinTitle}>{item.title}</Text>
-                    <Text style={styles.coinDetails}>
-                      {item.country} • {item.year}
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                  <View style={{ padding: 20 }}>
+                    <Text style={styles.emptyText}>
+                      You don&apos;t have any coins to offer yet
                     </Text>
                   </View>
-                </TouchableOpacity>
-              )}
-              ListEmptyComponent={
-                <View style={{ padding: 20 }}>
-                  <Text style={styles.emptyText}>
-                    You don&apos;t have any coins to offer yet
-                  </Text>
-                </View>
-              }
-            />
+                }
+              />
+            )}
           </View>
         </View>
       </Modal>

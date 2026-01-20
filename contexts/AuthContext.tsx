@@ -41,8 +41,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       // Add cache-busting parameter for forced refresh
       const url = forceRefresh 
-        ? `${API_URL}/api/auth/me?_t=${Date.now()}`
-        : `${API_URL}/api/auth/me`;
+        ? `${API_URL}/api/auth/me?_t=${Date.now()}&_=${Date.now()}`
+        : `${API_URL}/api/auth/me?_=${Date.now()}`;
       
       // Fetch full user profile from /api/auth/me
       const response = await fetch(url, {
@@ -63,6 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           hasProfile: !!data.profile,
           userId: data.user?.id,
           email: data.user?.email,
+          profileEmail: data.profile?.email,
           username: data.profile?.username,
           displayName: data.profile?.displayName
         });
@@ -152,6 +153,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('AuthContext: SignIn - Attempting to sign in with email:', email);
     
     try {
+      // CRITICAL: Clear any cached user data BEFORE signing in
+      console.log('AuthContext: SignIn - Clearing cached user data BEFORE sign in');
+      setUser(null);
+      
       const result = await authClient.signIn.email({
         email,
         password,
@@ -164,12 +169,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       console.log('AuthContext: SignIn - Better Auth sign-in successful');
       
-      // CRITICAL: Clear any cached user data immediately
-      console.log('AuthContext: SignIn - Clearing cached user data');
-      setUser(null);
-      
       // Wait longer for the session cookie to be properly set
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      console.log('AuthContext: SignIn - Waiting for session cookie to be set...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       // Fetch the full user profile directly from the backend with forced refresh
       console.log('AuthContext: SignIn - Fetching fresh user profile with forced refresh');
@@ -188,6 +190,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
     } catch (error: any) {
       console.error('AuthContext: SignIn - Error:', error);
+      // Clear user state on error
+      setUser(null);
       throw new Error(error.message || 'Sign in failed');
     }
   };
@@ -196,6 +200,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('AuthContext: SignUp - Attempting to sign up with email:', email);
     
     try {
+      // CRITICAL: Clear any cached user data BEFORE signing up
+      console.log('AuthContext: SignUp - Clearing cached user data BEFORE sign up');
+      setUser(null);
+      
       const result = await authClient.signUp.email({
         email,
         password,
@@ -209,12 +217,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       console.log('AuthContext: SignUp - Better Auth sign-up successful');
       
-      // CRITICAL: Clear any cached user data immediately
-      console.log('AuthContext: SignUp - Clearing cached user data');
-      setUser(null);
-      
       // Wait longer for the session cookie to be properly set
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      console.log('AuthContext: SignUp - Waiting for session cookie to be set...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       // Fetch the full user profile with forced refresh
       console.log('AuthContext: SignUp - Fetching fresh user profile with forced refresh');
@@ -233,6 +238,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
     } catch (error: any) {
       console.error('AuthContext: SignUp - Error:', error);
+      // Clear user state on error
+      setUser(null);
       throw new Error(error.message || 'Sign up failed');
     }
   };
@@ -262,7 +269,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     
     // Wait a moment for the profile to be saved
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
     // Refresh user data to get the complete profile with forced refresh
     await fetchUserProfile(true);
@@ -272,17 +279,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('AuthContext: SignOut - Signing out user');
     
     try {
-      await authClient.signOut();
-      
-      // CRITICAL: Clear user state immediately
-      console.log('AuthContext: SignOut - Clearing user state');
+      // CRITICAL: Clear user state FIRST
+      console.log('AuthContext: SignOut - Clearing user state IMMEDIATELY');
       setUser(null);
+      
+      await authClient.signOut();
       
       console.log('AuthContext: SignOut - Complete');
     } catch (error) {
       console.error('AuthContext: SignOut - Error:', error);
       
-      // Even if signOut fails, clear the user state
+      // Even if signOut fails, ensure user state is cleared
       setUser(null);
     }
   };
@@ -294,7 +301,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     
     // Wait a moment before fetching
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await new Promise(resolve => setTimeout(resolve, 500));
     
     await fetchUserProfile(true);
   };
