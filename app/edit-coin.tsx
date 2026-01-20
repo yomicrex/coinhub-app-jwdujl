@@ -190,9 +190,78 @@ export default function EditCoinScreen() {
       }
 
       console.log('EditCoinScreen: Coin updated successfully');
-      Alert.alert('Success', 'Coin updated successfully!', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
+
+      // Check if there are any new images to upload (images that start with file:// or content://)
+      const newImages = images.filter(uri => uri.startsWith('file://') || uri.startsWith('content://'));
+      
+      if (newImages.length > 0) {
+        console.log('EditCoinScreen: Uploading', newImages.length, 'new images');
+        
+        let uploadedCount = 0;
+        let failedCount = 0;
+        
+        for (let i = 0; i < newImages.length; i++) {
+          console.log('EditCoinScreen: Uploading new image', i + 1, 'of', newImages.length);
+          
+          try {
+            const formData = new FormData();
+            const uri = newImages[i];
+            const filename = uri.split('/').pop() || 'image.jpg';
+            const match = /\.(\w+)$/.exec(filename);
+            const type = match ? `image/${match[1]}` : 'image/jpeg';
+
+            formData.append('image', {
+              uri,
+              name: filename,
+              type,
+            } as any);
+
+            // Use the index in the full images array for proper ordering
+            const imageIndex = images.indexOf(uri);
+            formData.append('orderIndex', imageIndex.toString());
+
+            console.log('EditCoinScreen: Uploading to:', `${API_URL}/api/coins/${id}/images`);
+            
+            const imageResponse = await fetch(`${API_URL}/api/coins/${id}/images`, {
+              method: 'POST',
+              credentials: 'include',
+              body: formData,
+            });
+
+            console.log('EditCoinScreen: Image', i + 1, 'upload response status:', imageResponse.status);
+
+            if (!imageResponse.ok) {
+              const errorText = await imageResponse.text();
+              console.error('EditCoinScreen: Failed to upload image', i + 1, 'error:', errorText);
+              failedCount++;
+            } else {
+              console.log('EditCoinScreen: Image', i + 1, 'uploaded successfully');
+              uploadedCount++;
+            }
+          } catch (error) {
+            console.error('EditCoinScreen: Error uploading image', i + 1, ':', error);
+            failedCount++;
+          }
+        }
+
+        console.log('EditCoinScreen: Upload complete -', uploadedCount, 'succeeded,', failedCount, 'failed');
+
+        if (failedCount > 0) {
+          Alert.alert(
+            'Partial Success',
+            `Coin updated! ${uploadedCount} new image(s) uploaded successfully, ${failedCount} failed.`,
+            [{ text: 'OK', onPress: () => router.back() }]
+          );
+        } else {
+          Alert.alert('Success', 'Coin and images updated successfully!', [
+            { text: 'OK', onPress: () => router.back() },
+          ]);
+        }
+      } else {
+        Alert.alert('Success', 'Coin updated successfully!', [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
+      }
     } catch (error: any) {
       console.error('EditCoinScreen: Error updating coin:', error);
       Alert.alert('Error', error.message || 'Failed to update coin');

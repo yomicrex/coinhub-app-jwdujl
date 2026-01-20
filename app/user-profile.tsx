@@ -97,8 +97,10 @@ export default function UserProfileScreen() {
         }
 
         const coinsData = await coinsResponse.json();
-        console.log('UserProfileScreen: Fetched', coinsData.length, 'coins');
-        setCoins(coinsData);
+        // Handle both response formats: { coins: [] } or direct array
+        const coinsArray = coinsData.coins || coinsData;
+        console.log('UserProfileScreen: Fetched', coinsArray.length, 'coins');
+        setCoins(coinsArray);
         setLoadingCoins(false);
       } catch (error) {
         console.error('UserProfileScreen: Error fetching profile or coins:', error);

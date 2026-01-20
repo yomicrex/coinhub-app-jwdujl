@@ -58,9 +58,10 @@ export default function ProfileScreen() {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('ProfileScreen: Fetched', data.length || 0, 'user coins');
-        // The API returns an array directly, not wrapped in a coins property
-        setCoins(Array.isArray(data) ? data : []);
+        // Handle both response formats: { coins: [], total: number } or direct array
+        const coinsArray = data.coins || (Array.isArray(data) ? data : []);
+        console.log('ProfileScreen: Fetched', coinsArray.length, 'user coins');
+        setCoins(coinsArray);
       } else {
         console.error('ProfileScreen: Failed to fetch coins, status:', response.status);
       }

@@ -57,8 +57,10 @@ export default function ProfileScreen() {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('ProfileScreen: Fetched', data.coins?.length || 0, 'coins');
-        setCoins(data.coins || []);
+        // Handle both response formats: { coins: [] } or direct array
+        const coinsArray = data.coins || data;
+        console.log('ProfileScreen: Fetched', coinsArray.length, 'coins');
+        setCoins(coinsArray);
       } else {
         console.error('ProfileScreen: Failed to fetch coins, status:', response.status);
       }
