@@ -1,8 +1,10 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { eq, and, or, ne } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
+import * as authSchema from '../db/auth-schema.js';
 import type { App } from '../index.js';
 import { z } from 'zod';
+import { extractSessionToken } from '../utils/auth-utils.js';
 
 /**
  * Trade Management Routes
@@ -47,10 +49,59 @@ export function registerTradesRoutes(app: App) {
    * Creates a new trade and opens private messaging with coin owner
    */
   app.fastify.post('/api/trades/initiate', async (request: FastifyRequest, reply: FastifyReply) => {
-    const session = await requireAuth(request, reply);
-    if (!session) return;
+    app.logger.info({ body: request.body }, 'POST /api/trades/initiate - session extraction attempt');
 
-    app.logger.info({ userId: session.user.id, body: request.body }, 'Initiating trade');
+    let userId: string | null = null;
+    let userEmail: string | null = null;
+
+    try {
+      // Extract session token from either Authorization header or cookies
+      const sessionToken = extractSessionToken(request);
+      app.logger.debug(
+        { tokenPresent: !!sessionToken, hasAuthHeader: !!request.headers.authorization, hasCookie: !!request.headers.cookie },
+        'Session token extraction result'
+      );
+
+      if (!sessionToken) {
+        app.logger.warn({}, 'No session token found in request for trade initiation');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'No active session' });
+      }
+
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken),
+      });
+
+      if (!sessionRecord) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session token not found in database');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid or expired' });
+      }
+
+      // Check if session is expired
+      if (new Date(sessionRecord.expiresAt) < new Date()) {
+        app.logger.warn({ token: sessionToken.substring(0, 20), expiresAt: sessionRecord.expiresAt }, 'Session token expired');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      }
+
+      // Get user from session
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId),
+      });
+
+      if (!userRecord) {
+        app.logger.warn({ userId: sessionRecord.userId }, 'User not found for valid session');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+      }
+
+      userId = userRecord.id;
+      userEmail = userRecord.email;
+      app.logger.info({ userId, userEmail }, 'Session validated successfully for trade initiation');
+    } catch (error) {
+      app.logger.error({ err: error }, 'Error validating session for trade initiation');
+      return reply.status(500).send({ error: 'Internal server error', message: 'Session validation failed' });
+    }
+
+    app.logger.info({ userId, body: request.body }, 'Initiating trade');
 
     try {
       const body = InitiateTradeSchema.parse(request.body);
@@ -71,8 +122,8 @@ export function registerTradesRoutes(app: App) {
         return reply.status(400).send({ error: 'Coin is not available for trade' });
       }
 
-      if (coin.userId === session.user.id) {
-        app.logger.warn({ userId: session.user.id, coinId: body.coinId }, 'Cannot trade own coin');
+      if (coin.userId === userId) {
+        app.logger.warn({ userId, coinId: body.coinId }, 'Cannot trade own coin');
         return reply.status(400).send({ error: 'Cannot initiate trade for your own coin' });
       }
 
@@ -80,7 +131,7 @@ export function registerTradesRoutes(app: App) {
       // Allows new trades if previous trades are cancelled, completed, or disputed
       const existingActiveTrade = await app.db.query.trades.findFirst({
         where: and(
-          eq(schema.trades.initiatorId, session.user.id),
+          eq(schema.trades.initiatorId, userId),
           eq(schema.trades.coinId, body.coinId),
           or(
             eq(schema.trades.status, 'pending'),
@@ -90,7 +141,7 @@ export function registerTradesRoutes(app: App) {
       });
 
       if (existingActiveTrade) {
-        app.logger.warn({ userId: session.user.id, coinId: body.coinId, existingTradeId: existingActiveTrade.id }, 'Active trade already exists for this coin');
+        app.logger.warn({ userId, coinId: body.coinId, existingTradeId: existingActiveTrade.id }, 'Active trade already exists for this coin');
         return reply.status(409).send({
           error: 'You already have an active trade request for this coin',
           existingTradeId: existingActiveTrade.id,
@@ -102,7 +153,7 @@ export function registerTradesRoutes(app: App) {
       const [newTrade] = await app.db
         .insert(schema.trades)
         .values({
-          initiatorId: session.user.id,
+          initiatorId: userId,
           coinOwnerId: coin.userId,
           coinId: body.coinId,
         })
@@ -113,7 +164,7 @@ export function registerTradesRoutes(app: App) {
         tradeId: newTrade.id,
       });
 
-      app.logger.info({ tradeId: newTrade.id, userId: session.user.id, coinId: body.coinId }, 'Trade initiated successfully');
+      app.logger.info({ tradeId: newTrade.id, userId, coinId: body.coinId }, 'Trade initiated successfully');
 
       // Fetch full trade details with coin and user info
       const fullTrade = await app.db.query.trades.findFirst({
@@ -192,10 +243,10 @@ export function registerTradesRoutes(app: App) {
       };
     } catch (error) {
       if (error instanceof z.ZodError) {
-        app.logger.warn({ error: error.issues }, 'Validation error');
+        app.logger.warn({ error: error.issues, userId }, 'Validation error');
         return reply.status(400).send({ error: 'Validation failed', details: error.issues });
       }
-      app.logger.error({ err: error, userId: session.user.id }, 'Failed to initiate trade');
+      app.logger.error({ err: error, userId }, 'Failed to initiate trade');
       throw error;
     }
   });

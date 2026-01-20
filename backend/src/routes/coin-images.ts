@@ -1,8 +1,10 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { eq, and } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
+import * as authSchema from '../db/auth-schema.js';
 import type { App } from '../index.js';
 import { z } from 'zod';
+import { extractSessionToken } from '../utils/auth-utils.js';
 
 // Allowed image formats
 const ALLOWED_FORMATS = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
@@ -33,12 +35,59 @@ export function registerCoinImagesRoutes(app: App) {
    * Returns: { id, url, orderIndex, createdAt }
    */
   app.fastify.post('/api/coins/:coinId/images', async (request: FastifyRequest, reply: FastifyReply) => {
-    const session = await requireAuth(request, reply);
-    if (!session) return;
-
     const { coinId } = request.params as { coinId: string };
 
-    app.logger.info({ coinId, userId: session.user.id }, 'Starting coin image upload');
+    app.logger.info({ coinId }, 'POST /api/coins/:coinId/images - session extraction attempt');
+
+    let userId: string | null = null;
+
+    try {
+      // Extract session token from either Authorization header or cookies
+      const sessionToken = extractSessionToken(request);
+      app.logger.debug(
+        { tokenPresent: !!sessionToken, hasAuthHeader: !!request.headers.authorization, hasCookie: !!request.headers.cookie },
+        'Session token extraction result for image upload'
+      );
+
+      if (!sessionToken) {
+        app.logger.warn({}, 'No session token found in request for image upload');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'No active session' });
+      }
+
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken),
+      });
+
+      if (!sessionRecord) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session token not found in database');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid or expired' });
+      }
+
+      // Check if session is expired
+      if (new Date(sessionRecord.expiresAt) < new Date()) {
+        app.logger.warn({ token: sessionToken.substring(0, 20), expiresAt: sessionRecord.expiresAt }, 'Session token expired');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      }
+
+      // Get user from session
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId),
+      });
+
+      if (!userRecord) {
+        app.logger.warn({ userId: sessionRecord.userId }, 'User not found for valid session');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+      }
+
+      userId = userRecord.id;
+      app.logger.info({ userId, coinId }, 'Session validated successfully for image upload');
+    } catch (error) {
+      app.logger.error({ err: error }, 'Error validating session for image upload');
+      return reply.status(500).send({ error: 'Internal server error', message: 'Session validation failed' });
+    }
+
+    app.logger.info({ coinId, userId }, 'Starting coin image upload');
 
     try {
       // Check coin ownership
@@ -57,8 +106,8 @@ export function registerCoinImagesRoutes(app: App) {
         return reply.status(404).send({ error: 'Coin not found' });
       }
 
-      if (coin.userId !== session.user.id) {
-        app.logger.warn({ coinId, userId: session.user.id, ownerId: coin.userId }, 'Unauthorized image upload');
+      if (coin.userId !== userId) {
+        app.logger.warn({ coinId, userId, ownerId: coin.userId }, 'Unauthorized image upload');
         return reply.status(403).send({ error: 'Unauthorized' });
       }
 
@@ -66,7 +115,7 @@ export function registerCoinImagesRoutes(app: App) {
       const data = await request.file({ limits: { fileSize: MAX_FILE_SIZE } });
 
       if (!data) {
-        app.logger.warn({ coinId, userId: session.user.id }, 'No file provided');
+        app.logger.warn({ coinId, userId }, 'No file provided');
         return reply.status(400).send({ error: 'No file provided' });
       }
 
@@ -147,7 +196,7 @@ export function registerCoinImagesRoutes(app: App) {
         signedUrl = null;
       }
 
-      app.logger.info({ coinId, imageId: image.id, orderIndex: image.orderIndex }, 'Coin image uploaded successfully');
+      app.logger.info({ coinId, userId, imageId: image.id, orderIndex: image.orderIndex }, 'Coin image uploaded successfully');
       return {
         id: image.id,
         url: signedUrl,
@@ -156,7 +205,7 @@ export function registerCoinImagesRoutes(app: App) {
         createdAt: image.createdAt,
       };
     } catch (error) {
-      app.logger.error({ err: error, coinId, userId: session.user.id }, 'Unexpected error during image upload');
+      app.logger.error({ err: error, coinId, userId }, 'Unexpected error during image upload');
       return reply.status(500).send({ error: 'Upload failed', message: 'An unexpected error occurred' });
     }
   });
@@ -211,12 +260,59 @@ export function registerCoinImagesRoutes(app: App) {
    * Delete a coin image from database and storage
    */
   app.fastify.delete('/api/coins/:coinId/images/:imageId', async (request: FastifyRequest, reply: FastifyReply) => {
-    const session = await requireAuth(request, reply);
-    if (!session) return;
-
     const { coinId, imageId } = request.params as { coinId: string; imageId: string };
 
-    app.logger.info({ coinId, imageId, userId: session.user.id }, 'Deleting coin image');
+    app.logger.info({ coinId, imageId }, 'DELETE /api/coins/:coinId/images/:imageId - session extraction attempt');
+
+    let userId: string | null = null;
+
+    try {
+      // Extract session token from either Authorization header or cookies
+      const sessionToken = extractSessionToken(request);
+      app.logger.debug(
+        { tokenPresent: !!sessionToken, hasAuthHeader: !!request.headers.authorization, hasCookie: !!request.headers.cookie },
+        'Session token extraction result for image deletion'
+      );
+
+      if (!sessionToken) {
+        app.logger.warn({}, 'No session token found in request for image deletion');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'No active session' });
+      }
+
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken),
+      });
+
+      if (!sessionRecord) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session token not found in database');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid or expired' });
+      }
+
+      // Check if session is expired
+      if (new Date(sessionRecord.expiresAt) < new Date()) {
+        app.logger.warn({ token: sessionToken.substring(0, 20), expiresAt: sessionRecord.expiresAt }, 'Session token expired');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      }
+
+      // Get user from session
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId),
+      });
+
+      if (!userRecord) {
+        app.logger.warn({ userId: sessionRecord.userId }, 'User not found for valid session');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+      }
+
+      userId = userRecord.id;
+      app.logger.info({ userId, coinId, imageId }, 'Session validated successfully for image deletion');
+    } catch (error) {
+      app.logger.error({ err: error }, 'Error validating session for image deletion');
+      return reply.status(500).send({ error: 'Internal server error', message: 'Session validation failed' });
+    }
+
+    app.logger.info({ coinId, imageId, userId }, 'Deleting coin image');
 
     try {
       // Check coin ownership
@@ -235,8 +331,8 @@ export function registerCoinImagesRoutes(app: App) {
         return reply.status(404).send({ error: 'Coin not found' });
       }
 
-      if (coin.userId !== session.user.id) {
-        app.logger.warn({ coinId, userId: session.user.id, ownerId: coin.userId }, 'Unauthorized image deletion');
+      if (coin.userId !== userId) {
+        app.logger.warn({ coinId, userId, ownerId: coin.userId }, 'Unauthorized image deletion');
         return reply.status(403).send({ error: 'Unauthorized' });
       }
 
@@ -273,10 +369,10 @@ export function registerCoinImagesRoutes(app: App) {
         return reply.status(503).send({ error: 'Database error' });
       }
 
-      app.logger.info({ coinId, imageId }, 'Coin image deleted successfully');
+      app.logger.info({ coinId, imageId, userId }, 'Coin image deleted successfully');
       return { success: true };
     } catch (error) {
-      app.logger.error({ err: error, coinId, imageId, userId: session.user.id }, 'Unexpected error during image deletion');
+      app.logger.error({ err: error, coinId, imageId, userId }, 'Unexpected error during image deletion');
       return reply.status(500).send({ error: 'Deletion failed' });
     }
   });
@@ -286,12 +382,59 @@ export function registerCoinImagesRoutes(app: App) {
    * Reorder coin images
    */
   app.fastify.post('/api/coins/:coinId/images/reorder', async (request: FastifyRequest, reply: FastifyReply) => {
-    const session = await requireAuth(request, reply);
-    if (!session) return;
-
     const { coinId } = request.params as { coinId: string };
 
-    app.logger.info({ coinId, userId: session.user.id }, 'Reordering coin images');
+    app.logger.info({ coinId }, 'POST /api/coins/:coinId/images/reorder - session extraction attempt');
+
+    let userId: string | null = null;
+
+    try {
+      // Extract session token from either Authorization header or cookies
+      const sessionToken = extractSessionToken(request);
+      app.logger.debug(
+        { tokenPresent: !!sessionToken, hasAuthHeader: !!request.headers.authorization, hasCookie: !!request.headers.cookie },
+        'Session token extraction result for image reorder'
+      );
+
+      if (!sessionToken) {
+        app.logger.warn({}, 'No session token found in request for image reorder');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'No active session' });
+      }
+
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken),
+      });
+
+      if (!sessionRecord) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session token not found in database');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid or expired' });
+      }
+
+      // Check if session is expired
+      if (new Date(sessionRecord.expiresAt) < new Date()) {
+        app.logger.warn({ token: sessionToken.substring(0, 20), expiresAt: sessionRecord.expiresAt }, 'Session token expired');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      }
+
+      // Get user from session
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId),
+      });
+
+      if (!userRecord) {
+        app.logger.warn({ userId: sessionRecord.userId }, 'User not found for valid session');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+      }
+
+      userId = userRecord.id;
+      app.logger.info({ userId, coinId }, 'Session validated successfully for image reorder');
+    } catch (error) {
+      app.logger.error({ err: error }, 'Error validating session for image reorder');
+      return reply.status(500).send({ error: 'Internal server error', message: 'Session validation failed' });
+    }
+
+    app.logger.info({ coinId, userId }, 'Reordering coin images');
 
     try {
       const body = UpdateImageOrderSchema.parse(request.body);
@@ -312,8 +455,8 @@ export function registerCoinImagesRoutes(app: App) {
         return reply.status(404).send({ error: 'Coin not found' });
       }
 
-      if (coin.userId !== session.user.id) {
-        app.logger.warn({ coinId, userId: session.user.id, ownerId: coin.userId }, 'Unauthorized reorder');
+      if (coin.userId !== userId) {
+        app.logger.warn({ coinId, userId, ownerId: coin.userId }, 'Unauthorized reorder');
         return reply.status(403).send({ error: 'Unauthorized' });
       }
 
@@ -329,7 +472,7 @@ export function registerCoinImagesRoutes(app: App) {
           ),
         );
 
-        app.logger.info({ coinId, count: updated.length }, 'Coin images reordered successfully');
+        app.logger.info({ coinId, userId, count: updated.length }, 'Coin images reordered successfully');
         return { success: true, count: updated.length };
       } catch (dbError) {
         app.logger.error({ err: dbError, coinId }, 'Database error reordering images');
@@ -337,10 +480,10 @@ export function registerCoinImagesRoutes(app: App) {
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
-        app.logger.warn({ error: error.issues }, 'Validation error');
+        app.logger.warn({ error: error.issues, userId }, 'Validation error');
         return reply.status(400).send({ error: 'Validation failed', details: error.issues });
       }
-      app.logger.error({ err: error, coinId, userId: session.user.id }, 'Unexpected error during reorder');
+      app.logger.error({ err: error, coinId, userId }, 'Unexpected error during reorder');
       return reply.status(500).send({ error: 'Reorder failed' });
     }
   });
