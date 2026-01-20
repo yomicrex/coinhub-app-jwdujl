@@ -40,8 +40,10 @@ interface User {
 
 interface TradeOffer {
   id: string;
-  coin: Coin;
-  offeredBy: User;
+  coin?: Coin | null;
+  offeredCoin?: Coin | null;
+  offeredBy?: User;
+  offerer?: User;
   message?: string;
   isCounterOffer: boolean;
   status: string;
@@ -335,11 +337,12 @@ export default function TradeDetailScreen() {
         headers: {
           'Content-Type': 'application/json',
         },
-        // Use "message" field for consistency with iOS version
         body: JSON.stringify({ message: message.trim() }),
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('TradeDetailScreen: Failed to send message:', errorText);
         throw new Error('Failed to send message');
       }
 
@@ -764,7 +767,7 @@ export default function TradeDetailScreen() {
   const myTrackingNumber = isInitiator ? trade.shipping?.initiatorTrackingNumber : trade.shipping?.ownerTrackingNumber;
   const myShippedAt = isInitiator ? trade.shipping?.initiatorShippedAt : trade.shipping?.ownerShippedAt;
   const myReceived = isInitiator ? (trade.shipping?.initiatorReceived || false) : (trade.shipping?.ownerReceived || false);
-  const myReceivedAt = isInitiator ? trade.shipping?.initiatorReceivedAt : trade.shipping?.ownerReceivedAt;
+  const myReceivedAt = isInitiator ? trade.shipping?.initiatorReceivedAt : trade.shipping?.initiatorReceivedAt;
   
   const theirShipped = isInitiator ? (trade.shipping?.ownerShipped || false) : (trade.shipping?.initiatorShipped || false);
   const theirTrackingNumber = isInitiator ? trade.shipping?.ownerTrackingNumber : trade.shipping?.initiatorTrackingNumber;
@@ -807,7 +810,7 @@ export default function TradeDetailScreen() {
             </View>
 
             {/* Cancel button - available for pending and accepted trades */}
-            {(trade.status === 'pending' || trade.status === 'accepted') && (
+            {(trade.status === 'pending' || trade.status === 'accepted' || trade.status === 'countered') && (
               <TouchableOpacity
                 style={[styles.actionButton, styles.secondaryButton, { marginTop: 12 }]}
                 onPress={handleCancelTrade}
@@ -856,79 +859,92 @@ export default function TradeDetailScreen() {
             {trade.offers.length === 0 ? (
               <Text style={styles.emptyText}>No coins offered yet</Text>
             ) : (
-              trade.offers.map((offer) => (
-                <View key={offer.id} style={styles.offerCard}>
-                  <View style={styles.offerHeader}>
-                    <Text style={styles.offerUser}>
-                      @{offer.offeredBy.username}
-                    </Text>
-                    {offer.isCounterOffer && (
-                      <View style={styles.offerBadge}>
-                        <Text style={styles.offerBadgeText}>Counter Offer</Text>
-                      </View>
-                    )}
-                  </View>
-                  <View style={styles.coinCard}>
-                    {offer.coin.images && offer.coin.images.length > 0 && offer.coin.images[0]?.url ? (
-                      <Image
-                        source={{ uri: offer.coin.images[0].url }}
-                        style={styles.coinImage}
-                        resizeMode="cover"
-                        onError={(e) => {
-                          console.error('TradeDetailScreen: Error loading offer coin image:', e.nativeEvent.error);
-                        }}
-                      />
-                    ) : (
-                      <View style={[styles.coinImage, { backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center' }]}>
-                        <IconSymbol
-                          ios_icon_name="photo"
-                          android_material_icon_name="image"
-                          size={32}
-                          color={colors.textSecondary}
-                        />
-                      </View>
-                    )}
-                    <View style={styles.coinInfo}>
-                      <Text style={styles.coinTitle}>{offer.coin.title}</Text>
-                      <Text style={styles.coinDetails}>
-                        {offer.coin.country} • {offer.coin.year}
+              trade.offers.map((offer) => {
+                // Get the coin from either 'coin' or 'offeredCoin' property
+                const offerCoin = offer.coin || offer.offeredCoin;
+                // Get the user from either 'offeredBy' or 'offerer' property
+                const offerUser = offer.offeredBy || offer.offerer;
+
+                // Skip rendering if no coin data (pending offer)
+                if (!offerCoin || !offerUser) {
+                  console.log('TradeDetailScreen: Skipping offer with no coin data:', offer.id);
+                  return null;
+                }
+
+                return (
+                  <View key={offer.id} style={styles.offerCard}>
+                    <View style={styles.offerHeader}>
+                      <Text style={styles.offerUser}>
+                        @{offerUser.username}
                       </Text>
+                      {offer.isCounterOffer && (
+                        <View style={styles.offerBadge}>
+                          <Text style={styles.offerBadgeText}>Counter Offer</Text>
+                        </View>
+                      )}
                     </View>
+                    <View style={styles.coinCard}>
+                      {offerCoin.images && offerCoin.images.length > 0 && offerCoin.images[0]?.url ? (
+                        <Image
+                          source={{ uri: offerCoin.images[0].url }}
+                          style={styles.coinImage}
+                          resizeMode="cover"
+                          onError={(e) => {
+                            console.error('TradeDetailScreen: Error loading offer coin image:', e.nativeEvent.error);
+                          }}
+                        />
+                      ) : (
+                        <View style={[styles.coinImage, { backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center' }]}>
+                          <IconSymbol
+                            ios_icon_name="photo"
+                            android_material_icon_name="image"
+                            size={32}
+                            color={colors.textSecondary}
+                          />
+                        </View>
+                      )}
+                      <View style={styles.coinInfo}>
+                        <Text style={styles.coinTitle}>{offerCoin.title}</Text>
+                        <Text style={styles.coinDetails}>
+                          {offerCoin.country} • {offerCoin.year}
+                        </Text>
+                      </View>
+                    </View>
+                    {offer.message && (
+                      <Text style={styles.offerMessage}>{offer.message}</Text>
+                    )}
+                    {/* Accept/Reject buttons for coin owner */}
+                    {canAcceptOffer && offer.status === 'pending' && (
+                      <View style={styles.actionButtons}>
+                        <TouchableOpacity
+                          style={[styles.actionButton, styles.primaryButton]}
+                          onPress={() => handleAcceptOffer(offer.id)}
+                        >
+                          <Text style={styles.buttonText}>Accept</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.actionButton, styles.dangerButton]}
+                          onPress={() => handleRejectOffer(offer.id)}
+                        >
+                          <Text style={styles.buttonText}>Reject</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                    {offer.status === 'accepted' && (
+                      <View style={[styles.offerBadge, { backgroundColor: '#4CAF50', marginTop: 8 }]}>
+                        <Text style={styles.offerBadgeText}>Accepted ✓</Text>
+                      </View>
+                    )}
+                    {offer.status === 'rejected' && (
+                      <View style={[styles.offerBadge, { backgroundColor: '#F44336', marginTop: 8 }]}>
+                        <Text style={styles.offerBadgeText}>Rejected</Text>
+                      </View>
+                    )}
                   </View>
-                  {offer.message && (
-                    <Text style={styles.offerMessage}>{offer.message}</Text>
-                  )}
-                  {/* Accept/Reject buttons for coin owner */}
-                  {canAcceptOffer && offer.status === 'pending' && (
-                    <View style={styles.actionButtons}>
-                      <TouchableOpacity
-                        style={[styles.actionButton, styles.primaryButton]}
-                        onPress={() => handleAcceptOffer(offer.id)}
-                      >
-                        <Text style={styles.buttonText}>Accept</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.actionButton, styles.dangerButton]}
-                        onPress={() => handleRejectOffer(offer.id)}
-                      >
-                        <Text style={styles.buttonText}>Reject</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                  {offer.status === 'accepted' && (
-                    <View style={[styles.offerBadge, { backgroundColor: '#4CAF50', marginTop: 8 }]}>
-                      <Text style={styles.offerBadgeText}>Accepted ✓</Text>
-                    </View>
-                  )}
-                  {offer.status === 'rejected' && (
-                    <View style={[styles.offerBadge, { backgroundColor: '#F44336', marginTop: 8 }]}>
-                      <Text style={styles.offerBadgeText}>Rejected</Text>
-                    </View>
-                  )}
-                </View>
-              ))
+                );
+              })
             )}
-            {trade.status === 'pending' && (
+            {(trade.status === 'pending' || trade.status === 'countered') && (
               <View style={styles.offerButtonsContainer}>
                 <TouchableOpacity
                   style={[styles.actionButton, styles.primaryButton, { flex: 1, marginTop: 12, marginRight: 8 }]}
@@ -1037,7 +1053,7 @@ export default function TradeDetailScreen() {
                         </Text>
                       </View>
                     )}
-                    {!theirReceived && bothShipped && (
+                    {!myReceived && bothShipped && (
                       <TouchableOpacity
                         style={[styles.actionButton, styles.primaryButton, { marginTop: 8 }]}
                         onPress={handleMarkReceived}
