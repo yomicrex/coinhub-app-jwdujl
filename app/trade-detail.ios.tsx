@@ -162,7 +162,7 @@ export default function TradeDetailScreen() {
       }
 
       console.log('TradeDetailScreen: Trade data loaded successfully');
-      console.log('TradeDetailScreen: Messages:', data.messages);
+      console.log('TradeDetailScreen: Offers:', data.offers);
       setTrade(data);
       setError(null);
     } catch (error: any) {
@@ -741,7 +741,6 @@ export default function TradeDetailScreen() {
   };
 
   const getMessageText = (msg: TradeMessage): string => {
-    // Handle both 'message' and 'content' field names
     return msg.message || msg.content || '';
   };
 
@@ -793,8 +792,8 @@ export default function TradeDetailScreen() {
   }
 
   const isInitiator = trade.initiator.id === user?.id;
+  const isCoinOwner = trade.coinOwner.id === user?.id;
   const otherUser = isInitiator ? trade.coinOwner : trade.initiator;
-  const canAcceptOffer = !isInitiator && trade.status === 'pending';
   
   // Handle shipping info based on user role - with null safety
   const myShipped = isInitiator ? (trade.shipping?.initiatorShipped || false) : (trade.shipping?.ownerShipped || false);
@@ -905,7 +904,9 @@ export default function TradeDetailScreen() {
             <Text style={styles.sectionSubtitle}>
               {trade.offers.length === 0 
                 ? 'No coins have been offered yet. Make an offer below!'
-                : 'Tap on any coin to view details and respond'}
+                : isCoinOwner 
+                  ? 'Review the offers and accept, reject, or make a counter offer'
+                  : 'Your offers are shown below'}
             </Text>
             {trade.offers.length === 0 ? (
               <View style={styles.emptyOffersContainer}>
@@ -921,19 +922,16 @@ export default function TradeDetailScreen() {
               </View>
             ) : (
               trade.offers.map((offer) => {
-                // Get the coin from either 'coin' or 'offeredCoin' property
                 const offerCoin = offer.coin || offer.offeredCoin;
-                // Get the user from either 'offeredBy' or 'offerer' property
                 const offerUser = offer.offeredBy || offer.offerer;
 
-                // Skip rendering if no coin data (pending offer)
                 if (!offerCoin || !offerUser) {
                   console.log('TradeDetailScreen: Skipping offer with no coin data:', offer.id);
                   return null;
                 }
 
                 const isMyOffer = offerUser.id === user?.id;
-                const canRespond = !isMyOffer && canAcceptOffer && offer.status === 'pending';
+                const canRespond = isCoinOwner && !isMyOffer && offer.status === 'pending';
 
                 return (
                   <View key={offer.id} style={styles.offerCard}>
@@ -985,16 +983,9 @@ export default function TradeDetailScreen() {
                           <Text style={styles.coinDetailsSeparator}>•</Text>
                           <Text style={styles.coinDetails}>{offerCoin.year}</Text>
                         </View>
-                        {canRespond && (
-                          <Text style={[styles.coinDetails, { color: '#4CAF50', marginTop: 4, fontWeight: '600' }]}>
-                            👆 Tap to Accept, Reject, or Counter
-                          </Text>
-                        )}
-                        {!canRespond && (
-                          <Text style={[styles.coinDetails, { color: colors.primary, marginTop: 4 }]}>
-                            Tap to view full details
-                          </Text>
-                        )}
+                        <Text style={[styles.coinDetails, { color: colors.primary, marginTop: 4 }]}>
+                          Tap to view full details
+                        </Text>
                       </View>
                     </TouchableOpacity>
                     {offer.message && (
@@ -1003,6 +994,8 @@ export default function TradeDetailScreen() {
                         <Text style={styles.offerMessage}>{offer.message}</Text>
                       </View>
                     )}
+                    
+                    {/* Status badges */}
                     {offer.status === 'accepted' && (
                       <View style={[styles.offerBadge, { backgroundColor: '#4CAF50', marginTop: 8, alignSelf: 'flex-start' }]}>
                         <Text style={styles.offerBadgeText}>✓ Accepted</Text>
@@ -1011,6 +1004,51 @@ export default function TradeDetailScreen() {
                     {offer.status === 'rejected' && (
                       <View style={[styles.offerBadge, { backgroundColor: '#F44336', marginTop: 8, alignSelf: 'flex-start' }]}>
                         <Text style={styles.offerBadgeText}>✗ Rejected</Text>
+                      </View>
+                    )}
+
+                    {/* Action buttons for coin owner to respond to offers */}
+                    {canRespond && (
+                      <View style={styles.offerActionsContainer}>
+                        <Text style={styles.offerActionsPrompt}>What would you like to do?</Text>
+                        <View style={styles.offerActionsButtons}>
+                          <TouchableOpacity
+                            style={[styles.offerActionButton, styles.acceptButton]}
+                            onPress={() => handleAcceptOffer(offer.id)}
+                          >
+                            <IconSymbol
+                              ios_icon_name="checkmark.circle.fill"
+                              android_material_icon_name="check-circle"
+                              size={18}
+                              color="#FFFFFF"
+                            />
+                            <Text style={styles.offerActionButtonText}>Accept</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.offerActionButton, styles.rejectButton]}
+                            onPress={() => handleRejectOffer(offer.id)}
+                          >
+                            <IconSymbol
+                              ios_icon_name="xmark.circle.fill"
+                              android_material_icon_name="cancel"
+                              size={18}
+                              color="#FFFFFF"
+                            />
+                            <Text style={styles.offerActionButtonText}>Reject</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.offerActionButton, styles.counterButton]}
+                            onPress={handleCounterOffer}
+                          >
+                            <IconSymbol
+                              ios_icon_name="arrow.triangle.2.circlepath"
+                              android_material_icon_name="sync"
+                              size={18}
+                              color="#FFFFFF"
+                            />
+                            <Text style={styles.offerActionButtonText}>Counter</Text>
+                          </TouchableOpacity>
+                        </View>
                       </View>
                     )}
                   </View>
@@ -1236,7 +1274,7 @@ export default function TradeDetailScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      {/* Coin Detail Modal - IMPROVED POSITIONING AND HEIGHT */}
+      {/* Coin Detail Modal */}
       <Modal
         visible={showCoinDetail}
         animationType="slide"
@@ -1296,8 +1334,8 @@ export default function TradeDetailScreen() {
                     </View>
                   )}
 
-                  {/* Action buttons for offered coins */}
-                  {selectedOffer && canAcceptOffer && selectedOffer.status === 'pending' && (
+                  {/* Action buttons for coin owner to respond to offers */}
+                  {selectedOffer && isCoinOwner && selectedOffer.status === 'pending' && (
                     <View style={styles.coinDetailActions}>
                       <Text style={styles.actionPromptText}>What would you like to do?</Text>
                       <TouchableOpacity
@@ -1832,6 +1870,47 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.text,
     fontStyle: 'italic',
+  },
+  offerActionsContainer: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  offerActionsPrompt: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  offerActionsButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  offerActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    gap: 4,
+  },
+  acceptButton: {
+    backgroundColor: '#4CAF50',
+  },
+  rejectButton: {
+    backgroundColor: '#F44336',
+  },
+  counterButton: {
+    backgroundColor: '#9C27B0',
+  },
+  offerActionButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   emptyOffersContainer: {
     alignItems: 'center',
