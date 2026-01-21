@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
-import { deleteCurrentUserAccount, deleteAllUsers } from '@/utils/api';
+import { deleteCurrentUserAccount, deleteAllUsers, grantAdminAccess } from '@/utils/api';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -140,6 +140,47 @@ export default function SettingsScreen() {
     router.push('/admin-view-passwords');
   };
 
+  const handleGrantAdminAccess = async () => {
+    console.log('User tapped Grant Admin Access');
+    
+    if (!user?.email) {
+      Alert.alert('Error', 'No user email found. Please log in again.');
+      return;
+    }
+    
+    Alert.alert(
+      'Grant Admin Access',
+      `Grant admin privileges to your account?\n\nEmail: ${user.email}\n\nThis will allow you to use admin-only features like deleting all users.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Grant Admin Access',
+          onPress: async () => {
+            console.log('User confirmed granting admin access to:', user.email);
+            
+            const result = await grantAdminAccess(user.email);
+            
+            if (result.success) {
+              console.log('Admin access granted successfully');
+              Alert.alert(
+                '✅ Admin Access Granted',
+                'You now have admin privileges. You can now use admin-only features.\n\nPlease refresh the app or log out and log back in for changes to take effect.',
+                [{ text: 'OK' }]
+              );
+            } else {
+              console.error('Failed to grant admin access:', result.message);
+              Alert.alert(
+                '❌ Error',
+                result.message || 'Failed to grant admin access. Please try again.',
+                [{ text: 'OK' }]
+              );
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleAdminDeleteAllUsers = async () => {
     console.log('Admin tapped Delete All Users');
     
@@ -183,7 +224,7 @@ export default function SettingsScreen() {
                             text: 'OK',
                             onPress: () => {
                               console.log('Admin acknowledged deletion success');
-                              // Optionally sign out the admin too
+                              // Sign out the admin and redirect to login
                               signOut();
                               router.replace('/auth');
                             },
@@ -192,11 +233,26 @@ export default function SettingsScreen() {
                       );
                     } else {
                       console.error('Failed to delete all users:', result.message);
-                      Alert.alert(
-                        '❌ Error',
-                        result.message || 'Failed to delete all users. Please check your admin permissions and try again.',
-                        [{ text: 'OK' }]
-                      );
+                      
+                      // Check if the error is about admin permissions
+                      const errorMessage = result.message || 'Failed to delete all users';
+                      const isPermissionError = errorMessage.toLowerCase().includes('admin') || 
+                                               errorMessage.toLowerCase().includes('permission') ||
+                                               errorMessage.toLowerCase().includes('403');
+                      
+                      if (isPermissionError) {
+                        Alert.alert(
+                          '❌ Admin Access Required',
+                          'You need admin privileges to delete all users.\n\nPlease use the "Grant Admin Access" button first to give yourself admin permissions, then try again.',
+                          [{ text: 'OK' }]
+                        );
+                      } else {
+                        Alert.alert(
+                          '❌ Error',
+                          errorMessage,
+                          [{ text: 'OK' }]
+                        );
+                      }
                     }
                   },
                 },
@@ -291,6 +347,33 @@ export default function SettingsScreen() {
           <Text style={styles.sectionSubtitle}>
             Development/Testing Tools - Not for production use
           </Text>
+
+          {/* Grant Admin Access Button */}
+          <TouchableOpacity
+            style={[styles.option, styles.adminAccessOption]}
+            onPress={handleGrantAdminAccess}
+          >
+            <IconSymbol
+              ios_icon_name="shield.checkered"
+              android_material_icon_name="verified-user"
+              size={28}
+              color="#007AFF"
+            />
+            <View style={styles.prominentTextContainer}>
+              <Text style={[styles.optionText, { color: '#007AFF', fontWeight: '700', fontSize: 17 }]}>
+                Grant Admin Access
+              </Text>
+              <Text style={styles.prominentSubtext}>
+                Give yourself admin privileges for testing
+              </Text>
+            </View>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="arrow-forward"
+              size={20}
+              color="#007AFF"
+            />
+          </TouchableOpacity>
 
           {/* PROMINENT: Reset All Passwords Button */}
           <TouchableOpacity
@@ -455,6 +538,13 @@ const styles = StyleSheet.create({
   adminOption: {
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  adminAccessOption: {
+    borderWidth: 2,
+    borderColor: '#007AFF',
+    backgroundColor: '#F0F8FF',
+    padding: 16,
+    marginBottom: 16,
   },
   prominentOption: {
     borderWidth: 2,

@@ -165,4 +165,32 @@ export async function deleteAllUsers(): Promise<{ success: boolean; deletedCount
   }
 }
 
+/**
+ * Grant admin access to a user by email
+ * For development/testing purposes - allows any authenticated user to grant admin access
+ */
+export async function grantAdminAccess(email: string): Promise<{ success: boolean; message: string; userId?: string }> {
+  try {
+    console.log('API: [ADMIN] Granting admin access to user:', email);
+    const response = await authenticatedPost('/api/admin/grant-admin-access', { email });
+    
+    if (response.ok) {
+      const result = await response.json();
+      console.log('API: [ADMIN] Admin access granted successfully:', result);
+      return { 
+        success: true, 
+        userId: result.userId,
+        message: result.message || 'Admin access granted successfully' 
+      };
+    } else {
+      const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+      console.error('API: [ADMIN] Failed to grant admin access:', errorData);
+      return { success: false, message: errorData.message || 'Failed to grant admin access' };
+    }
+  } catch (error) {
+    console.error('API: [ADMIN] Error granting admin access:', error);
+    return { success: false, message: 'An error occurred while granting admin access' };
+  }
+}
+
 export { API_URL };
