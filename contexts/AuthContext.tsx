@@ -61,13 +61,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('AuthContext: Profile data received:', {
           hasUser: !!data.user,
           hasProfile: !!data.profile,
-          userId: data.user?.id,
-          email: data.user?.email,
+          hasProfileField: data.hasProfile,
+          userId: data.user?.id || data.id,
+          email: data.user?.email || data.email,
           profileEmail: data.profile?.email,
-          username: data.profile?.username,
-          displayName: data.profile?.displayName
+          username: data.profile?.username || data.username,
+          displayName: data.profile?.displayName || data.displayName
         });
         
+        // Handle new backend response format: { id, email, username, displayName, hasProfile }
+        if (data.hasProfile !== undefined) {
+          if (data.hasProfile) {
+            // User has complete profile
+            const combinedUser: User = {
+              id: data.id,
+              email: data.email,
+              username: data.username,
+              displayName: data.displayName,
+              avatarUrl: data.avatarUrl,
+              bio: data.bio,
+              location: data.location,
+              needsProfileCompletion: false,
+            };
+            console.log('AuthContext: Setting user with complete profile (new format):', {
+              id: combinedUser.id,
+              email: combinedUser.email,
+              username: combinedUser.username,
+              displayName: combinedUser.displayName,
+              needsProfileCompletion: false
+            });
+            setUser(combinedUser);
+            return combinedUser;
+          } else {
+            // User exists but no profile - needs completion
+            const userWithoutProfile: User = {
+              id: data.id,
+              email: data.email,
+              needsProfileCompletion: true,
+            };
+            console.log('AuthContext: Setting user without profile (new format) - needs completion:', {
+              id: userWithoutProfile.id,
+              email: userWithoutProfile.email,
+              needsProfileCompletion: true
+            });
+            setUser(userWithoutProfile);
+            return userWithoutProfile;
+          }
+        }
+        
+        // Handle old backend response format: { user, profile }
         // Combine auth user and profile data
         if (data.user && data.profile) {
           const combinedUser: User = {
@@ -80,7 +122,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             location: data.profile.location,
             needsProfileCompletion: !data.profile.username, // If no username, needs completion
           };
-          console.log('AuthContext: Setting user with profile:', {
+          console.log('AuthContext: Setting user with profile (old format):', {
             id: combinedUser.id,
             email: combinedUser.email,
             username: combinedUser.username,
@@ -96,7 +138,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             email: data.user.email,
             needsProfileCompletion: true,
           };
-          console.log('AuthContext: Setting user without profile - needs completion:', {
+          console.log('AuthContext: Setting user without profile (old format) - needs completion:', {
             id: userWithoutProfile.id,
             email: userWithoutProfile.email,
             needsProfileCompletion: true
@@ -108,6 +150,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
           return null;
         }
+      } else if (response.status === 404) {
+        // Profile not found - try to parse the response to see if we have user data
+        try {
+          const errorData = await response.json();
+          console.log('AuthContext: 404 response data:', errorData);
+          
+          if (errorData.user) {
+            // User exists but profile not found - needs completion
+            const userWithoutProfile: User = {
+              id: errorData.user.id,
+              email: errorData.user.email,
+              needsProfileCompletion: true,
+            };
+            console.log('AuthContext: User exists but profile not found - needs completion:', {
+              id: userWithoutProfile.id,
+              email: userWithoutProfile.email,
+              needsProfileCompletion: true
+            });
+            setUser(userWithoutProfile);
+            return userWithoutProfile;
+          }
+        } catch (e) {
+          console.log('AuthContext: Could not parse 404 response');
+        }
+        
+        console.log('AuthContext: Profile not found (404) - clearing user state');
+        setUser(null);
+        return null;
       } else {
         console.log('AuthContext: Failed to fetch user profile (status:', response.status, ') - user not authenticated, clearing user state');
         setUser(null);
@@ -251,32 +321,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const completeProfile = async (username: string, displayName: string) => {
     console.log('AuthContext: CompleteProfile - Completing profile with username:', username);
     
-    const response = await fetch(`${API_URL}/api/auth/complete-profile`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify({ username, displayName }),
-    });
+    try {
+      const response = await fetch(`${API_URL}/api/profiles/complete`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ username, displayName }),
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      console.error('AuthContext: CompleteProfile - Failed with error:', error);
-      throw new Error(error.message || 'Profile completion failed');
+      if (!response.ok) {
+        let errorMessage = 'Profile completion failed';
+        try {
+          const error = await response.json();
+          errorMessage = error.message || errorMessage;
+          console.error('AuthContext: CompleteProfile - Failed with error:', error);
+        } catch (e) {
+          console.error('AuthContext: CompleteProfile - Failed with status:', response.status);
+        }
+        throw new Error(errorMessage);
+      }
+
+      const profile = await response.json();
+      console.log('AuthContext: CompleteProfile - Successful, profile created:', {
+        id: profile.id,
+        username: profile.username,
+        displayName: profile.displayName
+      });
+      
+      // CRITICAL: Clear cached user data before refreshing
+      setUser(null);
+      
+      // Wait a moment for the profile to be saved
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Refresh user data to get the complete profile with forced refresh
+      await fetchUserProfile(true);
+      
+      console.log('AuthContext: CompleteProfile - User data refreshed successfully');
+    } catch (error: any) {
+      console.error('AuthContext: CompleteProfile - Error:', error);
+      throw error;
     }
-
-    const profile = await response.json();
-    console.log('AuthContext: CompleteProfile - Successful, refreshing user data');
-    
-    // CRITICAL: Clear cached user data before refreshing
-    setUser(null);
-    
-    // Wait a moment for the profile to be saved
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Refresh user data to get the complete profile with forced refresh
-    await fetchUserProfile(true);
   };
 
   const signOut = async () => {

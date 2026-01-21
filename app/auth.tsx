@@ -62,7 +62,20 @@ export default function AuthScreen() {
       // Don't redirect here - let the useEffect handle it based on user state
     } catch (error: any) {
       console.error('AuthScreen: Auth error:', error);
-      Alert.alert('Error', error.message || 'Authentication failed');
+      
+      // Provide more helpful error messages
+      let errorMessage = error.message || 'Authentication failed';
+      
+      // Handle specific error cases
+      if (errorMessage.includes('User already exists')) {
+        errorMessage = 'This email is already registered. Please sign in instead.';
+      } else if (errorMessage.includes('Invalid credentials') || errorMessage.includes('Incorrect')) {
+        errorMessage = 'Invalid email or password. Please try again.';
+      } else if (errorMessage.includes('Failed to load user profile')) {
+        errorMessage = 'Account exists but profile is incomplete. Please complete your profile.';
+      }
+      
+      Alert.alert('Error', errorMessage);
     } finally {
       setIsLoading(false);
     }
