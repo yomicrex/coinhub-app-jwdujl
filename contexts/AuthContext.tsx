@@ -39,22 +39,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       console.log('AuthContext: Fetching user profile from /me...', forceRefresh ? '(forced refresh)' : '');
       
-      // CRITICAL FIX: Use Better Auth's built-in fetch method which automatically includes the session token
-      // The authClient is already configured with baseURL '/api/auth', so we only need to specify '/me'
-      // This is the correct way to make authenticated requests with Better Auth
+      // CRITICAL FIX: Use direct fetch with session token from Better Auth
+      // Better Auth's $fetch might be wrapping the response in an unexpected way
       try {
-        const response = await authClient.$fetch('/me', {
-          method: 'GET',
-          query: forceRefresh ? { _t: Date.now(), _: Date.now() } : { _: Date.now() },
+        // Get the session token from Better Auth
+        const session = await authClient.getSession();
+        const sessionToken = session?.session?.token;
+        
+        console.log('AuthContext: Session token for /me request:', {
+          hasSession: !!session,
+          hasToken: !!sessionToken,
+          tokenLength: sessionToken?.length
         });
         
-        console.log('AuthContext: Profile fetch response:', {
-          hasData: !!response,
-          hasUser: !!(response as any)?.id,
-          hasProfile: !!(response as any)?.hasProfile
+        // Make direct fetch request with session token in cookie
+        const queryParams = forceRefresh ? `?_t=${Date.now()}&_=${Date.now()}` : `?_=${Date.now()}`;
+        const response = await fetch(`${API_URL}/api/auth/me${queryParams}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Cookie': sessionToken ? `session=${sessionToken}` : '',
+          },
+          credentials: 'include',
         });
-
-        const data = response as any;
+        
+        console.log('AuthContext: /me response status:', response.status);
+        
+        if (!response.ok) {
+          console.error('AuthContext: /me request failed with status:', response.status);
+          if (response.status === 401 || response.status === 404) {
+            console.log('AuthContext: User not authenticated or profile not found - clearing user state');
+            setUser(null);
+            return null;
+          }
+          throw new Error(`Failed to fetch user profile: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        console.log('AuthContext: Raw response from /me:', JSON.stringify(data));
+        console.log('AuthContext: Response type:', typeof data);
+        console.log('AuthContext: Response keys:', data ? Object.keys(data) : 'null');
+        
+        console.log('AuthContext: Profile fetch response:', {
+          hasData: !!data,
+          hasId: !!data?.id,
+          hasEmail: !!data?.email,
+          hasUsername: !!data?.username,
+          hasDisplayName: !!data?.displayName,
+          hasProfile: !!data?.hasProfile,
+          hasProfileField: data?.hasProfile,
+          id: data?.id,
+          email: data?.email,
+          username: data?.username,
+          displayName: data?.displayName
+        });
         
         // CRITICAL FIX: Check for new format FIRST (data.id exists means new format)
         // New format: { id, email, username, displayName, hasProfile, avatarUrl, bio, location }
@@ -156,6 +195,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } catch (fetchError: any) {
         console.error('AuthContext: Error fetching user profile:', fetchError);
+        console.error('AuthContext: Error details:', JSON.stringify(fetchError));
         
         // Check if it's a 401/404 error
         if (fetchError?.status === 401 || fetchError?.status === 404) {
@@ -343,12 +383,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('AuthContext: CompleteProfile - Completing profile with username:', username);
     
     try {
+      // Get the session token from Better Auth
+      const session = await authClient.getSession();
+      const sessionToken = session?.session?.token;
+      
+      console.log('AuthContext: CompleteProfile - Session token:', {
+        hasSession: !!session,
+        hasToken: !!sessionToken,
+        tokenLength: sessionToken?.length
+      });
+      
       // CRITICAL FIX: The authClient baseURL is '/api/auth', but profiles endpoint is at '/api/profiles'
       // So we need to use the full URL for this endpoint
+      // Also include the session token in the Cookie header
       const response = await fetch(`${API_URL}/api/profiles/complete`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Cookie': sessionToken ? `session=${sessionToken}` : '',
         },
         credentials: 'include', // Include cookies for session
         body: JSON.stringify({ username, displayName }),
@@ -356,7 +408,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Failed to complete profile');
+        console.error('AuthContext: CompleteProfile - Failed with status:', response.status, errorData);
+        throw new Error(errorData.message || errorData.error || 'Failed to complete profile');
       }
 
       const data = await response.json();
