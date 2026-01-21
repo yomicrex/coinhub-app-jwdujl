@@ -526,14 +526,31 @@ export function registerAuthRoutes(app: App) {
           profileUsername: profile?.username,
           profileEmail: profile?.email,
           profileFound: !!profile,
-          lookupStrategy: 'email-based'
+          lookupStrategy: 'user-id-based'
         },
         'GET /api/auth/me - Profile lookup complete'
       );
 
+      // Handle case where profile doesn't exist
+      if (!profile) {
+        app.logger.warn(
+          { userId: userRecord.id, email: userRecord.email },
+          'GET /api/auth/me - Profile not found for authenticated user'
+        );
+        return reply.status(404).send({
+          error: 'Profile not found',
+          message: 'Your profile is not yet set up. Please complete your profile using POST /api/profiles/complete',
+          user: {
+            id: userRecord.id,
+            email: userRecord.email,
+          },
+          hasProfile: false,
+        });
+      }
+
       // Generate signed URL for avatar if it exists
       let profileWithAvatar = profile;
-      if (profile && profile.avatarUrl) {
+      if (profile.avatarUrl) {
         try {
           const { url } = await app.storage.getSignedUrl(profile.avatarUrl);
           profileWithAvatar = { ...profile, avatarUrl: url };
@@ -546,9 +563,9 @@ export function registerAuthRoutes(app: App) {
       app.logger.info(
         {
           userId: userRecord.id,
-          username: profile?.username,
+          username: profile.username,
           email: userRecord.email,
-          hasProfile: !!profile
+          hasProfile: true
         },
         'GET /api/auth/me - Returning profile for user'
       );
@@ -563,7 +580,10 @@ export function registerAuthRoutes(app: App) {
           createdAt: userRecord.createdAt,
           updatedAt: userRecord.updatedAt
         },
-        profile: profileWithAvatar
+        profile: {
+          ...profileWithAvatar,
+          hasProfile: true
+        }
       };
     } catch (error) {
       app.logger.error({ err: error }, 'GET /api/auth/me - Failed to fetch current user');

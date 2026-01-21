@@ -685,4 +685,180 @@ export function registerProfileRoutes(app: App) {
       });
     }
   });
+
+  /**
+   * POST /api/profiles/complete
+   * Complete user profile for authenticated user (alternative to POST /api/auth/complete-profile)
+   * Creates profile if it doesn't exist, updates if it does
+   *
+   * Requires authentication via session
+   * Body: { username: string, displayName: string, bio?: string, location?: string, avatarUrl?: string }
+   * Returns: { id, email, username, displayName, bio, location, avatarUrl, role, hasProfile: true }
+   * Returns 401 if not authenticated
+   * Returns 400 if validation fails
+   * Returns 409 if username already taken
+   */
+  app.fastify.post('/api/profiles/complete', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.info('POST /api/profiles/complete - completing user profile');
+
+    try {
+      // Extract session token from cookies or Authorization header
+      const sessionToken = extractSessionToken(request);
+
+      if (!sessionToken) {
+        app.logger.warn('POST /api/profiles/complete - No session token found');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Authentication required' });
+      }
+
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken),
+      });
+
+      if (!sessionRecord) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'POST /api/profiles/complete - Session not found');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid' });
+      }
+
+      // Check if session is expired
+      if (new Date(sessionRecord.expiresAt) < new Date()) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'POST /api/profiles/complete - Session expired');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      }
+
+      // Get user record
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId),
+      });
+
+      if (!userRecord) {
+        app.logger.warn({ userId: sessionRecord.userId }, 'POST /api/profiles/complete - User not found');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+      }
+
+      app.logger.info({ userId: userRecord.id, email: userRecord.email }, 'Session validated for profile completion');
+
+      // Validate request body
+      const CompleteProfileSchema = z.object({
+        username: z.string().min(3).max(30),
+        displayName: z.string().min(1).max(100),
+        bio: z.string().max(500).optional(),
+        location: z.string().max(100).optional(),
+        avatarUrl: z.string().optional(),
+      });
+
+      const body = CompleteProfileSchema.parse(request.body);
+
+      app.logger.info(
+        { userId: userRecord.id, email: userRecord.email, username: body.username },
+        'Profile completion request validated'
+      );
+
+      // Check if username is already taken by a different user
+      const existingUsername = await app.db.query.users.findFirst({
+        where: eq(schema.users.username, body.username),
+      });
+
+      if (existingUsername && existingUsername.id !== userRecord.id) {
+        app.logger.warn({ username: body.username, userId: userRecord.id }, 'Username already taken');
+        return reply.status(409).send({ error: 'Username already taken' });
+      }
+
+      // Check if user already has a profile
+      const existingProfile = await app.db.query.users.findFirst({
+        where: eq(schema.users.id, userRecord.id),
+      });
+
+      let profile;
+
+      if (existingProfile) {
+        // Update existing profile
+        app.logger.info({ userId: userRecord.id, username: body.username }, 'Updating existing user profile');
+
+        await app.db
+          .update(schema.users)
+          .set({
+            username: body.username,
+            displayName: body.displayName,
+            bio: body.bio || null,
+            location: body.location || null,
+            avatarUrl: body.avatarUrl || null,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.users.id, userRecord.id));
+
+        profile = await app.db.query.users.findFirst({
+          where: eq(schema.users.id, userRecord.id),
+        });
+
+        app.logger.info({ userId: userRecord.id, username: body.username }, 'User profile updated successfully');
+      } else {
+        // Create new profile
+        app.logger.info({ userId: userRecord.id, username: body.username }, 'Creating new user profile');
+
+        await app.db.insert(schema.users).values({
+          id: userRecord.id,
+          email: userRecord.email,
+          username: body.username,
+          displayName: body.displayName,
+          bio: body.bio || null,
+          location: body.location || null,
+          avatarUrl: body.avatarUrl || null,
+          collectionPrivacy: 'public',
+          role: 'user',
+        });
+
+        profile = await app.db.query.users.findFirst({
+          where: eq(schema.users.id, userRecord.id),
+        });
+
+        app.logger.info(
+          { userId: userRecord.id, username: body.username, email: userRecord.email },
+          'User profile created successfully'
+        );
+      }
+
+      if (!profile) {
+        app.logger.error({ userId: userRecord.id }, 'Failed to retrieve profile after creation/update');
+        return reply.status(500).send({ error: 'Server error', message: 'Failed to complete profile' });
+      }
+
+      // Generate signed URL for avatar if it exists
+      let avatarUrl = profile.avatarUrl;
+      if (avatarUrl) {
+        try {
+          const { url } = await app.storage.getSignedUrl(avatarUrl);
+          avatarUrl = url;
+        } catch (urlError) {
+          app.logger.warn({ err: urlError, userId: userRecord.id }, 'Failed to generate avatar signed URL');
+          avatarUrl = null;
+        }
+      }
+
+      app.logger.info(
+        { userId: userRecord.id, username: profile.username },
+        'Returning completed profile'
+      );
+
+      return {
+        id: profile.id,
+        email: profile.email,
+        username: profile.username,
+        displayName: profile.displayName,
+        bio: profile.bio || null,
+        location: profile.location || null,
+        avatarUrl,
+        role: profile.role,
+        hasProfile: true,
+      };
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        app.logger.warn({ error: error.issues }, 'Validation error');
+        return reply.status(400).send({ error: 'Validation failed', details: error.issues });
+      }
+
+      app.logger.error({ err: error }, 'Failed to complete profile');
+      return reply.status(500).send({ error: 'Server error', message: 'Failed to complete profile' });
+    }
+  });
 }
