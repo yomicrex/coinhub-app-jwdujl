@@ -55,19 +55,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
 
         const data = response as any;
+        
+        // CRITICAL FIX: Check for new format FIRST (data.id exists means new format)
+        // New format: { id, email, username, displayName, hasProfile, avatarUrl, bio, location }
+        // Old format: { user: { id, email }, profile: { username, displayName, ... } }
+        const isNewFormat = !!data.id && data.hasProfile !== undefined;
+        
         console.log('AuthContext: Profile data received:', {
+          isNewFormat,
+          hasId: !!data.id,
           hasUser: !!data.user,
           hasProfile: !!data.profile,
           hasProfileField: data.hasProfile,
-          userId: data.user?.id || data.id,
-          email: data.user?.email || data.email,
-          profileEmail: data.profile?.email,
-          username: data.profile?.username || data.username,
-          displayName: data.profile?.displayName || data.displayName
+          userId: data.id || data.user?.id,
+          email: data.email || data.user?.email,
+          username: data.username || data.profile?.username,
+          displayName: data.displayName || data.profile?.displayName
         });
         
         // Handle new backend response format: { id, email, username, displayName, hasProfile }
-        if (data.hasProfile !== undefined) {
+        if (isNewFormat) {
           if (data.hasProfile) {
             // User has complete profile
             const combinedUser: User = {
