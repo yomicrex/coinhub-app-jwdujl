@@ -869,7 +869,10 @@ export default function TradeDetailScreen() {
 
           {/* Up for Trade Coin */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Up for Trade</Text>
+            <Text style={styles.sectionTitle}>Coin Up for Trade</Text>
+            <Text style={styles.sectionSubtitle}>
+              This is the coin that @{trade.coinOwner.username} wants to trade
+            </Text>
             <TouchableOpacity 
               style={styles.coinCard}
               onPress={() => handleViewCoinDetail(trade.coin)}
@@ -896,12 +899,14 @@ export default function TradeDetailScreen() {
               )}
               <View style={styles.coinInfo}>
                 <Text style={styles.coinTitle}>{trade.coin.title}</Text>
-                <Text style={styles.coinDetails}>
-                  {trade.coin.country} • {trade.coin.year}
-                </Text>
-                <Text style={styles.coinDetails}>Owner: @{trade.coinOwner.username}</Text>
+                <View style={styles.coinDetailsRow}>
+                  <Text style={styles.coinDetails}>{trade.coin.country}</Text>
+                  <Text style={styles.coinDetailsSeparator}>•</Text>
+                  <Text style={styles.coinDetails}>{trade.coin.year}</Text>
+                </View>
+                <Text style={styles.coinOwnerText}>Owner: @{trade.coinOwner.username}</Text>
                 <Text style={[styles.coinDetails, { color: colors.primary, marginTop: 4 }]}>
-                  Tap to view details
+                  Tap to view full details
                 </Text>
               </View>
             </TouchableOpacity>
@@ -909,9 +914,24 @@ export default function TradeDetailScreen() {
 
           {/* Offered Coins */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Offered Coins</Text>
+            <Text style={styles.sectionTitle}>Coins Offered in Exchange</Text>
+            <Text style={styles.sectionSubtitle}>
+              {trade.offers.length === 0 
+                ? 'No coins have been offered yet. Make an offer below!'
+                : 'Tap on any coin to view details and respond'}
+            </Text>
             {trade.offers.length === 0 ? (
-              <Text style={styles.emptyText}>No coins offered yet</Text>
+              <View style={styles.emptyOffersContainer}>
+                <IconSymbol
+                  ios_icon_name="arrow.down.circle"
+                  android_material_icon_name="arrow-downward"
+                  size={48}
+                  color={colors.textSecondary}
+                />
+                <Text style={styles.emptyOffersText}>
+                  Use the buttons below to offer a coin for trade
+                </Text>
+              </View>
             ) : (
               trade.offers.map((offer) => {
                 // Get the coin from either 'coin' or 'offeredCoin' property
@@ -925,20 +945,30 @@ export default function TradeDetailScreen() {
                   return null;
                 }
 
+                const isMyOffer = offerUser.id === user?.id;
+                const canRespond = !isMyOffer && canAcceptOffer && offer.status === 'pending';
+
                 return (
                   <View key={offer.id} style={styles.offerCard}>
                     <View style={styles.offerHeader}>
-                      <Text style={styles.offerUser}>
-                        @{offerUser.username}
-                      </Text>
+                      <View style={styles.offerUserContainer}>
+                        <Text style={styles.offerUser}>
+                          @{offerUser.username}
+                        </Text>
+                        {isMyOffer && (
+                          <View style={[styles.offerBadge, { backgroundColor: colors.primary, marginLeft: 8 }]}>
+                            <Text style={styles.offerBadgeText}>Your Offer</Text>
+                          </View>
+                        )}
+                      </View>
                       {offer.isCounterOffer && (
-                        <View style={styles.offerBadge}>
+                        <View style={[styles.offerBadge, { backgroundColor: '#9C27B0' }]}>
                           <Text style={styles.offerBadgeText}>Counter Offer</Text>
                         </View>
                       )}
                     </View>
                     <TouchableOpacity 
-                      style={styles.coinCard}
+                      style={[styles.coinCard, { marginBottom: 0 }]}
                       onPress={() => handleViewCoinDetail(offerCoin, offer)}
                       activeOpacity={0.7}
                     >
@@ -963,25 +993,37 @@ export default function TradeDetailScreen() {
                       )}
                       <View style={styles.coinInfo}>
                         <Text style={styles.coinTitle}>{offerCoin.title}</Text>
-                        <Text style={styles.coinDetails}>
-                          {offerCoin.country} • {offerCoin.year}
-                        </Text>
-                        <Text style={[styles.coinDetails, { color: colors.primary, marginTop: 4 }]}>
-                          Tap to view details and respond
-                        </Text>
+                        <View style={styles.coinDetailsRow}>
+                          <Text style={styles.coinDetails}>{offerCoin.country}</Text>
+                          <Text style={styles.coinDetailsSeparator}>•</Text>
+                          <Text style={styles.coinDetails}>{offerCoin.year}</Text>
+                        </View>
+                        {canRespond && (
+                          <Text style={[styles.coinDetails, { color: '#4CAF50', marginTop: 4, fontWeight: '600' }]}>
+                            👆 Tap to Accept, Reject, or Counter
+                          </Text>
+                        )}
+                        {!canRespond && (
+                          <Text style={[styles.coinDetails, { color: colors.primary, marginTop: 4 }]}>
+                            Tap to view full details
+                          </Text>
+                        )}
                       </View>
                     </TouchableOpacity>
                     {offer.message && (
-                      <Text style={styles.offerMessage}>{offer.message}</Text>
+                      <View style={styles.offerMessageContainer}>
+                        <Text style={styles.offerMessageLabel}>Message:</Text>
+                        <Text style={styles.offerMessage}>{offer.message}</Text>
+                      </View>
                     )}
                     {offer.status === 'accepted' && (
-                      <View style={[styles.offerBadge, { backgroundColor: '#4CAF50', marginTop: 8 }]}>
-                        <Text style={styles.offerBadgeText}>Accepted ✓</Text>
+                      <View style={[styles.offerBadge, { backgroundColor: '#4CAF50', marginTop: 8, alignSelf: 'flex-start' }]}>
+                        <Text style={styles.offerBadgeText}>✓ Accepted</Text>
                       </View>
                     )}
                     {offer.status === 'rejected' && (
-                      <View style={[styles.offerBadge, { backgroundColor: '#F44336', marginTop: 8 }]}>
-                        <Text style={styles.offerBadgeText}>Rejected</Text>
+                      <View style={[styles.offerBadge, { backgroundColor: '#F44336', marginTop: 8, alignSelf: 'flex-start' }]}>
+                        <Text style={styles.offerBadgeText}>✗ Rejected</Text>
                       </View>
                     )}
                   </View>
@@ -1270,23 +1312,42 @@ export default function TradeDetailScreen() {
                   {/* Action buttons for offered coins */}
                   {selectedOffer && canAcceptOffer && selectedOffer.status === 'pending' && (
                     <View style={styles.coinDetailActions}>
+                      <Text style={styles.actionPromptText}>What would you like to do?</Text>
                       <TouchableOpacity
-                        style={[styles.actionButton, styles.primaryButton, { flex: 1, marginRight: 8 }]}
+                        style={[styles.actionButton, styles.primaryButton, { marginBottom: 8 }]}
                         onPress={() => handleAcceptOffer(selectedOffer.id)}
                       >
-                        <Text style={styles.buttonText}>Accept Offer</Text>
+                        <IconSymbol
+                          ios_icon_name="checkmark.circle.fill"
+                          android_material_icon_name="check-circle"
+                          size={20}
+                          color="#FFFFFF"
+                        />
+                        <Text style={styles.buttonText}>Accept This Offer</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[styles.actionButton, styles.dangerButton, { flex: 1, marginRight: 8 }]}
+                        style={[styles.actionButton, styles.dangerButton, { marginBottom: 8 }]}
                         onPress={() => handleRejectOffer(selectedOffer.id)}
                       >
-                        <Text style={styles.buttonText}>Reject</Text>
+                        <IconSymbol
+                          ios_icon_name="xmark.circle.fill"
+                          android_material_icon_name="cancel"
+                          size={20}
+                          color="#FFFFFF"
+                        />
+                        <Text style={styles.buttonText}>Reject This Offer</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[styles.actionButton, styles.secondaryButton, { flex: 1 }]}
+                        style={[styles.actionButton, styles.secondaryButton]}
                         onPress={handleCounterOffer}
                       >
-                        <Text style={styles.buttonText}>Counter</Text>
+                        <IconSymbol
+                          ios_icon_name="arrow.triangle.2.circlepath"
+                          android_material_icon_name="sync"
+                          size={20}
+                          color="#FFFFFF"
+                        />
+                        <Text style={styles.buttonText}>Make Counter Offer</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -1640,7 +1701,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: colors.text,
+    marginBottom: 4,
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
     marginBottom: 12,
+    fontStyle: 'italic',
   },
   coinCard: {
     flexDirection: 'row',
@@ -1666,9 +1733,24 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 4,
   },
+  coinDetailsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
   coinDetails: {
     fontSize: 14,
     color: colors.textSecondary,
+  },
+  coinDetailsSeparator: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginHorizontal: 6,
+  },
+  coinOwnerText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   statusBadge: {
     alignSelf: 'flex-start',
@@ -1718,12 +1800,18 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
     marginBottom: 12,
+    borderWidth: 2,
+    borderColor: colors.border,
   },
   offerHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
+  },
+  offerUserContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   offerUser: {
     fontSize: 14,
@@ -1741,11 +1829,35 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.background,
   },
+  offerMessageContainer: {
+    marginTop: 8,
+    padding: 8,
+    backgroundColor: colors.background,
+    borderRadius: 8,
+  },
+  offerMessageLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
   offerMessage: {
     fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 8,
+    color: colors.text,
     fontStyle: 'italic',
+  },
+  emptyOffersContainer: {
+    alignItems: 'center',
+    padding: 24,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  emptyOffersText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 12,
   },
   messageContainer: {
     marginBottom: 12,
@@ -2035,10 +2147,16 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   coinDetailActions: {
-    flexDirection: 'row',
     marginTop: 24,
     paddingTop: 16,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  actionPromptText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 16,
+    textAlign: 'center',
   },
 });
