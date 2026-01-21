@@ -14,7 +14,7 @@ import {
   TextInput,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
-import { authenticatedFetchJSON } from '@/utils/api';
+import { authenticatedFetch } from '@/utils/api';
 
 interface Account {
   id: string;
@@ -39,12 +39,19 @@ export default function AdminViewAccountsScreen() {
   const fetchAccounts = async () => {
     try {
       console.log('AdminViewAccountsScreen: Calling GET /api/admin/users');
-      const data = await authenticatedFetchJSON<Account[]>('/api/admin/users');
+      const response = await authenticatedFetch('/api/admin/users');
       
+      if (!response.ok) {
+        console.error('AdminViewAccountsScreen: Failed to fetch users, status:', response.status);
+        throw new Error('Failed to load user accounts');
+      }
+
+      const data = await response.json();
       console.log('AdminViewAccountsScreen: Fetched users:', data);
       
-      // The new endpoint returns an array of users directly
-      const accountsData = Array.isArray(data) ? data : [];
+      // FIXED: The backend returns { users: [...], count: 4, usersWithProfiles: 2 }
+      // We need to extract the users array from the response
+      const accountsData = data.users || [];
       console.log('AdminViewAccountsScreen: Processed', accountsData.length, 'user accounts');
       setAccounts(accountsData);
     } catch (error: any) {
