@@ -42,10 +42,10 @@ export default function Index() {
     return <Redirect href="/auth" />;
   }
 
-  // User exists but needs profile completion - redirect to auth screen to complete profile
+  // User exists but needs profile completion - redirect to profile completion screen
   if (user.needsProfileCompletion) {
-    console.log('User needs profile completion - redirecting to auth screen');
-    return <Redirect href="/auth" />;
+    console.log('User needs profile completion - redirecting to complete-profile screen');
+    return <Redirect href="/complete-profile" />;
   }
 
   // User is authenticated and has complete profile - go to home

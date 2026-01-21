@@ -20,18 +20,23 @@ import { IconSymbol } from '@/components/IconSymbol';
 
 export default function AuthScreen() {
   const router = useRouter();
-  const { user, loading, signIn, signUp, completeProfile } = useAuth();
+  const { user, loading, signIn, signUp } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [username, setUsername] = useState('');
-  const [displayName, setDisplayName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   console.log('AuthScreen: Rendered with user:', user?.email, 'needsCompletion:', user?.needsProfileCompletion);
 
   useEffect(() => {
     console.log('AuthScreen: Auth state changed - loading:', loading, 'user:', user?.email, 'needsCompletion:', user?.needsProfileCompletion);
+    
+    // If user needs profile completion, redirect to complete-profile screen
+    if (!loading && user && user.needsProfileCompletion) {
+      console.log('AuthScreen: User needs profile completion, redirecting to complete-profile screen');
+      router.replace('/complete-profile');
+      return;
+    }
     
     // Only redirect if user is authenticated AND has a complete profile
     if (!loading && user && !user.needsProfileCompletion) {
@@ -71,48 +76,9 @@ export default function AuthScreen() {
         errorMessage = 'This email is already registered. Please sign in instead.';
       } else if (errorMessage.includes('Invalid credentials') || errorMessage.includes('Incorrect')) {
         errorMessage = 'Invalid email or password. Please try again.';
-      } else if (errorMessage.includes('Failed to load user profile')) {
-        // This means the account exists but the session validation failed
-        // Show a message and allow the user to try completing their profile
-        Alert.alert(
-          'Error',
-          'Account exists but profile is incomplete. Please complete your profile.',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                // The user state should already be set with needsProfileCompletion=true
-                // The useEffect will handle showing the profile completion form
-              }
-            }
-          ]
-        );
-        return; // Don't show the generic error alert
       }
       
       Alert.alert('Error', errorMessage);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleCompleteProfile = async () => {
-    console.log('AuthScreen: User tapped Complete Profile button');
-    
-    if (!username || !displayName) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      console.log('AuthScreen: Completing profile with username:', username);
-      await completeProfile(username, displayName);
-      console.log('AuthScreen: Profile completion successful, redirecting to home');
-      router.replace('/(tabs)/(home)');
-    } catch (error: any) {
-      console.error('AuthScreen: Profile completion error:', error);
-      Alert.alert('Error', error.message || 'Profile completion failed');
     } finally {
       setIsLoading(false);
     }
@@ -125,67 +91,6 @@ export default function AuthScreen() {
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
-      </SafeAreaView>
-    );
-  }
-
-  // Show profile completion form if user exists but needs to complete profile
-  const showProfileCompletion = user && user.needsProfileCompletion;
-
-  if (showProfileCompletion) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.keyboardView}
-        >
-          <ScrollView contentContainerStyle={styles.scrollContent}>
-            <View style={styles.header}>
-              <Text style={styles.logo}>🪙</Text>
-              <Text style={styles.title}>Complete Your Profile</Text>
-              <Text style={styles.subtitle}>Choose a username and display name</Text>
-            </View>
-
-            <View style={styles.form}>
-              <View style={styles.inputContainer}>
-                <IconSymbol ios_icon_name="at" android_material_icon_name="alternate-email" size={20} color={colors.textSecondary} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Username"
-                  placeholderTextColor={colors.textSecondary}
-                  value={username}
-                  onChangeText={setUsername}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </View>
-
-              <View style={styles.inputContainer}>
-                <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={20} color={colors.textSecondary} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Display Name"
-                  placeholderTextColor={colors.textSecondary}
-                  value={displayName}
-                  onChangeText={setDisplayName}
-                  autoCapitalize="words"
-                />
-              </View>
-
-              <TouchableOpacity
-                style={[styles.button, isLoading && styles.buttonDisabled]}
-                onPress={handleCompleteProfile}
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <ActivityIndicator color={colors.background} />
-                ) : (
-                  <Text style={styles.buttonText}>Complete Profile</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
