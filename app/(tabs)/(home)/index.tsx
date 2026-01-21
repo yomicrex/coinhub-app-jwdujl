@@ -6,6 +6,7 @@ import { colors } from '@/styles/commonStyles';
 import React, { useState, useEffect, useCallback } from 'react';
 import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { authenticatedFetch } from '@/utils/api';
 import {
   View,
   Text,
@@ -15,6 +16,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 
 interface Coin {
@@ -95,24 +97,61 @@ export default function HomeScreen() {
       return;
     }
     
+    // Find the coin to get its current like state
+    const coin = coins.find(c => c.id === coinId);
+    if (!coin) return;
+    
+    const wasLiked = coin.isLiked || false;
+    
+    // Optimistically update UI
+    setCoins(prevCoins => 
+      prevCoins.map(c => 
+        c.id === coinId 
+          ? { 
+              ...c, 
+              isLiked: !wasLiked,
+              likeCount: wasLiked ? (c.likeCount || 1) - 1 : (c.likeCount || 0) + 1
+            }
+          : c
+      )
+    );
+    
     try {
-      const response = await fetch(`${API_URL}/api/coins/${coinId}/like`, {
-        method: 'POST',
-        credentials: 'include',
+      const method = wasLiked ? 'DELETE' : 'POST';
+      console.log('HomeScreen: Sending', method, 'request to /api/coins/' + coinId + '/like');
+      
+      const response = await authenticatedFetch(`/api/coins/${coinId}/like`, {
+        method,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({}),
+        body: method === 'POST' ? JSON.stringify({}) : undefined,
       });
 
-      if (response.ok) {
-        console.log('HomeScreen: Like successful, refreshing feed');
-        fetchCoins();
-      } else {
-        console.error('HomeScreen: Failed to like coin, status:', response.status);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('HomeScreen: Failed to like coin, status:', response.status, 'error:', errorText);
+        throw new Error('Failed to toggle like');
       }
+      
+      console.log('HomeScreen: Like toggled successfully');
     } catch (error) {
       console.error('HomeScreen: Error liking coin:', error);
+      
+      // Revert optimistic update
+      setCoins(prevCoins => 
+        prevCoins.map(c => 
+          c.id === coinId 
+            ? { 
+                ...c, 
+                isLiked: wasLiked,
+                likeCount: wasLiked ? (c.likeCount || 0) + 1 : (c.likeCount || 1) - 1
+              }
+            : c
+        )
+      );
+      
+      Alert.alert('Error', 'Failed to update like status. Please try again.');
     }
   };
 

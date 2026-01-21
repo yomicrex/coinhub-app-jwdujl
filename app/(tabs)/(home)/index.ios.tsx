@@ -1,9 +1,7 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useRouter } from 'expo-router';
-import Constants from 'expo-constants';
+import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { authenticatedFetch, API_URL } from '@/utils/api';
 import {
   View,
   Text,
@@ -19,9 +17,11 @@ import {
   NativeSyntheticEvent,
   Alert,
 } from 'react-native';
+import Constants from 'expo-constants';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
-import { useAuth } from '@/contexts/AuthContext';
-import { authenticatedFetch, API_URL } from '@/utils/api';
 
 interface Coin {
   id: string;
@@ -50,30 +50,20 @@ interface Coin {
 const { width } = Dimensions.get('window');
 
 export default function FeedScreen() {
+  const { user } = useAuth();
+  const router = useRouter();
   const [coins, setCoins] = useState<Coin[]>([]);
   const [tradeCoins, setTradeCoins] = useState<Coin[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [imageIndices, setImageIndices] = useState<{ [key: string]: number }>({});
+  const [currentImageIndices, setCurrentImageIndices] = useState<{ [key: string]: number }>({});
   const scrollViewRefs = useRef<{ [key: string]: ScrollView | null }>({});
 
-  const { user } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    console.log('FeedScreen: Component mounted');
-    fetchCoins();
-    fetchTradeCoins();
-  }, []);
-
-  const fetchCoins = async () => {
+  const fetchCoins = useCallback(async () => {
+    console.log('FeedScreen: Fetching public coins feed');
     try {
-      console.log('FeedScreen: Fetching public coins feed from', `${API_URL}/api/coins/feed`);
       const response = await fetch(`${API_URL}/api/coins/feed`, {
         credentials: 'include',
-        headers: {
-          'Accept': 'application/json',
-        },
       });
 
       console.log('FeedScreen: Feed response status:', response.status);
@@ -92,16 +82,13 @@ export default function FeedScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchTradeCoins = async () => {
+  const fetchTradeCoins = useCallback(async () => {
+    console.log('FeedScreen: Fetching coins up for trade');
     try {
-      console.log('FeedScreen: Fetching trade coins from', `${API_URL}/api/coins/feed/trade`);
       const response = await fetch(`${API_URL}/api/coins/feed/trade`, {
         credentials: 'include',
-        headers: {
-          'Accept': 'application/json',
-        },
       });
 
       console.log('FeedScreen: Trade feed response status:', response.status);
@@ -118,15 +105,20 @@ export default function FeedScreen() {
       console.error('FeedScreen: Error fetching trade coins:', error);
       setTradeCoins([]);
     }
-  };
+  }, []);
 
-  const onRefresh = useCallback(() => {
+  useEffect(() => {
+    console.log('FeedScreen: Component mounted, user:', user?.username);
+    fetchCoins();
+    fetchTradeCoins();
+  }, [fetchCoins, fetchTradeCoins, user?.username]);
+
+  const onRefresh = useCallback(async () => {
     console.log('FeedScreen: User pulled to refresh');
     setRefreshing(true);
-    Promise.all([fetchCoins(), fetchTradeCoins()]).finally(() => {
-      setRefreshing(false);
-    });
-  }, []);
+    await Promise.all([fetchCoins(), fetchTradeCoins()]);
+    setRefreshing(false);
+  }, [fetchCoins, fetchTradeCoins]);
 
   const handleLike = async (coinId: string) => {
     console.log('FeedScreen: User tapped like button for coin:', coinId);
@@ -136,27 +128,90 @@ export default function FeedScreen() {
       router.push('/auth');
       return;
     }
-
+    
+    // Find the coin in either list
+    const coin = coins.find(c => c.id === coinId) || tradeCoins.find(c => c.id === coinId);
+    if (!coin) return;
+    
+    const wasLiked = coin.isLiked || false;
+    
+    // Optimistically update UI in both lists
+    setCoins(prevCoins => 
+      prevCoins.map(c => 
+        c.id === coinId 
+          ? { 
+              ...c, 
+              isLiked: !wasLiked,
+              likeCount: wasLiked ? (c.likeCount || c.like_count || 1) - 1 : (c.likeCount || c.like_count || 0) + 1,
+              like_count: wasLiked ? (c.likeCount || c.like_count || 1) - 1 : (c.likeCount || c.like_count || 0) + 1
+            }
+          : c
+      )
+    );
+    
+    setTradeCoins(prevCoins => 
+      prevCoins.map(c => 
+        c.id === coinId 
+          ? { 
+              ...c, 
+              isLiked: !wasLiked,
+              likeCount: wasLiked ? (c.likeCount || c.like_count || 1) - 1 : (c.likeCount || c.like_count || 0) + 1,
+              like_count: wasLiked ? (c.likeCount || c.like_count || 1) - 1 : (c.likeCount || c.like_count || 0) + 1
+            }
+          : c
+      )
+    );
+    
     try {
-      const response = await fetch(`${API_URL}/api/coins/${coinId}/like`, {
-        method: 'POST',
-        credentials: 'include',
+      const method = wasLiked ? 'DELETE' : 'POST';
+      console.log('FeedScreen: Sending', method, 'request to /api/coins/' + coinId + '/like');
+      
+      const response = await authenticatedFetch(`/api/coins/${coinId}/like`, {
+        method,
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
         },
-        body: JSON.stringify({}),
+        body: method === 'POST' ? JSON.stringify({}) : undefined,
       });
 
-      if (response.ok) {
-        console.log('FeedScreen: Like successful, refreshing feed');
-        fetchCoins();
-        fetchTradeCoins();
-      } else {
-        console.error('FeedScreen: Failed to like coin, status:', response.status);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('FeedScreen: Failed to like coin, status:', response.status, 'error:', errorText);
+        throw new Error('Failed to toggle like');
       }
+      
+      console.log('FeedScreen: Like toggled successfully');
     } catch (error) {
       console.error('FeedScreen: Error liking coin:', error);
+      
+      // Revert optimistic update in both lists
+      setCoins(prevCoins => 
+        prevCoins.map(c => 
+          c.id === coinId 
+            ? { 
+                ...c, 
+                isLiked: wasLiked,
+                likeCount: wasLiked ? (c.likeCount || c.like_count || 0) + 1 : (c.likeCount || c.like_count || 1) - 1,
+                like_count: wasLiked ? (c.likeCount || c.like_count || 0) + 1 : (c.likeCount || c.like_count || 1) - 1
+              }
+            : c
+        )
+      );
+      
+      setTradeCoins(prevCoins => 
+        prevCoins.map(c => 
+          c.id === coinId 
+            ? { 
+                ...c, 
+                isLiked: wasLiked,
+                likeCount: wasLiked ? (c.likeCount || c.like_count || 0) + 1 : (c.likeCount || c.like_count || 1) - 1,
+                like_count: wasLiked ? (c.likeCount || c.like_count || 0) + 1 : (c.likeCount || c.like_count || 1) - 1
+              }
+            : c
+        )
+      );
+      
+      Alert.alert('Error', 'Failed to update like status. Please try again.');
     }
   };
 
@@ -173,7 +228,7 @@ export default function FeedScreen() {
   };
 
   const handleUserPress = (userId: string, username: string) => {
-    console.log('FeedScreen: User tapped on profile:', username);
+    console.log('FeedScreen: User tapped on user profile:', username);
     router.push(`/user-profile?username=${username}`);
   };
 
@@ -182,8 +237,8 @@ export default function FeedScreen() {
     router.push(`/coin-detail?id=${coinId}`);
   };
 
-  const handleProposeTrade = async (coinId: string) => {
-    console.log('FeedScreen: User tapped propose trade button for coin:', coinId);
+  const handleProposeTrade = (coinId: string) => {
+    console.log('FeedScreen: User tapped propose trade for coin:', coinId);
     
     if (!user) {
       console.log('FeedScreen: User not logged in, redirecting to auth');
@@ -191,268 +246,47 @@ export default function FeedScreen() {
       router.push('/auth');
       return;
     }
-
-    try {
-      console.log('FeedScreen: Initiating trade for coin:', coinId);
-      console.log('FeedScreen: User ID:', user.id);
-      console.log('FeedScreen: User email:', user.email);
-      console.log('FeedScreen: User username:', user.username);
-      
-      const response = await authenticatedFetch('/api/trades/initiate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          coinId: coinId,
-        }),
-      });
-
-      console.log('FeedScreen: Trade initiate response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('FeedScreen: Failed to initiate trade, status:', response.status, 'error:', errorText);
-        
-        if (response.status === 401) {
-          console.error('FeedScreen: 401 Unauthorized - Session may be invalid or expired');
-          Alert.alert(
-            'Authentication Error', 
-            'Your session has expired. Please sign in again.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Sign In', onPress: () => router.push('/auth') }
-            ]
-          );
-          return;
-        }
-        
-        let errorMessage = 'Failed to initiate trade';
-        try {
-          const errorData = JSON.parse(errorText);
-          errorMessage = errorData.message || errorData.error || errorMessage;
-          console.error('FeedScreen: Parsed error:', errorData);
-        } catch (e) {
-          errorMessage = errorText || errorMessage;
-          console.error('FeedScreen: Raw error text:', errorText);
-        }
-        
-        throw new Error(errorMessage);
-      }
-
-      const data = await response.json();
-      console.log('FeedScreen: Trade initiated successfully:', data);
-
-      const tradeId = data.trade?.id || data.id;
-      if (tradeId) {
-        Alert.alert(
-          'Trade Initiated!',
-          'Your trade request has been created.',
-          [
-            {
-              text: 'View Trade',
-              onPress: () => router.push(`/trade-detail?id=${tradeId}`),
-            },
-            { text: 'OK', style: 'cancel' },
-          ]
-        );
-      }
-    } catch (error: any) {
-      console.error('FeedScreen: Error initiating trade:', error);
-      Alert.alert('Error', error.message || 'Failed to initiate trade. Please try again.');
-    }
+    
+    router.push(`/coin-detail?id=${coinId}`);
   };
 
   const handleImageScroll = (coinId: string, event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(contentOffsetX / width);
-    setImageIndices((prev) => ({ ...prev, [coinId]: index }));
+    setCurrentImageIndices(prev => ({ ...prev, [coinId]: index }));
   };
 
   const renderTradeCoinCard = (item: Coin) => {
     const likeCount = item.likeCount ?? item.like_count ?? 0;
     const commentCount = item.commentCount ?? item.comment_count ?? 0;
-    const tradeStatus = item.tradeStatus ?? item.trade_status;
-    const avatarUrl = item.user.avatarUrl ?? item.user.avatar_url;
-    const currentImageIndex = imageIndices[item.id] || 0;
-    const isOwner = user?.id === item.user.id;
-
-    return (
-      <View key={item.id} style={styles.tradeCoinCard}>
-        <TouchableOpacity
-          style={styles.tradeCoinContent}
-          onPress={() => handleCoinPress(item.id)}
-          activeOpacity={0.9}
-        >
-          {/* User Info */}
-          <TouchableOpacity
-            style={styles.userInfo}
-            onPress={() => handleUserPress(item.user.id, item.user.username)}
-          >
-            {avatarUrl ? (
-              <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-            ) : (
-              <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                <IconSymbol
-                  ios_icon_name="person.fill"
-                  android_material_icon_name="person"
-                  size={16}
-                  color={colors.textSecondary}
-                />
-              </View>
-            )}
-            <View style={styles.userDetails}>
-              <Text style={styles.displayName}>{item.user.displayName}</Text>
-              <Text style={styles.username}>@{item.user.username}</Text>
-            </View>
-          </TouchableOpacity>
-
-          {/* Images */}
-          {item.images && item.images.length > 0 ? (
-            <View>
-              <ScrollView
-                ref={(ref) => {
-                  scrollViewRefs.current[item.id] = ref;
-                }}
-                horizontal
-                pagingEnabled
-                showsHorizontalScrollIndicator={false}
-                onScroll={(e) => handleImageScroll(item.id, e)}
-                scrollEventThrottle={16}
-              >
-                {item.images.map((image, index) => (
-                  <Image
-                    key={index}
-                    source={{ uri: image.url }}
-                    style={styles.tradeCoinImage}
-                    resizeMode="cover"
-                  />
-                ))}
-              </ScrollView>
-              {item.images.length > 1 && (
-                <View style={styles.imageIndicatorContainer}>
-                  {item.images.map((_, index) => (
-                    <View
-                      key={index}
-                      style={[
-                        styles.imageIndicator,
-                        index === currentImageIndex && styles.imageIndicatorActive,
-                      ]}
-                    />
-                  ))}
-                </View>
-              )}
-            </View>
-          ) : (
-            <View style={[styles.tradeCoinImage, styles.imagePlaceholder]}>
-              <IconSymbol
-                ios_icon_name="photo"
-                android_material_icon_name="image"
-                size={48}
-                color={colors.textSecondary}
-              />
-            </View>
-          )}
-
-          {/* Coin Info */}
-          <View style={styles.tradeCoinInfo}>
-            <Text style={styles.tradeCoinTitle}>{item.title}</Text>
-            <Text style={styles.tradeCoinMeta}>
-              {item.country} • {item.year}
-            </Text>
-          </View>
-
-          {/* Actions */}
-          <View style={styles.actions}>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={(e) => {
-                e.stopPropagation();
-                handleLike(item.id);
-              }}
-            >
-              <IconSymbol
-                ios_icon_name={item.isLiked ? 'heart.fill' : 'heart'}
-                android_material_icon_name={item.isLiked ? 'favorite' : 'favorite-border'}
-                size={24}
-                color={item.isLiked ? colors.error : colors.text}
-              />
-              <Text style={styles.actionText}>{likeCount}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.actionButton}>
-              <IconSymbol
-                ios_icon_name="bubble.left"
-                android_material_icon_name="chat-bubble-outline"
-                size={24}
-                color={colors.text}
-              />
-              <Text style={styles.actionText}>{commentCount}</Text>
-            </TouchableOpacity>
-
-            {tradeStatus === 'open_to_trade' && (
-              <View style={styles.tradeBadge}>
-                <IconSymbol
-                  ios_icon_name="arrow.2.squarepath"
-                  android_material_icon_name="swap-horiz"
-                  size={14}
-                  color="#FFFFFF"
-                />
-                <Text style={styles.tradeBadgeText}>Open to Trade</Text>
-              </View>
-            )}
-          </View>
-        </TouchableOpacity>
-
-        {/* Propose Trade Button */}
-        {tradeStatus === 'open_to_trade' && !isOwner && (
-          <TouchableOpacity
-            style={styles.proposeTradeButton}
-            onPress={() => handleProposeTrade(item.id)}
-          >
-            <IconSymbol
-              ios_icon_name="arrow.2.squarepath"
-              android_material_icon_name="swap-horiz"
-              size={18}
-              color="#FFFFFF"
-            />
-            <Text style={styles.proposeTradeButtonText}>Propose Trade</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    );
-  };
-
-  const renderCoinCard = ({ item }: { item: Coin }) => {
-    const likeCount = item.likeCount ?? item.like_count ?? 0;
-    const commentCount = item.commentCount ?? item.comment_count ?? 0;
-    const tradeStatus = item.tradeStatus ?? item.trade_status;
-    const avatarUrl = item.user.avatarUrl ?? item.user.avatar_url;
-    const currentImageIndex = imageIndices[item.id] || 0;
+    const currentIndex = currentImageIndices[item.id] || 0;
+    const avatarUrl = item.user.avatarUrl || item.user.avatar_url;
 
     return (
       <TouchableOpacity
-        style={styles.coinCard}
+        key={item.id}
+        style={styles.tradeCoinCard}
         onPress={() => handleCoinPress(item.id)}
-        activeOpacity={0.9}
       >
         {/* User Info */}
         <TouchableOpacity
           style={styles.userInfo}
           onPress={() => handleUserPress(item.user.id, item.user.username)}
         >
-          {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-          ) : (
-            <View style={[styles.avatar, styles.avatarPlaceholder]}>
-              <IconSymbol
-                ios_icon_name="person.fill"
-                android_material_icon_name="person"
-                size={20}
-                color={colors.textSecondary}
-              />
-            </View>
-          )}
+          <View style={styles.avatarContainer}>
+            {avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+            ) : (
+              <View style={styles.avatarPlaceholder}>
+                <IconSymbol
+                  ios_icon_name="person.fill"
+                  android_material_icon_name="person"
+                  size={20}
+                  color={colors.textSecondary}
+                />
+              </View>
+            )}
+          </View>
           <View style={styles.userDetails}>
             <Text style={styles.displayName}>{item.user.displayName}</Text>
             <Text style={styles.username}>@{item.user.username}</Text>
@@ -463,9 +297,142 @@ export default function FeedScreen() {
         {item.images && item.images.length > 0 ? (
           <View>
             <ScrollView
-              ref={(ref) => {
-                scrollViewRefs.current[item.id] = ref;
-              }}
+              ref={(ref) => (scrollViewRefs.current[item.id] = ref)}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onScroll={(e) => handleImageScroll(item.id, e)}
+              scrollEventThrottle={16}
+            >
+              {item.images.map((image, index) => (
+                <Image
+                  key={index}
+                  source={{ uri: image.url }}
+                  style={styles.tradeCoinImage}
+                  resizeMode="cover"
+                />
+              ))}
+            </ScrollView>
+            {item.images.length > 1 && (
+              <View style={styles.imageIndicatorContainer}>
+                {item.images.map((_, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.imageIndicator,
+                      index === currentIndex && styles.imageIndicatorActive,
+                    ]}
+                  />
+                ))}
+              </View>
+            )}
+          </View>
+        ) : (
+          <View style={[styles.tradeCoinImage, styles.imagePlaceholder]}>
+            <IconSymbol
+              ios_icon_name="photo"
+              android_material_icon_name="image"
+              size={48}
+              color={colors.textSecondary}
+            />
+          </View>
+        )}
+
+        {/* Coin Info */}
+        <View style={styles.coinInfo}>
+          <Text style={styles.coinTitle}>{item.title}</Text>
+          <Text style={styles.coinMeta}>
+            {item.country} • {item.year}
+          </Text>
+        </View>
+
+        {/* Actions */}
+        <View style={styles.actions}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              handleLike(item.id);
+            }}
+          >
+            <IconSymbol
+              ios_icon_name={item.isLiked ? 'heart.fill' : 'heart'}
+              android_material_icon_name={item.isLiked ? 'favorite' : 'favorite-border'}
+              size={24}
+              color={item.isLiked ? colors.error : colors.text}
+            />
+            <Text style={styles.actionText}>{likeCount}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionButton}>
+            <IconSymbol
+              ios_icon_name="bubble.left"
+              android_material_icon_name="chat-bubble-outline"
+              size={24}
+              color={colors.text}
+            />
+            <Text style={styles.actionText}>{commentCount}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.tradeButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              handleProposeTrade(item.id);
+            }}
+          >
+            <IconSymbol
+              ios_icon_name="arrow.2.squarepath"
+              android_material_icon_name="swap-horiz"
+              size={16}
+              color="#FFFFFF"
+            />
+            <Text style={styles.tradeButtonText}>Propose Trade</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderCoinCard = ({ item }: { item: Coin }) => {
+    const likeCount = item.likeCount ?? item.like_count ?? 0;
+    const commentCount = item.commentCount ?? item.comment_count ?? 0;
+    const tradeStatus = item.tradeStatus || item.trade_status;
+    const currentIndex = currentImageIndices[item.id] || 0;
+    const avatarUrl = item.user.avatarUrl || item.user.avatar_url;
+
+    return (
+      <TouchableOpacity style={styles.coinCard} onPress={() => handleCoinPress(item.id)}>
+        {/* User Info */}
+        <TouchableOpacity
+          style={styles.userInfo}
+          onPress={() => handleUserPress(item.user.id, item.user.username)}
+        >
+          <View style={styles.avatarContainer}>
+            {avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+            ) : (
+              <View style={styles.avatarPlaceholder}>
+                <IconSymbol
+                  ios_icon_name="person.fill"
+                  android_material_icon_name="person"
+                  size={20}
+                  color={colors.textSecondary}
+                />
+              </View>
+            )}
+          </View>
+          <View style={styles.userDetails}>
+            <Text style={styles.displayName}>{item.user.displayName}</Text>
+            <Text style={styles.username}>@{item.user.username}</Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* Images */}
+        {item.images && item.images.length > 0 ? (
+          <View>
+            <ScrollView
+              ref={(ref) => (scrollViewRefs.current[item.id] = ref)}
               horizontal
               pagingEnabled
               showsHorizontalScrollIndicator={false}
@@ -488,7 +455,7 @@ export default function FeedScreen() {
                     key={index}
                     style={[
                       styles.imageIndicator,
-                      index === currentImageIndex && styles.imageIndicatorActive,
+                      index === currentIndex && styles.imageIndicatorActive,
                     ]}
                   />
                 ))}
@@ -547,7 +514,7 @@ export default function FeedScreen() {
               <IconSymbol
                 ios_icon_name="arrow.2.squarepath"
                 android_material_icon_name="swap-horiz"
-                size={14}
+                size={16}
                 color="#FFFFFF"
               />
               <Text style={styles.tradeBadgeText}>Open to Trade</Text>
@@ -566,6 +533,7 @@ export default function FeedScreen() {
         </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading feed...</Text>
         </View>
       </SafeAreaView>
     );
@@ -590,25 +558,21 @@ export default function FeedScreen() {
         renderItem={renderCoinCard}
         keyExtractor={(item) => item.id}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
         ListHeaderComponent={
           tradeCoins.length > 0 ? (
             <View style={styles.tradeSection}>
-              <Text style={styles.tradeSectionTitle}>Available for Trade</Text>
+              <Text style={styles.tradeSectionTitle}>🔄 Available for Trade</Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.tradeScrollContent}
               >
-                {tradeCoins.map((coin) => (
-                  <React.Fragment key={coin.id}>{renderTradeCoinCard(coin)}</React.Fragment>
-                ))}
+                {tradeCoins.map((coin) => renderTradeCoinCard(coin))}
               </ScrollView>
+              <View style={styles.sectionDivider} />
+              <Text style={styles.feedSectionTitle}>📰 Recent Coins</Text>
             </View>
           ) : null
         }
@@ -622,9 +586,12 @@ export default function FeedScreen() {
             />
             <Text style={styles.emptyText}>No coins yet</Text>
             <Text style={styles.emptySubtext}>Be the first to share a coin!</Text>
+            <TouchableOpacity style={styles.emptyButton} onPress={handleAddCoin}>
+              <Text style={styles.emptyButtonText}>Add Your First Coin</Text>
+            </TouchableOpacity>
           </View>
         }
-        contentContainerStyle={coins.length === 0 ? styles.emptyList : undefined}
+        contentContainerStyle={coins.length === 0 && tradeCoins.length === 0 ? styles.emptyList : undefined}
       />
     </SafeAreaView>
   );
@@ -639,10 +606,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
   },
   headerTitle: {
     fontSize: 24,
@@ -657,67 +625,53 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
   tradeSection: {
+    backgroundColor: colors.surface,
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
   },
   tradeSectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '700',
     color: colors.text,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     marginBottom: 12,
   },
   tradeScrollContent: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
   },
   tradeCoinCard: {
     width: 280,
-    marginHorizontal: 4,
-    backgroundColor: colors.card,
+    backgroundColor: colors.background,
     borderRadius: 12,
+    marginHorizontal: 4,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.border,
   },
-  tradeCoinContent: {
-    flex: 1,
-  },
   tradeCoinImage: {
     width: 280,
     height: 280,
-    backgroundColor: colors.border,
   },
-  tradeCoinInfo: {
-    padding: 12,
+  sectionDivider: {
+    height: 8,
+    backgroundColor: colors.background,
+    marginTop: 16,
   },
-  tradeCoinTitle: {
-    fontSize: 16,
+  feedSectionTitle: {
+    fontSize: 18,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: 4,
-  },
-  tradeCoinMeta: {
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  proposeTradeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-    paddingVertical: 12,
     paddingHorizontal: 16,
-    gap: 8,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  proposeTradeButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
+    paddingTop: 16,
+    paddingBottom: 8,
+    backgroundColor: colors.surface,
   },
   coinCard: {
     backgroundColor: colors.surface,
@@ -730,14 +684,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 12,
   },
+  avatarContainer: {
+    marginRight: 12,
+  },
   avatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.border,
-    marginRight: 12,
   },
   avatarPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -756,9 +715,9 @@ const styles = StyleSheet.create({
   coinImage: {
     width: width,
     height: 400,
-    backgroundColor: colors.border,
   },
   imagePlaceholder: {
+    backgroundColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -769,6 +728,7 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: 'row',
     justifyContent: 'center',
+    alignItems: 'center',
     gap: 6,
   },
   imageIndicator: {
@@ -816,15 +776,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.primary,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
     marginLeft: 'auto',
-    gap: 4,
+    gap: 6,
   },
   tradeBadgeText: {
     color: '#FFFFFF',
     fontSize: 12,
+    fontWeight: '600',
+  },
+  tradeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginLeft: 'auto',
+    gap: 6,
+  },
+  tradeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '600',
   },
   emptyList: {
@@ -846,5 +821,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     marginTop: 8,
+  },
+  emptyButton: {
+    marginTop: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+  },
+  emptyButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.background,
   },
 });

@@ -17,9 +17,8 @@ import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
-import Constants from 'expo-constants';
+import { authenticatedFetch, API_URL } from '@/utils/api';
 
-const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 const { width } = Dimensions.get('window');
 
 interface CoinDetail {
@@ -131,35 +130,43 @@ export default function CoinDetailScreen() {
     console.log('CoinDetailScreen: User tapped like button, current state:', isLiked);
     
     const previousState = isLiked;
+    const previousCount = coin.likeCount;
+    
+    // Optimistically update UI
     setIsLiked(!isLiked);
+    setCoin({
+      ...coin,
+      likeCount: previousState ? coin.likeCount - 1 : coin.likeCount + 1,
+    });
 
     try {
       const method = previousState ? 'DELETE' : 'POST';
-      const response = await fetch(`${API_URL}/api/coins/${coin.id}/like`, {
+      console.log('CoinDetailScreen: Sending', method, 'request to /api/coins/' + coin.id + '/like');
+      
+      const response = await authenticatedFetch(`/api/coins/${coin.id}/like`, {
         method,
-        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
         },
         body: method === 'POST' ? JSON.stringify({}) : undefined,
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('CoinDetailScreen: Failed to toggle like, status:', response.status, 'error:', errorText);
         throw new Error('Failed to toggle like');
       }
 
       console.log('CoinDetailScreen: Like toggled successfully');
-      
-      // Update like count
-      setCoin({
-        ...coin,
-        likeCount: previousState ? coin.likeCount - 1 : coin.likeCount + 1,
-      });
     } catch (error) {
       console.error('CoinDetailScreen: Error toggling like:', error);
+      // Revert optimistic update
       setIsLiked(previousState);
-      Alert.alert('Error', 'Failed to update like status');
+      setCoin({
+        ...coin,
+        likeCount: previousCount,
+      });
+      Alert.alert('Error', 'Failed to update like status. Please try again.');
     }
   };
 
@@ -193,15 +200,12 @@ export default function CoinDetailScreen() {
     setProposingTrade(true);
 
     try {
-      console.log('CoinDetailScreen: Sending trade initiate request to:', `${API_URL}/api/trades/initiate`);
-      console.log('CoinDetailScreen: Request body:', JSON.stringify({ coinId: coin.id }));
+      console.log('CoinDetailScreen: Sending trade initiate request using authenticatedFetch');
       
-      const response = await fetch(`${API_URL}/api/trades/initiate`, {
+      const response = await authenticatedFetch('/api/trades/initiate', {
         method: 'POST',
-        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
         },
         body: JSON.stringify({
           coinId: coin.id,
@@ -209,7 +213,6 @@ export default function CoinDetailScreen() {
       });
 
       console.log('CoinDetailScreen: Trade initiate response status:', response.status);
-      console.log('CoinDetailScreen: Response headers:', JSON.stringify(Object.fromEntries(response.headers.entries())));
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -217,10 +220,9 @@ export default function CoinDetailScreen() {
         
         if (response.status === 401) {
           console.error('CoinDetailScreen: 401 Unauthorized - Session may be invalid or expired');
-          console.error('CoinDetailScreen: User object:', JSON.stringify(user));
           Alert.alert(
             'Authentication Error', 
-            'Your session has expired or is invalid. Please sign in again.',
+            'Your session has expired. Please sign in again.',
             [
               { text: 'Cancel', style: 'cancel' },
               { text: 'Sign In', onPress: () => router.push('/auth') }
@@ -235,7 +237,6 @@ export default function CoinDetailScreen() {
           errorMessage = errorData.message || errorData.error || errorMessage;
           console.error('CoinDetailScreen: Parsed error:', errorData);
         } catch (e) {
-          // If parsing fails, use the raw text
           errorMessage = errorText || errorMessage;
           console.error('CoinDetailScreen: Raw error text:', errorText);
         }
@@ -296,12 +297,8 @@ export default function CoinDetailScreen() {
           onPress: async () => {
             try {
               console.log('CoinDetailScreen: Deleting coin:', coin.id);
-              const response = await fetch(`${API_URL}/api/coins/${coin.id}`, {
+              const response = await authenticatedFetch(`/api/coins/${coin.id}`, {
                 method: 'DELETE',
-                credentials: 'include',
-                headers: {
-                  'Accept': 'application/json',
-                },
               });
 
               if (!response.ok) {
