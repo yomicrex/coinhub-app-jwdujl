@@ -109,7 +109,7 @@ export default function CoinDetailScreen() {
     }
 
     fetchCoinDetail();
-  }, [fetchCoinDetail]);
+  }, [actualId, fetchCoinDetail]);
 
   const onRefresh = async () => {
     console.log('CoinDetailScreen: User pulled to refresh');

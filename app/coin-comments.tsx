@@ -72,7 +72,7 @@ export default function CoinCommentsScreen() {
   useEffect(() => {
     console.log('CoinCommentsScreen: Component mounted, coinId:', coinId);
     fetchComments();
-  }, [fetchComments]);
+  }, [coinId, fetchComments]);
 
   const handleSubmitComment = async () => {
     if (!newComment.trim()) {
@@ -89,7 +89,6 @@ export default function CoinCommentsScreen() {
     setSubmitting(true);
 
     try {
-      // FIXED: Use authenticatedFetch for authenticated requests
       const response = await authenticatedFetch(`/api/coins/${coinId}/comments`, {
         method: 'POST',
         headers: {

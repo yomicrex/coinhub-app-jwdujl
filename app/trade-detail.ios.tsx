@@ -139,7 +139,7 @@ export default function TradeDetailScreen() {
       setError('No trade ID provided');
       setLoading(false);
     }
-  }, [id]);
+  }, [id, fetchTradeDetail]);
 
   const fetchTradeDetail = async () => {
     if (!id) {

@@ -60,11 +60,10 @@ export default function UserListScreen() {
   useEffect(() => {
     console.log('UserListScreen: Fetching', type, 'for user:', userId);
     fetchUsers();
-  }, [fetchUsers]);
+  }, [type, userId, fetchUsers]);
 
   const handleUserPress = (user: User) => {
     console.log('UserListScreen: User tapped on:', user.username, 'userId:', user.id);
-    // Pass username to user-profile screen
     router.push(`/user-profile?username=${encodeURIComponent(user.username)}`);
   };
 

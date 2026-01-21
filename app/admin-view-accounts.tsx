@@ -71,6 +71,46 @@ export default function AdminViewAccountsScreen() {
     router.push(`/user-profile?username=${username}`);
   };
 
+  const handleDeleteAccount = (account: Account) => {
+    console.log('AdminViewAccountsScreen: Admin initiating delete for account:', account.id);
+    
+    Alert.alert(
+      'Delete Account',
+      `Are you sure you want to permanently delete the account for ${account.displayName || account.username || account.email}? This action cannot be undone and will delete all their coins, comments, likes, and trades.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log('AdminViewAccountsScreen: Sending DELETE request for user ID:', account.id);
+              // FIXED: Use userId instead of username - backend expects userId in path parameter
+              const response = await authenticatedFetch(`/api/admin/users/${account.id}`, {
+                method: 'DELETE',
+              });
+
+              if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                console.error('AdminViewAccountsScreen: Delete failed:', errorData);
+                throw new Error(errorData.message || 'Failed to delete account');
+              }
+
+              console.log('AdminViewAccountsScreen: Account deleted successfully');
+              Alert.alert('Success', 'Account deleted successfully');
+              
+              // Remove the account from the list
+              setAccounts(accounts.filter(a => a.id !== account.id));
+            } catch (error: any) {
+              console.error('AdminViewAccountsScreen: Error deleting account:', error);
+              Alert.alert('Error', error.message || 'Failed to delete account. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const filteredAccounts = accounts.filter(
     (account) =>
       account.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -207,12 +247,26 @@ export default function AdminViewAccountsScreen() {
               </View>
               <View style={styles.accountFooter}>
                 <Text style={styles.userIdText}>ID: {account.id}</Text>
-                <IconSymbol
-                  ios_icon_name="chevron.right"
-                  android_material_icon_name="arrow-forward"
-                  size={20}
-                  color={colors.textSecondary}
-                />
+                <View style={styles.accountActions}>
+                  <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={() => handleDeleteAccount(account)}
+                  >
+                    <IconSymbol
+                      ios_icon_name="trash"
+                      android_material_icon_name="delete"
+                      size={18}
+                      color="#FFFFFF"
+                    />
+                    <Text style={styles.deleteButtonText}>Delete</Text>
+                  </TouchableOpacity>
+                  <IconSymbol
+                    ios_icon_name="chevron.right"
+                    android_material_icon_name="arrow-forward"
+                    size={20}
+                    color={colors.textSecondary}
+                  />
+                </View>
               </View>
             </TouchableOpacity>
           ))
@@ -346,5 +400,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textSecondary,
     fontFamily: 'monospace',
+    flex: 1,
+  },
+  accountActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F44336',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 6,
+  },
+  deleteButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });

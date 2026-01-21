@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { authClient } from '@/lib/auth';
 import Constants from 'expo-constants';
 
@@ -37,13 +37,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const getToken = async (): Promise<string | null> => {
     try {
-      // Get session from Better Auth
       const session = await authClient.getSession();
-      
-      // CRITICAL FIX: Better Auth returns session in different formats
-      // Format 1: { data: { session: { token: "..." } } }
-      // Format 2: { session: { token: "..." } }
-      // Format 3: { token: "..." }
       const sessionToken = session?.data?.session?.token || session?.session?.token || session?.token;
       
       if (sessionToken) {
@@ -59,11 +53,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const fetchUserProfile = async (forceRefresh = false) => {
+  const fetchUserProfile = useCallback(async (forceRefresh = false) => {
     try {
       console.log('AuthContext: Fetching user profile from /me...', forceRefresh ? '(forced refresh)' : '');
       
-      // Get the session token
       const sessionToken = await getToken();
       
       if (!sessionToken) {
@@ -74,14 +67,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       console.log('AuthContext: Making /me request with session token');
       
-      // CRITICAL FIX: Use Authorization header for React Native (more reliable than cookies)
-      // Backend's extractSessionToken supports both "Bearer <token>" and "session=<token>" cookie
       const queryParams = forceRefresh ? `?_t=${Date.now()}` : '';
       const response = await fetch(`${API_URL}/api/auth/me${queryParams}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          // Use Authorization header with Bearer token (preferred for React Native)
           'Authorization': `Bearer ${sessionToken}`,
         },
         credentials: 'include',
@@ -111,14 +101,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         hasProfile: !!data?.hasProfile,
       });
       
-      // CRITICAL FIX: Check for new format FIRST (data.id exists means new format)
-      // New format: { id, email, username, displayName, hasProfile, avatarUrl, bio, location }
       const isNewFormat = !!data.id && data.hasProfile !== undefined;
       
-      // Handle new backend response format: { id, email, username, displayName, hasProfile }
       if (isNewFormat) {
         if (data.hasProfile) {
-          // User has complete profile
           const combinedUser: User = {
             id: data.id,
             email: data.email,
@@ -133,7 +119,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(combinedUser);
           return combinedUser;
         } else {
-          // User exists but no profile - needs completion
           const userWithoutProfile: User = {
             id: data.id,
             email: data.email,
@@ -145,7 +130,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
       
-      // Handle old backend response format: { user, profile }
       if (data.user && data.profile) {
         const combinedUser: User = {
           id: data.user.id,
@@ -161,7 +145,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(combinedUser);
         return combinedUser;
       } else if (data.user) {
-        // User exists but no profile yet - needs profile completion
         const userWithoutProfile: User = {
           id: data.user.id,
           email: data.user.email,
@@ -180,9 +163,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       return null;
     }
-  };
+  }, []);
 
-  const fetchUser = async () => {
+  const fetchUser = useCallback(async () => {
     try {
       console.log('AuthContext: Initializing auth - fetching user...');
       await fetchUserProfile();
@@ -193,12 +176,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
       console.log('AuthContext: Auth initialization complete');
     }
-  };
+  }, [fetchUserProfile]);
 
   useEffect(() => {
     console.log('AuthContext: AuthProvider mounted, initializing...');
     
-    // Set a timeout to ensure loading doesn't hang forever
     const timeout = setTimeout(() => {
       console.log('AuthContext: Auth initialization timeout - forcing loading to false');
       setLoading(false);
@@ -211,13 +193,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       clearTimeout(timeout);
     };
-  }, []);
+  }, [fetchUser]);
 
   const signIn = async (email: string, password: string) => {
     console.log('AuthContext: SignIn - Attempting to sign in with email:', email);
     
     try {
-      // CRITICAL: Clear any cached user data BEFORE signing in
       console.log('AuthContext: SignIn - Clearing cached user data BEFORE sign in');
       setUser(null);
       
@@ -233,11 +214,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       console.log('AuthContext: SignIn - Better Auth sign-in successful');
       
-      // Wait for the session to be stored by Better Auth client
       console.log('AuthContext: SignIn - Waiting for session to be stored...');
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Fetch the full user profile directly from the backend with forced refresh
       console.log('AuthContext: SignIn - Fetching fresh user profile with forced refresh');
       const userData = await fetchUserProfile(true);
       
@@ -258,7 +237,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('AuthContext: SignUp - Attempting to sign up with email:', email);
     
     try {
-      // CRITICAL: Clear any cached user data BEFORE signing up
       console.log('AuthContext: SignUp - Clearing cached user data BEFORE sign up');
       setUser(null);
       
@@ -275,11 +253,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       console.log('AuthContext: SignUp - Better Auth sign-up successful');
       
-      // Wait for the session to be stored by Better Auth client
       console.log('AuthContext: SignUp - Waiting for session to be stored...');
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Fetch the full user profile with forced refresh
       console.log('AuthContext: SignUp - Fetching fresh user profile with forced refresh');
       const userData = await fetchUserProfile(true);
       
@@ -300,7 +276,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('AuthContext: CompleteProfile - Completing profile with username:', username);
     
     try {
-      // Get the session token
       const sessionToken = await getToken();
       
       if (!sessionToken) {
@@ -308,7 +283,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error('Not authenticated. Please sign in again.');
       }
       
-      // CRITICAL FIX: Use Authorization header for React Native (more reliable than cookies)
       const response = await fetch(`${API_URL}/api/profiles/complete`, {
         method: 'POST',
         headers: {
@@ -329,13 +303,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       console.log('AuthContext: CompleteProfile - Successful, profile created');
       
-      // CRITICAL: Clear cached user data before refreshing
       setUser(null);
       
-      // Wait a moment for the profile to be saved
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Refresh user data to get the complete profile with forced refresh
       await fetchUserProfile(true);
       
       console.log('AuthContext: CompleteProfile - User data refreshed successfully');
@@ -349,18 +320,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('AuthContext: SignOut - Signing out user');
     
     try {
-      // CRITICAL: Clear user state FIRST before making any API calls
       console.log('AuthContext: SignOut - Clearing user state IMMEDIATELY');
       setUser(null);
       
-      // Call Better Auth signOut
       await authClient.signOut();
       
       console.log('AuthContext: SignOut - Better Auth signOut complete');
     } catch (error) {
       console.error('AuthContext: SignOut - Error during signOut:', error);
       
-      // Even if signOut fails, ensure user state is cleared
       setUser(null);
     }
     
@@ -370,10 +338,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshUser = async () => {
     console.log('AuthContext: RefreshUser - Refreshing user data');
     
-    // CRITICAL: Clear cached user data before refreshing
     setUser(null);
     
-    // Wait a moment before fetching
     await new Promise(resolve => setTimeout(resolve, 500));
     
     await fetchUserProfile(true);
