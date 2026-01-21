@@ -461,7 +461,7 @@ export function registerTradesRoutes(app: App) {
             with: {
               offerer: { columns: { id: true, username: true, displayName: true, avatarUrl: true } },
               offeredCoin: {
-                columns: { id: true, title: true, country: true, year: true },
+                columns: { id: true, title: true, country: true, year: true, description: true, condition: true },
                 with: { images: true },
               },
             },
@@ -845,6 +845,8 @@ export function registerTradesRoutes(app: App) {
             title: newCoin.title,
             country: newCoin.country,
             year: newCoin.year,
+            description: newCoin.description,
+            condition: newCoin.condition,
             agency: newCoin.agency,
             version: newCoin.version,
             manufacturer: newCoin.manufacturer,
@@ -985,7 +987,7 @@ export function registerTradesRoutes(app: App) {
             columns: { id: true, username: true, displayName: true, avatarUrl: true },
           },
           offeredCoin: {
-            columns: { id: true, title: true, country: true, year: true },
+            columns: { id: true, title: true, country: true, year: true, description: true, condition: true },
             with: { images: true },
           },
         },
@@ -1025,6 +1027,8 @@ export function registerTradesRoutes(app: App) {
           title: offerWithDetails.offeredCoin.title,
           country: offerWithDetails.offeredCoin.country,
           year: offerWithDetails.offeredCoin.year,
+          description: offerWithDetails.offeredCoin.description,
+          condition: offerWithDetails.offeredCoin.condition,
           images: coinImagesWithUrls,
         } : null,
         offeredBy: {
@@ -1157,6 +1161,24 @@ export function registerTradesRoutes(app: App) {
         .update(schema.trades)
         .set({ status: 'accepted', updatedAt: new Date() })
         .where(eq(schema.trades.id, tradeId));
+
+      // Create trade shipping record with all fields initialized to false/null
+      await app.db
+        .insert(schema.tradeShipping)
+        .values({
+          tradeId,
+          initiatorShipped: false,
+          initiatorTrackingNumber: null,
+          initiatorShippedAt: null,
+          initiatorReceived: false,
+          initiatorReceivedAt: null,
+          ownerShipped: false,
+          ownerTrackingNumber: null,
+          ownerShippedAt: null,
+          ownerReceived: false,
+          ownerReceivedAt: null,
+        })
+        .onConflictDoNothing();
 
       // Fetch updated trade with full details
       const updatedTrade = await app.db.query.trades.findFirst({
