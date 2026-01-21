@@ -1,196 +1,166 @@
 
 import Constants from 'expo-constants';
-import { Platform } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
+import { authClient } from '@/lib/auth';
 
-const API_URL = Constants.expoConfig?.extra?.backendUrl || "https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev";
-const SESSION_TOKEN_KEY = "coinhub_session_token";
+const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 
 /**
- * Get the stored session token
+ * Get the session token from Better Auth
  */
 async function getSessionToken(): Promise<string | null> {
   try {
-    if (Platform.OS === "web") {
-      return localStorage.getItem(SESSION_TOKEN_KEY);
-    } else {
-      return await SecureStore.getItemAsync(SESSION_TOKEN_KEY);
+    const session = await authClient.getSession();
+    
+    // CRITICAL FIX: Better Auth returns session in different formats
+    const sessionToken = session?.data?.session?.token || session?.session?.token || session?.token;
+    
+    if (sessionToken) {
+      console.log('API: Token extracted successfully, length:', sessionToken.length);
+      return sessionToken;
     }
+    
+    console.log('API: No session token found');
+    return null;
   } catch (error) {
-    console.error("getSessionToken: Error retrieving session token:", error);
+    console.error('API: Error getting token:', error);
     return null;
   }
 }
 
 /**
- * Create authenticated fetch options with Authorization header (React Native compatible)
+ * Make an authenticated API request with Better Auth session cookie
  */
-export async function createAuthenticatedFetch(url: string, options: RequestInit = {}): Promise<Response> {
+export async function authenticatedFetch(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<Response> {
   const sessionToken = await getSessionToken();
   
-  const fetchOptions: RequestInit = {
-    ...options,
-    credentials: 'include',
-    headers: {
-      ...options.headers,
-    },
-  };
-
-  // Add Authorization header with session token (React Native compatible)
-  if (sessionToken) {
-    (fetchOptions.headers as Record<string, string>)['Authorization'] = `Bearer ${sessionToken}`;
+  if (!sessionToken) {
+    console.error('API: No session token available for authenticated request');
+    throw new Error('Not authenticated. Please sign in again.');
   }
-
-  console.log(`API: ${options.method || 'GET'} ${url}`, sessionToken ? '(authenticated)' : '(unauthenticated)');
   
-  return fetch(url, fetchOptions);
-}
-
-/**
- * Helper function for authenticated GET requests
- */
-export async function authenticatedGet(endpoint: string): Promise<Response> {
-  return createAuthenticatedFetch(`${API_URL}${endpoint}`, {
-    method: 'GET',
-    headers: {
-      'Accept': 'application/json',
-    },
+  const url = endpoint.startsWith('http') ? endpoint : `${API_URL}${endpoint}`;
+  
+  console.log('API: Making authenticated request to:', url);
+  
+  // CRITICAL FIX: Send token in cookie format for Better Auth
+  const headers = {
+    ...options.headers,
+    'Cookie': `better-auth.session_token=${sessionToken}`,
+  };
+  
+  // Add Content-Type for JSON requests if not already set
+  if (options.body && typeof options.body === 'string' && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
+  
+  const response = await fetch(url, {
+    ...options,
+    headers,
+    credentials: 'include',
   });
+  
+  console.log('API: Response status:', response.status);
+  
+  return response;
 }
 
 /**
- * Helper function for authenticated POST requests
+ * Make an authenticated JSON API request
  */
-export async function authenticatedPost(endpoint: string, body: any): Promise<Response> {
-  return createAuthenticatedFetch(`${API_URL}${endpoint}`, {
+export async function authenticatedFetchJSON<T = any>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const response = await authenticatedFetch(endpoint, options);
+  
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    console.error('API: Request failed:', response.status, errorText);
+    throw new Error(`Request failed: ${response.status} ${errorText}`);
+  }
+  
+  return response.json();
+}
+
+/**
+ * Upload a file with authentication
+ */
+export async function authenticatedUpload(
+  endpoint: string,
+  formData: FormData
+): Promise<Response> {
+  const sessionToken = await getSessionToken();
+  
+  if (!sessionToken) {
+    console.error('API: No session token available for upload');
+    throw new Error('Not authenticated. Please sign in again.');
+  }
+  
+  const url = endpoint.startsWith('http') ? endpoint : `${API_URL}${endpoint}`;
+  
+  console.log('API: Uploading to:', url);
+  
+  // CRITICAL FIX: Send token in cookie format for Better Auth
+  // DO NOT set Content-Type for FormData - browser will set it with boundary
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Cookie': `better-auth.session_token=${sessionToken}`,
+    },
+    credentials: 'include',
+    body: formData,
+  });
+  
+  console.log('API: Upload response status:', response.status);
+  
+  return response;
+}
+
+// Legacy functions for backward compatibility
+export async function deleteCurrentUserAccount() {
+  console.log('API: Deleting current user account');
+  const response = await authenticatedFetch('/api/users/me', {
+    method: 'DELETE',
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to delete account');
+  }
+  
+  return response.json();
+}
+
+export async function deleteAllUsers() {
+  console.log('API: Admin deleting all users');
+  const response = await authenticatedFetch('/api/admin/delete-all-users', {
+    method: 'DELETE',
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to delete all users');
+  }
+  
+  return response.json();
+}
+
+export async function grantAdminAccess(email: string) {
+  console.log('API: Granting admin access to:', email);
+  const response = await authenticatedFetch('/api/admin/grant-admin-access', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Accept': 'application/json',
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ email }),
   });
-}
-
-/**
- * Helper function for authenticated PUT requests
- */
-export async function authenticatedPut(endpoint: string, body: any): Promise<Response> {
-  return createAuthenticatedFetch(`${API_URL}${endpoint}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-}
-
-/**
- * Helper function for authenticated DELETE requests
- */
-export async function authenticatedDelete(endpoint: string): Promise<Response> {
-  return createAuthenticatedFetch(`${API_URL}${endpoint}`, {
-    method: 'DELETE',
-    headers: {
-      'Accept': 'application/json',
-    },
-  });
-}
-
-/**
- * Helper function for authenticated PATCH requests
- */
-export async function authenticatedPatch(endpoint: string, body: any): Promise<Response> {
-  return createAuthenticatedFetch(`${API_URL}${endpoint}`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-}
-
-/**
- * Delete the current user's account
- * This is a destructive operation that permanently removes all user data
- */
-export async function deleteCurrentUserAccount(): Promise<{ success: boolean; message: string }> {
-  try {
-    console.log('API: Deleting current user account via DELETE /api/users/me');
-    const response = await authenticatedDelete('/api/users/me');
-    
-    if (response.ok) {
-      const result = await response.json();
-      console.log('API: Account deleted successfully:', result);
-      return { success: true, message: result.message || 'Account deleted successfully' };
-    } else {
-      const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-      console.error('API: Failed to delete account:', errorData);
-      return { success: false, message: errorData.message || 'Failed to delete account' };
-    }
-  } catch (error) {
-    console.error('API: Error deleting account:', error);
-    return { success: false, message: 'An error occurred while deleting your account' };
+  
+  if (!response.ok) {
+    throw new Error('Failed to grant admin access');
   }
-}
-
-/**
- * ADMIN ONLY: Delete all user accounts and profiles
- * This is an extremely destructive operation that wipes ALL user data from the system
- * Requires admin authentication
- */
-export async function deleteAllUsers(): Promise<{ success: boolean; deletedCount?: number; message: string }> {
-  try {
-    console.log('API: [ADMIN] Deleting ALL users via DELETE /api/admin/delete-all-users');
-    const response = await authenticatedDelete('/api/admin/delete-all-users');
-    
-    if (response.ok) {
-      const result = await response.json();
-      console.log('API: [ADMIN] All users deleted successfully:', result);
-      return { 
-        success: true, 
-        deletedCount: result.deletedCount,
-        message: result.message || `Successfully deleted ${result.deletedCount} user accounts` 
-      };
-    } else {
-      const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-      console.error('API: [ADMIN] Failed to delete all users:', errorData);
-      return { success: false, message: errorData.message || 'Failed to delete all users' };
-    }
-  } catch (error) {
-    console.error('API: [ADMIN] Error deleting all users:', error);
-    return { success: false, message: 'An error occurred while deleting all users' };
-  }
-}
-
-/**
- * Grant admin access to a user by email
- * For development/testing purposes - allows any authenticated user to grant admin access
- */
-export async function grantAdminAccess(email: string): Promise<{ success: boolean; message: string; userId?: string }> {
-  try {
-    console.log('API: [ADMIN] Granting admin access to user:', email);
-    const response = await authenticatedPost('/api/admin/grant-admin-access', { email });
-    
-    if (response.ok) {
-      const result = await response.json();
-      console.log('API: [ADMIN] Admin access granted successfully:', result);
-      return { 
-        success: true, 
-        userId: result.userId,
-        message: result.message || 'Admin access granted successfully' 
-      };
-    } else {
-      const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-      console.error('API: [ADMIN] Failed to grant admin access:', errorData);
-      return { success: false, message: errorData.message || 'Failed to grant admin access' };
-    }
-  } catch (error) {
-    console.error('API: [ADMIN] Error granting admin access:', error);
-    return { success: false, message: 'An error occurred while granting admin access' };
-  }
+  
+  return response.json();
 }
 
 export { API_URL };

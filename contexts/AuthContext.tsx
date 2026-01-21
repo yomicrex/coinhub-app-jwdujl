@@ -35,212 +35,148 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const getToken = async (): Promise<string | null> => {
+    try {
+      // Get session from Better Auth
+      const session = await authClient.getSession();
+      
+      // CRITICAL FIX: Better Auth returns session in different formats
+      // Format 1: { data: { session: { token: "..." } } }
+      // Format 2: { session: { token: "..." } }
+      // Format 3: { token: "..." }
+      const sessionToken = session?.data?.session?.token || session?.session?.token || session?.token;
+      
+      if (sessionToken) {
+        console.log('AuthContext: Token extracted successfully, length:', sessionToken.length);
+        return sessionToken;
+      }
+      
+      console.log('AuthContext: No session token found');
+      return null;
+    } catch (error) {
+      console.error('AuthContext: Error getting token:', error);
+      return null;
+    }
+  };
+
   const fetchUserProfile = async (forceRefresh = false) => {
     try {
       console.log('AuthContext: Fetching user profile from /me...', forceRefresh ? '(forced refresh)' : '');
       
+      // Get the session token
+      const sessionToken = await getToken();
+      
+      if (!sessionToken) {
+        console.log('AuthContext: No valid session token found - user not authenticated');
+        setUser(null);
+        return null;
+      }
+      
+      console.log('AuthContext: Making /me request with session token');
+      
       // CRITICAL FIX: Use Better Auth's $fetch which automatically handles session cookies
       // This ensures the session token is sent correctly to the backend
-      try {
-        // Check if we have a session first
-        const session = await authClient.getSession();
-        
-        console.log('AuthContext: Session check before /me request:', {
-          hasSession: !!session,
-          sessionKeys: session ? Object.keys(session) : [],
-          hasDataSession: !!session?.data?.session,
-          hasSessionProp: !!session?.session,
-          fullSession: JSON.stringify(session).substring(0, 200)
-        });
-        
-        // CRITICAL FIX: Better Auth returns session in different formats:
-        // Format 1: { data: { session: { token: "..." } } }
-        // Format 2: { session: { token: "..." } }
-        // Format 3: { token: "..." }
-        const sessionToken = session?.data?.session?.token || session?.session?.token || session?.token;
-        
-        console.log('AuthContext: Token extraction:', {
-          hasDataSessionToken: !!session?.data?.session?.token,
-          hasSessionToken: !!session?.session?.token,
-          hasDirectToken: !!session?.token,
-          extractedToken: sessionToken?.substring(0, 20)
-        });
-        
-        if (!session || !sessionToken) {
-          console.log('AuthContext: No valid session token found - user not authenticated');
-          setUser(null);
-          return null;
-        }
-        
-        console.log('AuthContext: Making /me request with session token');
-        
-        // CRITICAL FIX: Use direct fetch with Authorization header for React Native
-        // React Native doesn't automatically send cookies like browsers do
-        // So we need to manually include the session token in the Authorization header
-        const queryParams = forceRefresh ? `?_t=${Date.now()}` : '';
-        const response = await fetch(`${API_URL}/api/auth/me${queryParams}`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${sessionToken}`,
-          },
-          credentials: 'include',
-        });
-        
-        console.log('AuthContext: /me response status:', response.status);
-        
-        if (!response.ok) {
-          console.error('AuthContext: /me request failed with status:', response.status);
-          if (response.status === 401 || response.status === 404) {
-            console.log('AuthContext: User not authenticated or profile not found - clearing user state');
-            setUser(null);
-            return null;
-          }
-          throw new Error(`Failed to fetch user profile: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        console.log('AuthContext: /me response received successfully');
-        
-        console.log('AuthContext: Raw response from /me:', JSON.stringify(data));
-        console.log('AuthContext: Response type:', typeof data);
-        console.log('AuthContext: Response keys:', data ? Object.keys(data) : 'null');
-        
-        console.log('AuthContext: Profile fetch response:', {
-          hasData: !!data,
-          hasId: !!data?.id,
-          hasEmail: !!data?.email,
-          hasUsername: !!data?.username,
-          hasDisplayName: !!data?.displayName,
-          hasProfile: !!data?.hasProfile,
-          hasProfileField: data?.hasProfile,
-          id: data?.id,
-          email: data?.email,
-          username: data?.username,
-          displayName: data?.displayName
-        });
-        
-        // CRITICAL FIX: Check for new format FIRST (data.id exists means new format)
-        // New format: { id, email, username, displayName, hasProfile, avatarUrl, bio, location }
-        // Old format: { user: { id, email }, profile: { username, displayName, ... } }
-        const isNewFormat = !!data.id && data.hasProfile !== undefined;
-        
-        console.log('AuthContext: Profile data received:', {
-          isNewFormat,
-          hasId: !!data.id,
-          hasUser: !!data.user,
-          hasProfile: !!data.profile,
-          hasProfileField: data.hasProfile,
-          userId: data.id || data.user?.id,
-          email: data.email || data.user?.email,
-          username: data.username || data.profile?.username,
-          displayName: data.displayName || data.profile?.displayName
-        });
-        
-        // Handle new backend response format: { id, email, username, displayName, hasProfile }
-        if (isNewFormat) {
-          if (data.hasProfile) {
-            // User has complete profile
-            const combinedUser: User = {
-              id: data.id,
-              email: data.email,
-              username: data.username,
-              displayName: data.displayName,
-              avatarUrl: data.avatarUrl,
-              bio: data.bio,
-              location: data.location,
-              needsProfileCompletion: false,
-            };
-            console.log('AuthContext: Setting user with complete profile (new format):', {
-              id: combinedUser.id,
-              email: combinedUser.email,
-              username: combinedUser.username,
-              displayName: combinedUser.displayName,
-              needsProfileCompletion: false
-            });
-            setUser(combinedUser);
-            return combinedUser;
-          } else {
-            // User exists but no profile - needs completion
-            const userWithoutProfile: User = {
-              id: data.id,
-              email: data.email,
-              needsProfileCompletion: true,
-            };
-            console.log('AuthContext: Setting user without profile (new format) - needs completion:', {
-              id: userWithoutProfile.id,
-              email: userWithoutProfile.email,
-              needsProfileCompletion: true
-            });
-            setUser(userWithoutProfile);
-            return userWithoutProfile;
-          }
-        }
-        
-        // Handle old backend response format: { user, profile }
-        // Combine auth user and profile data
-        if (data.user && data.profile) {
-          const combinedUser: User = {
-            id: data.user.id,
-            email: data.user.email,
-            username: data.profile.username,
-            displayName: data.profile.displayName,
-            avatarUrl: data.profile.avatarUrl,
-            bio: data.profile.bio,
-            location: data.profile.location,
-            needsProfileCompletion: !data.profile.username, // If no username, needs completion
-          };
-          console.log('AuthContext: Setting user with profile (old format):', {
-            id: combinedUser.id,
-            email: combinedUser.email,
-            username: combinedUser.username,
-            displayName: combinedUser.displayName,
-            needsProfileCompletion: combinedUser.needsProfileCompletion
-          });
-          setUser(combinedUser);
-          return combinedUser;
-        } else if (data.user) {
-          // User exists but no profile yet - needs profile completion
-          const userWithoutProfile: User = {
-            id: data.user.id,
-            email: data.user.email,
-            needsProfileCompletion: true,
-          };
-          console.log('AuthContext: Setting user without profile (old format) - needs completion:', {
-            id: userWithoutProfile.id,
-            email: userWithoutProfile.email,
-            needsProfileCompletion: true
-          });
-          setUser(userWithoutProfile);
-          return userWithoutProfile;
-        } else {
-          console.log('AuthContext: No user data in response - clearing user state');
-          setUser(null);
-          return null;
-        }
-      } catch (fetchError: any) {
-        console.error('AuthContext: Error fetching user profile:', fetchError);
-        console.error('AuthContext: Error details:', {
-          message: fetchError?.message,
-          status: fetchError?.status,
-          statusCode: fetchError?.statusCode,
-        });
-        
-        // Check if it's a 401/404 error (user not authenticated or profile not found)
-        const statusCode = fetchError?.status || fetchError?.statusCode;
-        if (statusCode === 401 || statusCode === 404) {
+      const queryParams = forceRefresh ? `?_t=${Date.now()}` : '';
+      const response = await fetch(`${API_URL}/api/auth/me${queryParams}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          // CRITICAL: Send token in cookie format for Better Auth
+          'Cookie': `better-auth.session_token=${sessionToken}`,
+        },
+        credentials: 'include',
+      });
+      
+      console.log('AuthContext: /me response status:', response.status);
+      
+      if (!response.ok) {
+        console.error('AuthContext: /me request failed with status:', response.status);
+        if (response.status === 401 || response.status === 404) {
           console.log('AuthContext: User not authenticated or profile not found - clearing user state');
           setUser(null);
           return null;
         }
-        
-        // For other errors, also clear user state to be safe
-        console.log('AuthContext: Unexpected error - clearing user state');
+        throw new Error(`Failed to fetch user profile: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('AuthContext: /me response received successfully');
+      
+      console.log('AuthContext: Profile fetch response:', {
+        hasData: !!data,
+        hasId: !!data?.id,
+        hasEmail: !!data?.email,
+        hasUsername: !!data?.username,
+        hasDisplayName: !!data?.displayName,
+        hasProfile: !!data?.hasProfile,
+      });
+      
+      // CRITICAL FIX: Check for new format FIRST (data.id exists means new format)
+      // New format: { id, email, username, displayName, hasProfile, avatarUrl, bio, location }
+      const isNewFormat = !!data.id && data.hasProfile !== undefined;
+      
+      // Handle new backend response format: { id, email, username, displayName, hasProfile }
+      if (isNewFormat) {
+        if (data.hasProfile) {
+          // User has complete profile
+          const combinedUser: User = {
+            id: data.id,
+            email: data.email,
+            username: data.username,
+            displayName: data.displayName,
+            avatarUrl: data.avatarUrl,
+            bio: data.bio,
+            location: data.location,
+            needsProfileCompletion: false,
+          };
+          console.log('AuthContext: Setting user with complete profile (new format)');
+          setUser(combinedUser);
+          return combinedUser;
+        } else {
+          // User exists but no profile - needs completion
+          const userWithoutProfile: User = {
+            id: data.id,
+            email: data.email,
+            needsProfileCompletion: true,
+          };
+          console.log('AuthContext: Setting user without profile (new format) - needs completion');
+          setUser(userWithoutProfile);
+          return userWithoutProfile;
+        }
+      }
+      
+      // Handle old backend response format: { user, profile }
+      if (data.user && data.profile) {
+        const combinedUser: User = {
+          id: data.user.id,
+          email: data.user.email,
+          username: data.profile.username,
+          displayName: data.profile.displayName,
+          avatarUrl: data.profile.avatarUrl,
+          bio: data.profile.bio,
+          location: data.profile.location,
+          needsProfileCompletion: !data.profile.username,
+        };
+        console.log('AuthContext: Setting user with profile (old format)');
+        setUser(combinedUser);
+        return combinedUser;
+      } else if (data.user) {
+        // User exists but no profile yet - needs profile completion
+        const userWithoutProfile: User = {
+          id: data.user.id,
+          email: data.user.email,
+          needsProfileCompletion: true,
+        };
+        console.log('AuthContext: Setting user without profile (old format) - needs completion');
+        setUser(userWithoutProfile);
+        return userWithoutProfile;
+      } else {
+        console.log('AuthContext: No user data in response - clearing user state');
         setUser(null);
         return null;
       }
     } catch (error) {
-      console.error('AuthContext: Unexpected error fetching user profile:', error);
+      console.error('AuthContext: Error fetching user profile:', error);
       setUser(null);
       return null;
     }
@@ -266,7 +202,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const timeout = setTimeout(() => {
       console.log('AuthContext: Auth initialization timeout - forcing loading to false');
       setLoading(false);
-    }, 3000); // 3 second timeout
+    }, 3000);
     
     fetchUser().finally(() => {
       clearTimeout(timeout);
@@ -295,56 +231,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(result.error.message || 'Sign in failed');
       }
 
-      console.log('AuthContext: SignIn - Better Auth sign-in successful, result:', {
-        hasData: !!result.data,
-        hasUser: !!result.data?.user,
-        userId: result.data?.user?.id,
-        hasSession: !!result.data?.session,
-        sessionToken: result.data?.session?.token?.substring(0, 20),
-        resultKeys: result.data ? Object.keys(result.data) : [],
-        fullResult: JSON.stringify(result).substring(0, 300)
-      });
+      console.log('AuthContext: SignIn - Better Auth sign-in successful');
       
       // Wait for the session to be stored by Better Auth client
       console.log('AuthContext: SignIn - Waiting for session to be stored...');
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Verify session is stored
-      const storedSession = await authClient.getSession();
-      const storedToken = storedSession?.data?.session?.token || storedSession?.session?.token || storedSession?.token;
-      console.log('AuthContext: SignIn - Stored session check:', {
-        hasSession: !!storedSession,
-        sessionKeys: storedSession ? Object.keys(storedSession) : [],
-        hasDataSession: !!storedSession?.data?.session,
-        hasSessionProp: !!storedSession?.session,
-        hasToken: !!storedToken,
-        tokenLength: storedToken?.length,
-        tokenMatches: storedToken === result.data?.session?.token,
-        fullSession: JSON.stringify(storedSession).substring(0, 300)
-      });
       
       // Fetch the full user profile directly from the backend with forced refresh
       console.log('AuthContext: SignIn - Fetching fresh user profile with forced refresh');
       const userData = await fetchUserProfile(true);
       
       if (!userData) {
-        console.error('AuthContext: SignIn - Failed to fetch user profile after sign in');
-        // Don't throw error - the user might need to complete their profile
-        // The auth screen will handle showing the profile completion form
         console.log('AuthContext: SignIn - User may need to complete profile, continuing...');
         return;
       }
       
-      console.log('AuthContext: SignIn - User state updated successfully:', {
-        id: userData.id,
-        email: userData.email,
-        username: userData.username,
-        displayName: userData.displayName,
-        needsProfileCompletion: userData.needsProfileCompletion
-      });
+      console.log('AuthContext: SignIn - User state updated successfully');
     } catch (error: any) {
       console.error('AuthContext: SignIn - Error:', error);
-      // Clear user state on error
       setUser(null);
       throw new Error(error.message || 'Sign in failed');
     }
@@ -361,7 +265,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const result = await authClient.signUp.email({
         email,
         password,
-        name: email.split('@')[0], // Use email prefix as default name
+        name: email.split('@')[0],
       });
 
       if (result.error) {
@@ -369,50 +273,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(result.error.message || 'Sign up failed');
       }
 
-      console.log('AuthContext: SignUp - Better Auth sign-up successful, result:', {
-        hasData: !!result.data,
-        hasUser: !!result.data?.user,
-        userId: result.data?.user?.id,
-        hasSession: !!result.data?.session,
-        sessionToken: result.data?.session?.token?.substring(0, 20)
-      });
+      console.log('AuthContext: SignUp - Better Auth sign-up successful');
       
       // Wait for the session to be stored by Better Auth client
       console.log('AuthContext: SignUp - Waiting for session to be stored...');
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Verify session is stored
-      const storedSession = await authClient.getSession();
-      const storedToken = storedSession?.data?.session?.token || storedSession?.session?.token || storedSession?.token;
-      console.log('AuthContext: SignUp - Stored session check:', {
-        hasSession: !!storedSession,
-        hasToken: !!storedToken,
-        tokenLength: storedToken?.length,
-        tokenMatches: storedToken === result.data?.session?.token
-      });
       
       // Fetch the full user profile with forced refresh
       console.log('AuthContext: SignUp - Fetching fresh user profile with forced refresh');
       const userData = await fetchUserProfile(true);
       
       if (!userData) {
-        console.error('AuthContext: SignUp - Failed to fetch user profile after sign up');
-        // Don't throw error - the user might need to complete their profile
-        // The auth screen will handle showing the profile completion form
         console.log('AuthContext: SignUp - User may need to complete profile, continuing...');
         return;
       }
       
-      console.log('AuthContext: SignUp - User state updated successfully:', {
-        id: userData.id,
-        email: userData.email,
-        username: userData.username,
-        displayName: userData.displayName,
-        needsProfileCompletion: userData.needsProfileCompletion
-      });
+      console.log('AuthContext: SignUp - User state updated successfully');
     } catch (error: any) {
       console.error('AuthContext: SignUp - Error:', error);
-      // Clear user state on error
       setUser(null);
       throw new Error(error.message || 'Sign up failed');
     }
@@ -422,35 +300,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('AuthContext: CompleteProfile - Completing profile with username:', username);
     
     try {
-      // Check if we have a session first
-      const session = await authClient.getSession();
+      // Get the session token
+      const sessionToken = await getToken();
       
-      // CRITICAL FIX: Better Auth returns session in different formats
-      const sessionToken = session?.data?.session?.token || session?.session?.token || session?.token;
-      
-      console.log('AuthContext: CompleteProfile - Session check:', {
-        hasSession: !!session,
-        sessionKeys: session ? Object.keys(session) : [],
-        hasDataSession: !!session?.data?.session,
-        hasSessionProp: !!session?.session,
-        hasToken: !!sessionToken,
-        tokenLength: sessionToken?.length
-      });
-      
-      if (!session || !sessionToken) {
+      if (!sessionToken) {
         console.error('AuthContext: CompleteProfile - No valid session found');
         throw new Error('Not authenticated. Please sign in again.');
       }
       
-      // CRITICAL FIX: Use direct fetch for /api/profiles/complete since it's outside Better Auth's baseURL
-      // But we need to send the session cookie properly
-      // The issue is that React Native doesn't automatically send cookies like browsers do
-      // So we need to manually include the session token in the Authorization header
+      // CRITICAL FIX: Send token in cookie format for Better Auth
       const response = await fetch(`${API_URL}/api/profiles/complete`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${sessionToken}`,
+          'Cookie': `better-auth.session_token=${sessionToken}`,
         },
         credentials: 'include',
         body: JSON.stringify({ username, displayName }),
@@ -464,11 +327,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const data = await response.json();
 
-      console.log('AuthContext: CompleteProfile - Successful, profile created:', {
-        id: data.id,
-        username: data.username,
-        displayName: data.displayName
-      });
+      console.log('AuthContext: CompleteProfile - Successful, profile created');
       
       // CRITICAL: Clear cached user data before refreshing
       setUser(null);
@@ -518,13 +377,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await new Promise(resolve => setTimeout(resolve, 500));
     
     await fetchUserProfile(true);
-  };
-
-  const getToken = async (): Promise<string | null> => {
-    // Get session token from Better Auth
-    const session = await authClient.getSession();
-    // CRITICAL FIX: Better Auth returns session in different formats
-    return session?.data?.session?.token || session?.session?.token || session?.token || null;
   };
 
   return (

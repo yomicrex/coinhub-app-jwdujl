@@ -1,6 +1,5 @@
 
 import { Stack, useRouter } from 'expo-router';
-import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import React, { useState, useEffect } from 'react';
@@ -15,8 +14,7 @@ import {
   TextInput,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
-
-const API_URL = Constants.expoConfig?.extra?.backendUrl || 'http://localhost:3000';
+import { authenticatedFetchJSON } from '@/utils/api';
 
 interface Account {
   id: string;
@@ -41,25 +39,17 @@ export default function AdminViewAccountsScreen() {
   const fetchAccounts = async () => {
     try {
       console.log('AdminViewAccountsScreen: Calling GET /api/admin/users');
-      const response = await fetch(`${API_URL}/api/admin/users`, {
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        console.error('AdminViewAccountsScreen: Failed to fetch users, status:', response.status);
-        throw new Error('Failed to fetch users');
-      }
-
-      const data = await response.json();
+      const data = await authenticatedFetchJSON<Account[]>('/api/admin/users');
+      
       console.log('AdminViewAccountsScreen: Fetched users:', data);
       
       // The new endpoint returns an array of users directly
-      const accountsData = Array.isArray(data) ? data : (data?.users || []);
+      const accountsData = Array.isArray(data) ? data : [];
       console.log('AdminViewAccountsScreen: Processed', accountsData.length, 'user accounts');
       setAccounts(accountsData);
-    } catch (error) {
+    } catch (error: any) {
       console.error('AdminViewAccountsScreen: Error fetching users:', error);
-      Alert.alert('Error', 'Failed to load user accounts. Please try again.');
+      Alert.alert('Error', error.message || 'Failed to load user accounts. Please try again.');
     } finally {
       setLoading(false);
     }

@@ -18,10 +18,8 @@ import { Stack, useRouter } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import * as ImagePicker from 'expo-image-picker';
 import { colors } from '@/styles/commonStyles';
-import Constants from 'expo-constants';
 import { useAuth } from '@/contexts/AuthContext';
-
-const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
+import { authenticatedFetch, authenticatedUpload } from '@/utils/api';
 
 export default function AddCoinScreen() {
   const [title, setTitle] = useState('');
@@ -74,7 +72,6 @@ export default function AddCoinScreen() {
 
   const handleSubmit = async () => {
     console.log('AddCoinScreen: User tapped save button');
-    console.log('AddCoinScreen: Backend URL:', API_URL);
     
     // Validate required fields
     if (!agency || !country || !year) {
@@ -133,13 +130,11 @@ export default function AddCoinScreen() {
 
       console.log('AddCoinScreen: Sending coin data to backend:', coinData);
 
-      const coinResponse = await fetch(`${API_URL}/api/coins`, {
+      const coinResponse = await authenticatedFetch('/api/coins', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
         },
-        credentials: 'include',
         body: JSON.stringify(coinData),
       });
 
@@ -184,13 +179,7 @@ export default function AddCoinScreen() {
 
           formData.append('orderIndex', i.toString());
 
-          console.log('AddCoinScreen: Uploading to:', `${API_URL}/api/coins/${coin.id}/images`);
-          
-          const imageResponse = await fetch(`${API_URL}/api/coins/${coin.id}/images`, {
-            method: 'POST',
-            credentials: 'include',
-            body: formData,
-          });
+          const imageResponse = await authenticatedUpload(`/api/coins/${coin.id}/images`, formData);
 
           console.log('AddCoinScreen: Image', i + 1, 'upload response status:', imageResponse.status);
 

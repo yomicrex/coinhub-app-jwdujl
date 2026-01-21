@@ -11,12 +11,12 @@ import {
   Image,
   Alert,
 } from 'react-native';
-import Constants from 'expo-constants';
 import { colors } from '@/styles/commonStyles';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
+import { authenticatedFetchJSON } from '@/utils/api';
 
 interface Trade {
   id: string;
@@ -43,8 +43,6 @@ interface Trade {
   updatedAt: string;
 }
 
-const API_URL = Constants.expoConfig?.extra?.backendUrl || 'http://localhost:3000';
-
 export default function TradesScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -58,27 +56,17 @@ export default function TradesScreen() {
       console.log('TradesScreen: Fetching trades from API');
       setError(null);
       
-      const response = await fetch(`${API_URL}/api/trades`, {
-        credentials: 'include',
-      });
+      const data = await authenticatedFetchJSON<{ trades?: Trade[] } | Trade[]>('/api/trades');
       
-      if (!response.ok) {
-        console.error('TradesScreen: Failed to fetch trades, status:', response.status);
-        throw new Error(`Failed to fetch trades: ${response.status}`);
-      }
-
-      const data = await response.json();
       console.log('TradesScreen: Fetched trades response:', data);
       
       // Handle different response formats
-      const tradesData = data?.trades || data || [];
-      console.log('TradesScreen: Parsed trades data:', tradesData);
-      console.log('TradesScreen: Number of trades:', tradesData.length);
+      const tradesData = Array.isArray(data) ? data : (data?.trades || []);
+      console.log('TradesScreen: Parsed trades data, count:', tradesData.length);
       
       setTrades(tradesData);
     } catch (error: any) {
       console.error('TradesScreen: Error fetching trades:', error);
-      console.error('TradesScreen: Error message:', error.message);
       setError(error.message || 'Failed to load trades');
       Alert.alert('Error', 'Failed to load trades. Please try again.');
     } finally {

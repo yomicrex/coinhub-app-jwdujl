@@ -17,19 +17,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import * as ImagePicker from 'expo-image-picker';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
-import Constants from 'expo-constants';
-import * as SecureStore from 'expo-secure-store';
-import { Platform } from 'react-native';
-
-const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
-
-async function getToken(): Promise<string | null> {
-  if (Platform.OS === 'web') {
-    return localStorage.getItem('sessionToken');
-  } else {
-    return await SecureStore.getItemAsync('sessionToken');
-  }
-}
+import { authenticatedFetch, authenticatedUpload } from '@/utils/api';
 
 export default function EditProfileScreen() {
   const { user, refreshUser } = useAuth();
@@ -41,6 +29,7 @@ export default function EditProfileScreen() {
   const router = useRouter();
 
   useEffect(() => {
+    console.log('EditProfileScreen: Initializing with user data');
     if (user) {
       setDisplayName(user.displayName || '');
       setBio(user.bio || '');
@@ -49,6 +38,7 @@ export default function EditProfileScreen() {
   }, [user]);
 
   const pickImage = async () => {
+    console.log('EditProfileScreen: User tapped pick image');
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
@@ -57,19 +47,19 @@ export default function EditProfileScreen() {
     });
 
     if (!result.canceled) {
+      console.log('EditProfileScreen: Image selected');
       setAvatarUri(result.assets[0].uri);
     }
   };
 
   const handleSave = async () => {
-    console.log('Saving profile');
+    console.log('EditProfileScreen: User tapped save button');
     setLoading(true);
 
     try {
-      const token = await getToken();
-
       // Upload avatar if changed
       if (avatarUri) {
+        console.log('EditProfileScreen: Uploading avatar');
         const formData = new FormData();
         const filename = avatarUri.split('/').pop() || 'avatar.jpg';
         const match = /\.(\w+)$/.exec(filename);
@@ -81,21 +71,23 @@ export default function EditProfileScreen() {
           type,
         } as any);
 
-        await fetch(`${API_URL}/api/profiles/me/avatar`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-          body: formData,
-        });
+        const avatarResponse = await authenticatedUpload('/api/profiles/me/avatar', formData);
+        
+        if (!avatarResponse.ok) {
+          const errorText = await avatarResponse.text();
+          console.error('EditProfileScreen: Avatar upload failed:', errorText);
+          throw new Error('Failed to upload avatar');
+        }
+        
+        console.log('EditProfileScreen: Avatar uploaded successfully');
       }
 
       // Update profile
-      const response = await fetch(`${API_URL}/api/profiles/me`, {
+      console.log('EditProfileScreen: Updating profile data');
+      const response = await authenticatedFetch('/api/profiles/me', {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
           displayName,
@@ -105,16 +97,18 @@ export default function EditProfileScreen() {
       });
 
       if (response.ok) {
-        console.log('Profile updated successfully');
+        console.log('EditProfileScreen: Profile updated successfully');
         await refreshUser();
         Alert.alert('Success', 'Profile updated!', [
           { text: 'OK', onPress: () => router.back() },
         ]);
       } else {
+        const errorText = await response.text();
+        console.error('EditProfileScreen: Profile update failed:', errorText);
         throw new Error('Failed to update profile');
       }
     } catch (error: any) {
-      console.error('Error updating profile:', error);
+      console.error('EditProfileScreen: Error updating profile:', error);
       Alert.alert('Error', error.message || 'Failed to update profile');
     } finally {
       setLoading(false);
