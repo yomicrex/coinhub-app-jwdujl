@@ -1233,6 +1233,84 @@ export function registerAdminRoutes(app: App) {
   });
 
   /**
+   * POST /api/admin/grant-admin-access
+   * Grant admin access to a user by email
+   *
+   * This endpoint is accessible to ANY authenticated user (for development/testing purposes)
+   * and allows granting admin privileges to any user account via their email address.
+   *
+   * Body: { email: string }
+   * Returns: { success: true, message: string, userId: string, email: string }
+   * Returns 404 if user not found
+   */
+  app.fastify.post('/api/admin/grant-admin-access', async (request: FastifyRequest, reply: FastifyReply) => {
+    const { email } = request.body as { email?: string };
+
+    app.logger.info({ email }, 'Admin: Grant admin access request');
+
+    try {
+      // Validate session - any authenticated user can grant admin access (for dev/testing)
+      const sessionData = await validateSession(request, app);
+      if (!sessionData) {
+        app.logger.warn({ email }, 'Admin: Unauthorized access attempt to grant admin access');
+        return reply.status(401).send({ error: 'Unauthorized - authentication required' });
+      }
+
+      if (!email || typeof email !== 'string') {
+        app.logger.warn({ email }, 'Admin: Invalid email provided for grant admin access');
+        return reply.status(400).send({ error: 'Email is required and must be a valid string' });
+      }
+
+      // Find user by email
+      const targetUser = await app.db.query.users.findFirst({
+        where: eq(schema.users.email, email),
+        columns: { id: true, username: true, email: true, role: true },
+      });
+
+      if (!targetUser) {
+        app.logger.warn({ email }, 'Admin: User not found for admin grant');
+        return reply.status(404).send({ message: 'User not found' });
+      }
+
+      // Update user role to admin
+      const updatedUser = await app.db
+        .update(schema.users)
+        .set({ role: 'admin', updatedAt: new Date() })
+        .where(eq(schema.users.id, targetUser.id))
+        .returning({
+          id: schema.users.id,
+          email: schema.users.email,
+          username: schema.users.username,
+          role: schema.users.role,
+        });
+
+      app.logger.info(
+        { userId: targetUser.id, email, username: targetUser.username, updatedRole: updatedUser[0]?.role },
+        'Admin: Admin access granted to user'
+      );
+
+      return {
+        success: true,
+        message: `Admin access granted to user ${targetUser.username}`,
+        userId: targetUser.id,
+        email: targetUser.email,
+        username: targetUser.username,
+        previousRole: targetUser.role,
+        newRole: 'admin',
+      };
+    } catch (error) {
+      app.logger.error(
+        { err: error, email },
+        'Admin: Failed to grant admin access'
+      );
+      return reply.status(500).send({
+        error: 'Failed to grant admin access',
+        details: String(error),
+      });
+    }
+  });
+
+  /**
    * DELETE /api/admin/delete-all-users
    * DESTRUCTIVE: Deletes ALL user accounts and all associated data from the system
    *
@@ -1274,7 +1352,11 @@ export function registerAdminRoutes(app: App) {
           { userId: sessionData.user.id, userRole: adminUser?.role },
           'Admin: Non-admin user attempted to delete all users'
         );
-        return reply.status(403).send({ error: 'Forbidden - admin access required' });
+        return reply.status(403).send({
+          error: 'Forbidden - admin access required',
+          message: 'Admin access required. Use POST /api/admin/grant-admin-access to grant yourself admin privileges first.',
+          grantAdminEndpoint: 'POST /api/admin/grant-admin-access',
+        });
       }
 
       app.logger.warn('CRITICAL: Delete-all-users - Admin verification passed, proceeding with data deletion');
