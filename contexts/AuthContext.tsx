@@ -39,26 +39,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       console.log('AuthContext: Fetching user profile from /me...', forceRefresh ? '(forced refresh)' : '');
       
-      // CRITICAL FIX: Use direct fetch with session token from Better Auth
-      // Better Auth's $fetch might be wrapping the response in an unexpected way
+      // CRITICAL FIX: Use Better Auth's $fetch which automatically handles session cookies
+      // This ensures the session token is sent correctly to the backend
       try {
-        // Get the session token from Better Auth
+        // Check if we have a session first
         const session = await authClient.getSession();
-        const sessionToken = session?.session?.token;
         
-        console.log('AuthContext: Session token for /me request:', {
+        console.log('AuthContext: Session check before /me request:', {
           hasSession: !!session,
-          hasToken: !!sessionToken,
-          tokenLength: sessionToken?.length
+          sessionKeys: session ? Object.keys(session) : [],
+          hasSessionProp: !!session?.session,
+          hasToken: !!session?.session?.token,
+          hasTokenDirect: !!session?.token,
+          tokenLength: session?.session?.token?.length || session?.token?.length,
+          fullSession: JSON.stringify(session).substring(0, 200)
         });
         
-        // Make direct fetch request with session token in cookie
-        const queryParams = forceRefresh ? `?_t=${Date.now()}&_=${Date.now()}` : `?_=${Date.now()}`;
+        // Check both session.session.token and session.token (different Better Auth versions)
+        const sessionToken = session?.session?.token || session?.token;
+        
+        if (!session || !sessionToken) {
+          console.log('AuthContext: No valid session token found - user not authenticated');
+          setUser(null);
+          return null;
+        }
+        
+        console.log('AuthContext: Making /me request with session token');
+        
+        // CRITICAL FIX: Use direct fetch with Authorization header for React Native
+        // React Native doesn't automatically send cookies like browsers do
+        // So we need to manually include the session token in the Authorization header
+        const queryParams = forceRefresh ? `?_t=${Date.now()}` : '';
         const response = await fetch(`${API_URL}/api/auth/me${queryParams}`, {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
-            'Cookie': sessionToken ? `session=${sessionToken}` : '',
+            'Authorization': `Bearer ${sessionToken}`,
           },
           credentials: 'include',
         });
@@ -76,6 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         
         const data = await response.json();
+        console.log('AuthContext: /me response received successfully');
         
         console.log('AuthContext: Raw response from /me:', JSON.stringify(data));
         console.log('AuthContext: Response type:', typeof data);
@@ -195,16 +212,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } catch (fetchError: any) {
         console.error('AuthContext: Error fetching user profile:', fetchError);
-        console.error('AuthContext: Error details:', JSON.stringify(fetchError));
+        console.error('AuthContext: Error details:', {
+          message: fetchError?.message,
+          status: fetchError?.status,
+          statusCode: fetchError?.statusCode,
+        });
         
-        // Check if it's a 401/404 error
-        if (fetchError?.status === 401 || fetchError?.status === 404) {
+        // Check if it's a 401/404 error (user not authenticated or profile not found)
+        const statusCode = fetchError?.status || fetchError?.statusCode;
+        if (statusCode === 401 || statusCode === 404) {
           console.log('AuthContext: User not authenticated or profile not found - clearing user state');
           setUser(null);
           return null;
         }
         
-        // For other errors, also clear user state
+        // For other errors, also clear user state to be safe
+        console.log('AuthContext: Unexpected error - clearing user state');
         setUser(null);
         return null;
       }
@@ -269,7 +292,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         hasUser: !!result.data?.user,
         userId: result.data?.user?.id,
         hasSession: !!result.data?.session,
-        sessionToken: result.data?.session?.token?.substring(0, 20)
+        sessionToken: result.data?.session?.token?.substring(0, 20),
+        resultKeys: result.data ? Object.keys(result.data) : [],
+        fullResult: JSON.stringify(result).substring(0, 300)
       });
       
       // Wait for the session to be stored by Better Auth client
@@ -280,9 +305,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const storedSession = await authClient.getSession();
       console.log('AuthContext: SignIn - Stored session check:', {
         hasSession: !!storedSession,
+        sessionKeys: storedSession ? Object.keys(storedSession) : [],
+        hasSessionProp: !!storedSession?.session,
         hasToken: !!storedSession?.session?.token,
-        tokenLength: storedSession?.session?.token?.length,
-        tokenMatches: storedSession?.session?.token === result.data?.session?.token
+        hasTokenDirect: !!storedSession?.token,
+        tokenLength: storedSession?.session?.token?.length || storedSession?.token?.length,
+        tokenMatches: (storedSession?.session?.token || storedSession?.token) === result.data?.session?.token,
+        fullSession: JSON.stringify(storedSession).substring(0, 300)
       });
       
       // Fetch the full user profile directly from the backend with forced refresh
@@ -383,26 +412,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('AuthContext: CompleteProfile - Completing profile with username:', username);
     
     try {
-      // Get the session token from Better Auth
+      // Check if we have a session first
       const session = await authClient.getSession();
-      const sessionToken = session?.session?.token;
       
-      console.log('AuthContext: CompleteProfile - Session token:', {
+      // Check both session.session.token and session.token (different Better Auth versions)
+      const sessionToken = session?.session?.token || session?.token;
+      
+      console.log('AuthContext: CompleteProfile - Session check:', {
         hasSession: !!session,
+        sessionKeys: session ? Object.keys(session) : [],
+        hasSessionProp: !!session?.session,
         hasToken: !!sessionToken,
         tokenLength: sessionToken?.length
       });
       
-      // CRITICAL FIX: The authClient baseURL is '/api/auth', but profiles endpoint is at '/api/profiles'
-      // So we need to use the full URL for this endpoint
-      // Also include the session token in the Cookie header
+      if (!session || !sessionToken) {
+        console.error('AuthContext: CompleteProfile - No valid session found');
+        throw new Error('Not authenticated. Please sign in again.');
+      }
+      
+      // CRITICAL FIX: Use direct fetch for /api/profiles/complete since it's outside Better Auth's baseURL
+      // But we need to send the session cookie properly
+      // The issue is that React Native doesn't automatically send cookies like browsers do
+      // So we need to manually include the session token in the Authorization header
       const response = await fetch(`${API_URL}/api/profiles/complete`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Cookie': sessionToken ? `session=${sessionToken}` : '',
+          'Authorization': `Bearer ${sessionToken}`,
         },
-        credentials: 'include', // Include cookies for session
+        credentials: 'include',
         body: JSON.stringify({ username, displayName }),
       });
 
