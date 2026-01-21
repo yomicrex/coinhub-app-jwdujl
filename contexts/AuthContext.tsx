@@ -239,7 +239,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(result.error.message || 'Sign in failed');
       }
 
-      console.log('AuthContext: SignIn - Better Auth sign-in successful');
+      console.log('AuthContext: SignIn - Better Auth sign-in successful, result:', {
+        hasData: !!result.data,
+        hasUser: !!result.data?.user,
+        userId: result.data?.user?.id,
+        hasSession: !!result.data?.session,
+        sessionToken: result.data?.session?.token?.substring(0, 20)
+      });
       
       // Wait longer for the session cookie to be properly set
       console.log('AuthContext: SignIn - Waiting for session cookie to be set...');
