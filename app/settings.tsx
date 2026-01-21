@@ -15,10 +15,11 @@ import {
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
+import { deleteCurrentUserAccount } from '@/utils/api';
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
 
   console.log('Settings screen loaded');
 
@@ -47,12 +48,70 @@ export default function SettingsScreen() {
     );
   };
 
-  const handleDeleteAccount = () => {
+  const handleDeleteAccount = async () => {
     console.log('User tapped Delete Account');
+    
     Alert.alert(
       'Delete Account',
-      'This feature is coming soon. Please contact support to delete your account.',
-      [{ text: 'OK' }]
+      'Are you sure you want to delete your account? This action cannot be undone and will permanently delete:\n\n• All your coins\n• All your trades\n• All your comments and likes\n• Your profile and account data\n\nThis action is permanent and irreversible.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Account',
+          style: 'destructive',
+          onPress: async () => {
+            console.log('User confirmed account deletion');
+            
+            // Second confirmation
+            Alert.alert(
+              'Final Confirmation',
+              'This is your last chance. Are you absolutely sure you want to permanently delete your account?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Yes, Delete Forever',
+                  style: 'destructive',
+                  onPress: async () => {
+                    console.log('User confirmed final deletion, calling API');
+                    
+                    // Call the delete account API
+                    const result = await deleteCurrentUserAccount();
+                    
+                    if (result.success) {
+                      console.log('Account deleted successfully');
+                      
+                      // Sign out the user first
+                      await signOut();
+                      
+                      Alert.alert(
+                        'Account Deleted',
+                        'Your account has been permanently deleted.',
+                        [
+                          {
+                            text: 'OK',
+                            onPress: () => {
+                              // Redirect to auth screen
+                              console.log('Redirecting to auth screen after account deletion');
+                              router.replace('/auth');
+                            },
+                          },
+                        ]
+                      );
+                    } else {
+                      console.error('Failed to delete account:', result.message);
+                      Alert.alert(
+                        'Error',
+                        result.message || 'Failed to delete account. Please try again or contact support.',
+                        [{ text: 'OK' }]
+                      );
+                    }
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
     );
   };
 

@@ -112,4 +112,28 @@ export async function authenticatedPatch(endpoint: string, body: any): Promise<R
   });
 }
 
+/**
+ * Delete the current user's account
+ * This is a destructive operation that permanently removes all user data
+ */
+export async function deleteCurrentUserAccount(): Promise<{ success: boolean; message: string }> {
+  try {
+    console.log('API: Deleting current user account via DELETE /api/users/me');
+    const response = await authenticatedDelete('/api/users/me');
+    
+    if (response.ok) {
+      const result = await response.json();
+      console.log('API: Account deleted successfully:', result);
+      return { success: true, message: result.message || 'Account deleted successfully' };
+    } else {
+      const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+      console.error('API: Failed to delete account:', errorData);
+      return { success: false, message: errorData.message || 'Failed to delete account' };
+    }
+  } catch (error) {
+    console.error('API: Error deleting account:', error);
+    return { success: false, message: 'An error occurred while deleting your account' };
+  }
+}
+
 export { API_URL };
