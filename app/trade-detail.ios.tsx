@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
+import { authenticatedFetch } from '@/utils/api';
 import React, { useState, useEffect, useRef } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -148,9 +149,7 @@ export default function TradeDetailScreen() {
 
     try {
       console.log('TradeDetailScreen: Fetching trade detail for ID:', id);
-      const response = await fetch(`${API_URL}/api/trades/${id}`, {
-        credentials: 'include',
-      });
+      const response = await authenticatedFetch(`/api/trades/${id}`);
       
       if (!response.ok) {
         console.error('TradeDetailScreen: Failed to fetch trade, status:', response.status);
@@ -197,9 +196,7 @@ export default function TradeDetailScreen() {
       }
 
       setLoadingCoins(true);
-      const response = await fetch(`${API_URL}/api/users/${user.id}/coins`, {
-        credentials: 'include',
-      });
+      const response = await authenticatedFetch(`/api/users/${user.id}/coins`);
 
       if (!response.ok) {
         console.error('TradeDetailScreen: Failed to fetch coins, status:', response.status);
@@ -319,9 +316,8 @@ export default function TradeDetailScreen() {
       }
 
       console.log('TradeDetailScreen: Uploading temporary coin for trade');
-      const response = await fetch(`${API_URL}/api/trades/${id}/offers/upload`, {
+      const response = await authenticatedFetch(`/api/trades/${id}/offers/upload`, {
         method: 'POST',
-        credentials: 'include',
         body: formData,
       });
 
@@ -362,9 +358,8 @@ export default function TradeDetailScreen() {
     setSending(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/trades/${id}/messages`, {
+      const response = await authenticatedFetch(`/api/trades/${id}/messages`, {
         method: 'POST',
-        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -399,9 +394,8 @@ export default function TradeDetailScreen() {
     setShowCoinPicker(false);
 
     try {
-      const response = await fetch(`${API_URL}/api/trades/${id}/offers`, {
+      const response = await authenticatedFetch(`/api/trades/${id}/offers`, {
         method: 'POST',
-        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -439,9 +433,8 @@ export default function TradeDetailScreen() {
           text: 'Accept',
           onPress: async () => {
             try {
-              const response = await fetch(`${API_URL}/api/trades/${id}/offers/${offerId}/accept`, {
+              const response = await authenticatedFetch(`/api/trades/${id}/offers/${offerId}/accept`, {
                 method: 'POST',
-                credentials: 'include',
                 headers: {
                   'Content-Type': 'application/json',
                 },
@@ -479,9 +472,8 @@ export default function TradeDetailScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              const response = await fetch(`${API_URL}/api/trades/${id}/offers/${offerId}/reject`, {
+              const response = await authenticatedFetch(`/api/trades/${id}/offers/${offerId}/reject`, {
                 method: 'POST',
-                credentials: 'include',
                 headers: {
                   'Content-Type': 'application/json',
                 },
@@ -526,9 +518,8 @@ export default function TradeDetailScreen() {
           onPress: async () => {
             try {
               console.log('TradeDetailScreen: Sending cancel trade request to backend');
-              const response = await fetch(`${API_URL}/api/trades/${id}/cancel`, {
+              const response = await authenticatedFetch(`/api/trades/${id}/cancel`, {
                 method: 'POST',
-                credentials: 'include',
                 headers: {
                   'Content-Type': 'application/json',
                 },
@@ -559,9 +550,8 @@ export default function TradeDetailScreen() {
     console.log('TradeDetailScreen: User marking coin as shipped with tracking:', trackingNumber);
 
     try {
-      const response = await fetch(`${API_URL}/api/trades/${id}/shipping/initiate`, {
+      const response = await authenticatedFetch(`/api/trades/${id}/shipping/initiate`, {
         method: 'POST',
-        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -597,9 +587,8 @@ export default function TradeDetailScreen() {
           text: 'Yes, Received',
           onPress: async () => {
             try {
-              const response = await fetch(`${API_URL}/api/trades/${id}/shipping/received`, {
+              const response = await authenticatedFetch(`/api/trades/${id}/shipping/received`, {
                 method: 'POST',
-                credentials: 'include',
                 headers: {
                   'Content-Type': 'application/json',
                 },
@@ -642,9 +631,8 @@ export default function TradeDetailScreen() {
     console.log('TradeDetailScreen: User submitting rating:', rating);
 
     try {
-      const response = await fetch(`${API_URL}/api/trades/${id}/rate`, {
+      const response = await authenticatedFetch(`/api/trades/${id}/rate`, {
         method: 'POST',
-        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -689,9 +677,8 @@ export default function TradeDetailScreen() {
             }
 
             try {
-              const response = await fetch(`${API_URL}/api/trades/${id}/report`, {
+              const response = await authenticatedFetch(`/api/trades/${id}/report`, {
                 method: 'POST',
-                credentials: 'include',
                 headers: {
                   'Content-Type': 'application/json',
                 },

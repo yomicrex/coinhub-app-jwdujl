@@ -18,9 +18,7 @@ import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
-import Constants from 'expo-constants';
-
-const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
+import { authenticatedFetch, API_URL } from '@/utils/api';
 
 interface Comment {
   id: string;
@@ -91,12 +89,12 @@ export default function CoinCommentsScreen() {
     setSubmitting(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/coins/${coinId}/comments`, {
+      // FIXED: Use authenticatedFetch for authenticated requests
+      const response = await authenticatedFetch(`/api/coins/${coinId}/comments`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
         body: JSON.stringify({
           content: newComment,
         }),
@@ -107,7 +105,8 @@ export default function CoinCommentsScreen() {
         setNewComment('');
         fetchComments();
       } else {
-        console.error('CoinCommentsScreen: Failed to submit comment, status:', response.status);
+        const errorText = await response.text();
+        console.error('CoinCommentsScreen: Failed to submit comment, status:', response.status, 'error:', errorText);
         Alert.alert('Error', 'Failed to post comment');
       }
     } catch (error) {

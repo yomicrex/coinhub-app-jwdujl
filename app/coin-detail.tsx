@@ -143,13 +143,20 @@ export default function CoinDetailScreen() {
       const method = previousState ? 'DELETE' : 'POST';
       console.log('CoinDetailScreen: Sending', method, 'request to /api/coins/' + coin.id + '/like');
       
-      const response = await authenticatedFetch(`/api/coins/${coin.id}/like`, {
+      // FIXED: Don't set Content-Type for DELETE requests to avoid empty body error
+      const fetchOptions: RequestInit = {
         method,
-        headers: {
+      };
+      
+      // Only add headers and body for POST requests
+      if (method === 'POST') {
+        fetchOptions.headers = {
           'Content-Type': 'application/json',
-        },
-        body: method === 'POST' ? JSON.stringify({}) : undefined,
-      });
+        };
+        fetchOptions.body = JSON.stringify({});
+      }
+      
+      const response = await authenticatedFetch(`/api/coins/${coin.id}/like`, fetchOptions);
 
       if (!response.ok) {
         const errorText = await response.text();
