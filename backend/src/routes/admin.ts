@@ -5,6 +5,7 @@ import * as authSchema from '../db/auth-schema.js';
 import type { App } from '../index.js';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
+import { validateSession } from '../utils/auth-utils.js';
 
 export function registerAdminRoutes(app: App) {
   /**
@@ -18,6 +19,13 @@ export function registerAdminRoutes(app: App) {
     app.logger.info('Admin: Fetching list of all user accounts');
 
     try {
+      // Validate session - admin endpoints require authentication
+      const sessionData = await validateSession(request, app);
+      if (!sessionData) {
+        app.logger.warn('Admin: Unauthorized access attempt to accounts list');
+        return reply.status(401).send({ error: 'Unauthorized - authentication required' });
+      }
+
       // Get all users from CoinHub users table with their details
       const allAccounts = await app.db.query.users.findMany({
         columns: {
@@ -75,6 +83,13 @@ export function registerAdminRoutes(app: App) {
     app.logger.info({ email }, 'Admin: Verifying account information');
 
     try {
+      // Validate session - admin endpoints require authentication
+      const sessionData = await validateSession(request, app);
+      if (!sessionData) {
+        app.logger.warn({ email }, 'Admin: Unauthorized access attempt to verify account');
+        return reply.status(401).send({ error: 'Unauthorized - authentication required' });
+      }
+
       // Get Better Auth user record
       const authUser = await app.db.query.user.findFirst({
         where: eq(authSchema.user.email, email),
@@ -149,6 +164,13 @@ export function registerAdminRoutes(app: App) {
     app.logger.info('Admin: Checking for duplicate accounts');
 
     try {
+      // Validate session - admin endpoints require authentication
+      const sessionData = await validateSession(request, app);
+      if (!sessionData) {
+        app.logger.warn('Admin: Unauthorized access attempt to check duplicate accounts');
+        return reply.status(401).send({ error: 'Unauthorized - authentication required' });
+      }
+
       // Get all users from CoinHub users table
       const allUsers = await app.db.query.users.findMany({
         columns: {
@@ -210,6 +232,110 @@ export function registerAdminRoutes(app: App) {
   });
 
   /**
+   * GET /api/admin/users
+   * List all users with their authentication and profile information
+   *
+   * Returns: { users: [ { id, email, emailVerified, username, displayName, hasProfile, createdAt } ] }
+   * Ordered by createdAt descending (newest first)
+   *
+   * Includes:
+   * - All Better Auth users
+   * - CoinHub profile information if they have one (hasProfile boolean)
+   * - Email verification status
+   *
+   * Note: Password data is never exposed
+   */
+  app.fastify.get('/api/admin/users', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.info('Admin: Fetching list of all users with profile information');
+
+    try {
+      // Validate session - admin endpoints require authentication
+      const sessionData = await validateSession(request, app);
+      if (!sessionData) {
+        app.logger.warn('Admin: Unauthorized access attempt to users list');
+        return reply.status(401).send({ error: 'Unauthorized - authentication required' });
+      }
+
+      // Step 1: Get all Better Auth users
+      const authUsers = await app.db.query.user.findMany({
+        columns: {
+          id: true,
+          email: true,
+          emailVerified: true,
+          createdAt: true,
+        },
+      });
+
+      app.logger.info({ totalAuthUsers: authUsers.length }, 'Admin: Found auth users');
+
+      // Step 2: For each auth user, check if they have a CoinHub profile
+      const usersWithProfiles = [];
+
+      for (const authUser of authUsers) {
+        try {
+          const coinHubProfile = await app.db.query.users.findFirst({
+            where: eq(schema.users.id, authUser.id),
+            columns: {
+              username: true,
+              displayName: true,
+            },
+          });
+
+          usersWithProfiles.push({
+            id: authUser.id,
+            email: authUser.email,
+            emailVerified: authUser.emailVerified || false,
+            username: coinHubProfile?.username || null,
+            displayName: coinHubProfile?.displayName || null,
+            hasProfile: !!coinHubProfile,
+            createdAt: authUser.createdAt,
+          });
+        } catch (e) {
+          app.logger.warn(
+            { userId: authUser.id, email: authUser.email, err: e },
+            'Admin: Error fetching CoinHub profile for user'
+          );
+
+          // Still include user without profile info
+          usersWithProfiles.push({
+            id: authUser.id,
+            email: authUser.email,
+            emailVerified: authUser.emailVerified || false,
+            username: null,
+            displayName: null,
+            hasProfile: false,
+            createdAt: authUser.createdAt,
+          });
+        }
+      }
+
+      // Step 3: Sort by createdAt descending (newest first)
+      usersWithProfiles.sort((a, b) => {
+        const dateA = new Date(a.createdAt).getTime();
+        const dateB = new Date(b.createdAt).getTime();
+        return dateB - dateA;
+      });
+
+      app.logger.info(
+        { totalUsers: usersWithProfiles.length, usersWithProfiles: usersWithProfiles.filter(u => u.hasProfile).length },
+        'Admin: User list fetched successfully'
+      );
+
+      return {
+        users: usersWithProfiles,
+        count: usersWithProfiles.length,
+        usersWithProfiles: usersWithProfiles.filter(u => u.hasProfile).length,
+      };
+    } catch (error) {
+      app.logger.error(
+        { err: error },
+        'Admin: Failed to fetch user list'
+      );
+      return reply.status(500).send({ error: 'Failed to fetch user list', details: String(error) });
+    }
+  });
+
+  /**
    * GET /api/admin/users/list
    * List all user accounts with their details
    *
@@ -223,6 +349,13 @@ export function registerAdminRoutes(app: App) {
     app.logger.info('Admin: Fetching list of all users');
 
     try {
+      // Validate session - admin endpoints require authentication
+      const sessionData = await validateSession(request, app);
+      if (!sessionData) {
+        app.logger.warn('Admin: Unauthorized access attempt to users list endpoint');
+        return reply.status(401).send({ error: 'Unauthorized - authentication required' });
+      }
+
       // Get all users from CoinHub users table
       const allUsers = await app.db.query.users.findMany({
         columns: {
@@ -321,6 +454,13 @@ export function registerAdminRoutes(app: App) {
     app.logger.info({ username }, 'Admin: Attempting to delete user account and all associated data');
 
     try {
+      // Validate session - admin endpoints require authentication
+      const sessionData = await validateSession(request, app);
+      if (!sessionData) {
+        app.logger.warn({ username }, 'Admin: Unauthorized access attempt to delete user');
+        return reply.status(401).send({ error: 'Unauthorized - authentication required' });
+      }
+
       // Step 1: Find the user by username
       const user = await app.db.query.users.findFirst({
         where: eq(schema.users.username, username),
@@ -418,16 +558,22 @@ export function registerAdminRoutes(app: App) {
 
     app.logger.info({ username }, 'Admin: Password reset requested for user');
 
-    // Accept both 'password' and 'newPassword' field names
-    const ResetPasswordSchema = z.object({
+    try {
+      // Validate session - admin endpoints require authentication
+      const sessionData = await validateSession(request, app);
+      if (!sessionData) {
+        app.logger.warn({ username }, 'Admin: Unauthorized access attempt to reset password');
+        return reply.status(401).send({ error: 'Unauthorized - authentication required' });
+      }
+
+      // Accept both 'password' and 'newPassword' field names
+      const ResetPasswordSchema = z.object({
       password: z.string().min(8, 'Password must be at least 8 characters').optional(),
       newPassword: z.string().min(8, 'Password must be at least 8 characters').optional(),
     }).refine(
       (data) => data.password || data.newPassword,
       { message: 'Either password or newPassword must be provided' }
     );
-
-    try {
       const body = ResetPasswordSchema.parse(requestBody);
       const newPasswordValue = body.password || body.newPassword;
 
@@ -616,6 +762,13 @@ export function registerAdminRoutes(app: App) {
     app.logger.info({ username }, 'Admin: Password verification requested');
 
     try {
+      // Validate session - admin endpoints require authentication
+      const sessionData = await validateSession(request, app);
+      if (!sessionData) {
+        app.logger.warn({ username }, 'Admin: Unauthorized access attempt to verify password');
+        return reply.status(401).send({ error: 'Unauthorized - authentication required' });
+      }
+
       if (!password) {
         app.logger.warn({ username }, 'Admin: No password provided for verification');
         return reply.status(400).send({ error: 'Password is required' });
@@ -719,6 +872,13 @@ export function registerAdminRoutes(app: App) {
     app.logger.warn('CRITICAL: Reset-all-passwords operation started - resetting ALL user passwords to 123456');
 
     try {
+      // Validate session - admin endpoints require authentication
+      const sessionData = await validateSession(request, app);
+      if (!sessionData) {
+        app.logger.warn('Admin: Unauthorized access attempt to reset all passwords');
+        return reply.status(401).send({ error: 'Unauthorized - authentication required' });
+      }
+
       const bcrypt = await import('bcryptjs') as any;
       const defaultPassword = '123456';
       let usersUpdated = 0;
@@ -875,6 +1035,13 @@ export function registerAdminRoutes(app: App) {
     app.logger.warn('Admin: Fix-all-passwords utility started - scanning for corrupted accounts');
 
     try {
+      // Validate session - admin endpoints require authentication
+      const sessionData = await validateSession(request, app);
+      if (!sessionData) {
+        app.logger.warn('Admin: Unauthorized access attempt to fix all passwords');
+        return reply.status(401).send({ error: 'Unauthorized - authentication required' });
+      }
+
       const bcrypt = await import('bcryptjs') as any;
       const tempPassword = 'TempPass123!';
       const fixedUsernames = [];
