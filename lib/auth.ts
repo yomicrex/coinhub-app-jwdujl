@@ -19,7 +19,7 @@ const storage = Platform.OS === "web"
   : SecureStore;
 
 export const authClient = createAuthClient({
-  baseURL: API_URL,
+  baseURL: `${API_URL}/api/auth`,
   plugins: [
     expoClient({
       scheme: "coinhub",

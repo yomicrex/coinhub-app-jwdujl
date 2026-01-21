@@ -37,12 +37,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchUserProfile = async (forceRefresh = false) => {
     try {
-      console.log('AuthContext: Fetching user profile from /api/auth/me...', forceRefresh ? '(forced refresh)' : '');
+      console.log('AuthContext: Fetching user profile from /me...', forceRefresh ? '(forced refresh)' : '');
       
       // CRITICAL FIX: Use Better Auth's built-in fetch method which automatically includes the session token
+      // The authClient is already configured with baseURL '/api/auth', so we only need to specify '/me'
       // This is the correct way to make authenticated requests with Better Auth
       try {
-        const response = await authClient.$fetch('/api/auth/me', {
+        const response = await authClient.$fetch('/me', {
           method: 'GET',
           query: forceRefresh ? { _t: Date.now(), _: Date.now() } : { _: Date.now() },
         });
@@ -335,16 +336,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('AuthContext: CompleteProfile - Completing profile with username:', username);
     
     try {
-      // Use Better Auth's built-in fetch method for authenticated requests
-      const response = await authClient.$fetch('/api/profiles/complete', {
+      // CRITICAL FIX: The authClient baseURL is '/api/auth', but profiles endpoint is at '/api/profiles'
+      // So we need to use the full URL for this endpoint
+      const response = await fetch(`${API_URL}/api/profiles/complete`, {
         method: 'POST',
-        body: { username, displayName },
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Include cookies for session
+        body: JSON.stringify({ username, displayName }),
       });
 
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to complete profile');
+      }
+
+      const data = await response.json();
+
       console.log('AuthContext: CompleteProfile - Successful, profile created:', {
-        id: (response as any).id,
-        username: (response as any).username,
-        displayName: (response as any).displayName
+        id: data.id,
+        username: data.username,
+        displayName: data.displayName
       });
       
       // CRITICAL: Clear cached user data before refreshing
