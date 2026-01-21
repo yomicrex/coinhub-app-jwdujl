@@ -21,6 +21,7 @@ import {
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
+import { authenticatedFetch, API_URL } from '@/utils/api';
 
 interface Coin {
   id: string;
@@ -46,7 +47,6 @@ interface Coin {
   isLiked?: boolean;
 }
 
-const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 const { width } = Dimensions.get('window');
 
 export default function FeedScreen() {
@@ -197,15 +197,11 @@ export default function FeedScreen() {
       console.log('FeedScreen: User ID:', user.id);
       console.log('FeedScreen: User email:', user.email);
       console.log('FeedScreen: User username:', user.username);
-      console.log('FeedScreen: Sending request to:', `${API_URL}/api/trades/initiate`);
-      console.log('FeedScreen: Request body:', JSON.stringify({ coinId }));
       
-      const response = await fetch(`${API_URL}/api/trades/initiate`, {
+      const response = await authenticatedFetch('/api/trades/initiate', {
         method: 'POST',
-        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
         },
         body: JSON.stringify({
           coinId: coinId,
@@ -213,7 +209,6 @@ export default function FeedScreen() {
       });
 
       console.log('FeedScreen: Trade initiate response status:', response.status);
-      console.log('FeedScreen: Response headers:', JSON.stringify(Object.fromEntries(response.headers.entries())));
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -221,10 +216,9 @@ export default function FeedScreen() {
         
         if (response.status === 401) {
           console.error('FeedScreen: 401 Unauthorized - Session may be invalid or expired');
-          console.error('FeedScreen: User object:', JSON.stringify(user));
           Alert.alert(
             'Authentication Error', 
-            'Your session has expired or is invalid. Please sign in again.',
+            'Your session has expired. Please sign in again.',
             [
               { text: 'Cancel', style: 'cancel' },
               { text: 'Sign In', onPress: () => router.push('/auth') }

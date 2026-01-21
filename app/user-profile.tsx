@@ -17,9 +17,8 @@ import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
-import Constants from 'expo-constants';
+import { authenticatedFetch, API_URL } from '@/utils/api';
 
-const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 const { width } = Dimensions.get('window');
 const COIN_SIZE = (width - 48) / 3; // 3 columns with padding
 
@@ -114,39 +113,61 @@ export default function UserProfileScreen() {
   }, [username]);
 
   const handleFollowToggle = async () => {
-    if (!profile) return;
+    if (!profile) {
+      console.error('UserProfileScreen: No profile loaded');
+      return;
+    }
+
+    if (!user) {
+      console.log('UserProfileScreen: User not logged in, redirecting to auth');
+      Alert.alert('Sign In Required', 'Please sign in to follow users');
+      router.push('/auth');
+      return;
+    }
 
     console.log('UserProfileScreen: User tapped follow/unfollow button');
+    console.log('UserProfileScreen: Current follow state:', isFollowing);
+    console.log('UserProfileScreen: Profile ID:', profile.id);
+    
     const previousState = isFollowing;
+    const previousCount = profile.followerCount;
+    
+    // Optimistically update UI
     setIsFollowing(!isFollowing);
+    setProfile({
+      ...profile,
+      followerCount: previousState ? profile.followerCount - 1 : profile.followerCount + 1,
+    });
 
     try {
       const method = previousState ? 'DELETE' : 'POST';
+      console.log('UserProfileScreen: Sending', method, 'request to /api/users/' + profile.id + '/follow');
       
-      const response = await fetch(`${API_URL}/api/users/${profile.id}/follow`, {
+      const response = await authenticatedFetch(`/api/users/${profile.id}/follow`, {
         method,
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
         body: method === 'POST' ? JSON.stringify({}) : undefined,
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('UserProfileScreen: Follow toggle failed, status:', response.status, 'error:', errorText);
         throw new Error('Failed to toggle follow');
       }
 
-      console.log('UserProfileScreen: Follow toggled successfully');
-      
-      // Update follower count
-      setProfile({
-        ...profile,
-        followerCount: previousState ? profile.followerCount - 1 : profile.followerCount + 1,
-      });
+      const data = await response.json();
+      console.log('UserProfileScreen: Follow toggled successfully:', data);
     } catch (error) {
       console.error('UserProfileScreen: Error toggling follow:', error);
+      // Revert optimistic update
       setIsFollowing(previousState);
-      Alert.alert('Error', 'Failed to update follow status');
+      setProfile({
+        ...profile,
+        followerCount: previousCount,
+      });
+      Alert.alert('Error', 'Failed to update follow status. Please try again.');
     }
   };
 
