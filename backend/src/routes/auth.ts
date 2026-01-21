@@ -684,26 +684,23 @@ export function registerAuthRoutes(app: App) {
           { userId: userRecord.id, email: userRecord.email },
           'GET /api/auth/me - Profile not found for authenticated user'
         );
-        return reply.status(404).send({
-          error: 'Profile not found',
-          message: 'Your profile is not yet set up. Please complete your profile using POST /api/profiles/complete',
-          user: {
-            id: userRecord.id,
-            email: userRecord.email,
-          },
+        return reply.status(200).send({
+          id: userRecord.id,
+          email: userRecord.email,
           hasProfile: false,
+          message: 'Profile not yet completed. Please complete your profile using POST /api/profiles/complete'
         });
       }
 
       // Step 7: Generate signed URL for avatar if it exists
-      let profileWithAvatar = profile;
-      if (profile.avatarUrl) {
+      let avatarUrl = profile.avatarUrl;
+      if (avatarUrl) {
         try {
-          const { url } = await app.storage.getSignedUrl(profile.avatarUrl);
-          profileWithAvatar = { ...profile, avatarUrl: url };
+          const { url } = await app.storage.getSignedUrl(avatarUrl);
+          avatarUrl = url;
         } catch (urlError) {
           app.logger.warn({ err: urlError, userId: userRecord.id }, 'Failed to generate avatar signed URL');
-          profileWithAvatar = { ...profile, avatarUrl: null };
+          avatarUrl = null;
         }
       }
 
@@ -718,19 +715,14 @@ export function registerAuthRoutes(app: App) {
       );
 
       return {
-        user: {
-          id: userRecord.id,
-          email: userRecord.email,
-          name: userRecord.name,
-          emailVerified: userRecord.emailVerified,
-          image: userRecord.image,
-          createdAt: userRecord.createdAt,
-          updatedAt: userRecord.updatedAt
-        },
-        profile: {
-          ...profileWithAvatar,
-          hasProfile: true
-        }
+        id: userRecord.id,
+        email: userRecord.email,
+        username: profile.username,
+        displayName: profile.displayName,
+        avatarUrl: avatarUrl,
+        bio: profile.bio || null,
+        location: profile.location || null,
+        hasProfile: true
       };
     } catch (error) {
       app.logger.error({ err: error }, 'GET /api/auth/me - Failed to fetch current user');
