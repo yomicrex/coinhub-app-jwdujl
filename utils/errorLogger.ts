@@ -1,4 +1,4 @@
-// Global error logging for runtime errors
+e to // Global error logging for runtime errors
 // Captures console.log/warn/error and sends to Natively server for AI debugging
 
 // Declare __DEV__ global (React Native global for development mode detection)
