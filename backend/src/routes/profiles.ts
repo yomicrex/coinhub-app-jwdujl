@@ -702,40 +702,14 @@ export function registerProfileRoutes(app: App) {
     app.logger.info('POST /api/profiles/complete - completing user profile');
 
     try {
-      // Extract session token from cookies or Authorization header
-      const sessionToken = extractSessionToken(request);
-
-      if (!sessionToken) {
-        app.logger.warn('POST /api/profiles/complete - No session token found');
-        return reply.status(401).send({ error: 'Unauthorized', message: 'Authentication required' });
+      // Use Better Auth's built-in session validation (handles token hashing correctly)
+      const session = await requireAuth(request, reply);
+      if (!session) {
+        app.logger.warn('POST /api/profiles/complete - requireAuth failed, session is invalid');
+        return;
       }
 
-      // Look up session in database
-      const sessionRecord = await app.db.query.session.findFirst({
-        where: eq(authSchema.session.token, sessionToken),
-      });
-
-      if (!sessionRecord) {
-        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'POST /api/profiles/complete - Session not found');
-        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid' });
-      }
-
-      // Check if session is expired
-      if (new Date(sessionRecord.expiresAt) < new Date()) {
-        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'POST /api/profiles/complete - Session expired');
-        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
-      }
-
-      // Get user record
-      const userRecord = await app.db.query.user.findFirst({
-        where: eq(authSchema.user.id, sessionRecord.userId),
-      });
-
-      if (!userRecord) {
-        app.logger.warn({ userId: sessionRecord.userId }, 'POST /api/profiles/complete - User not found');
-        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
-      }
-
+      const userRecord = session.user;
       app.logger.info({ userId: userRecord.id, email: userRecord.email }, 'Session validated for profile completion');
 
       // Validate request body
@@ -796,26 +770,34 @@ export function registerProfileRoutes(app: App) {
         // Create new profile
         app.logger.info({ userId: userRecord.id, username: body.username }, 'Creating new user profile');
 
-        await app.db.insert(schema.users).values({
-          id: userRecord.id,
-          email: userRecord.email,
-          username: body.username,
-          displayName: body.displayName,
-          bio: body.bio || null,
-          location: body.location || null,
-          avatarUrl: body.avatarUrl || null,
-          collectionPrivacy: 'public',
-          role: 'user',
-        });
+        try {
+          await app.db.insert(schema.users).values({
+            id: userRecord.id,
+            email: userRecord.email,
+            username: body.username,
+            displayName: body.displayName,
+            bio: body.bio || null,
+            location: body.location || null,
+            avatarUrl: body.avatarUrl || null,
+            collectionPrivacy: 'public',
+            role: 'user',
+          });
 
-        profile = await app.db.query.users.findFirst({
-          where: eq(schema.users.id, userRecord.id),
-        });
+          profile = await app.db.query.users.findFirst({
+            where: eq(schema.users.id, userRecord.id),
+          });
 
-        app.logger.info(
-          { userId: userRecord.id, username: body.username, email: userRecord.email },
-          'User profile created successfully'
-        );
+          app.logger.info(
+            { userId: userRecord.id, username: body.username, email: userRecord.email },
+            'User profile created successfully'
+          );
+        } catch (createError) {
+          app.logger.error(
+            { err: createError, userId: userRecord.id, username: body.username },
+            'Failed to create user profile'
+          );
+          throw createError;
+        }
       }
 
       if (!profile) {

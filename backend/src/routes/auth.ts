@@ -540,129 +540,29 @@ export function registerAuthRoutes(app: App) {
   /**
    * GET /api/auth/me
    * Get current authenticated user (protected)
-   * Validates session and returns full user profile with signed avatar URL
-   * Returns: { user: { id, email, name, ... }, profile: { username, displayName, avatarUrl, ... } }
+   * Uses Better Auth's built-in session validation (which handles token hashing)
+   * Returns full user profile with signed avatar URL
+   * Returns: { id, email, username, displayName, avatarUrl, bio, location, hasProfile: true }
    * Returns 401 if session is invalid
    */
   app.fastify.get('/api/auth/me', async (request: FastifyRequest, reply: FastifyReply) => {
     app.logger.info('GET /api/auth/me - fetching current user');
 
     try {
-      // Step 1: Extract session token from cookies or Authorization header
-      const cookieHeader = request.headers.cookie || '';
-      const authHeader = request.headers.authorization || '';
-
-      app.logger.debug(
-        {
-          hasCookieHeader: !!cookieHeader,
-          cookieHeaderLength: cookieHeader.length,
-          hasAuthHeader: !!authHeader,
-          authHeaderStart: authHeader.substring(0, 20)
-        },
-        'GET /api/auth/me - Headers received'
-      );
-
-      const sessionToken = extractSessionToken(request);
-
-      if (!sessionToken) {
-        app.logger.warn(
-          { cookieHeader: cookieHeader.substring(0, 100), authHeader: authHeader.substring(0, 50) },
-          'GET /api/auth/me - No session token found in request'
-        );
-        return reply.status(401).send({
-          error: 'Unauthorized',
-          message: 'No active session',
-          debug: {
-            hasCookie: cookieHeader.length > 0,
-            hasAuthHeader: authHeader.length > 0
-          }
-        });
+      // Use Better Auth's built-in session validation (handles token hashing correctly)
+      const session = await requireAuth(request, reply);
+      if (!session) {
+        app.logger.warn('GET /api/auth/me - requireAuth failed, session is invalid');
+        return;
       }
 
-      app.logger.info(
-        { tokenLength: sessionToken.length, tokenStart: sessionToken.substring(0, 50), tokenEnd: sessionToken.substring(sessionToken.length - 20) },
-        'GET /api/auth/me - Session token extracted successfully'
-      );
-
-      // Step 2: Look up session in database
-      const sessionRecord = await app.db.query.session.findFirst({
-        where: eq(authSchema.session.token, sessionToken)
-      });
-
-      if (!sessionRecord) {
-        app.logger.warn(
-          { tokenLength: sessionToken.length, tokenStart: sessionToken.substring(0, 30) },
-          'GET /api/auth/me - Session token not found in database'
-        );
-
-        // Debug: Check if token format matches what's in the database
-        try {
-          const allSessions = await app.db.query.session.findMany({ limit: 3 });
-          app.logger.debug(
-            {
-              searchedTokenLength: sessionToken.length,
-              databaseSessionCount: allSessions.length,
-              databaseSessionFormats: allSessions.map(s => ({
-                tokenLength: s.token.length,
-                tokenStart: s.token.substring(0, 30),
-                userId: s.userId
-              }))
-            },
-            'GET /api/auth/me - Debug: Session samples from database'
-          );
-        } catch (debugErr) {
-          app.logger.debug({ err: debugErr }, 'GET /api/auth/me - Could not fetch debug info');
-        }
-
-        return reply.status(401).send({
-          error: 'Unauthorized',
-          message: 'Session invalid or not found',
-          debug: {
-            tokenLength: sessionToken.length,
-            hint: 'Session token format mismatch or expired'
-          }
-        });
-      }
-
-      app.logger.info(
-        { sessionUserId: sessionRecord.userId, sessionExpiresAt: sessionRecord.expiresAt },
-        'GET /api/auth/me - Session found in database'
-      );
-
-      // Step 3: Check if session is expired
-      if (new Date(sessionRecord.expiresAt) < new Date()) {
-        app.logger.info(
-          { sessionExpiresAt: sessionRecord.expiresAt, now: new Date() },
-          'GET /api/auth/me - Session expired'
-        );
-        return reply.status(401).send({
-          error: 'Unauthorized',
-          message: 'Session expired'
-        });
-      }
-
-      // Step 4: Get user record from Better Auth
-      const userRecord = await app.db.query.user.findFirst({
-        where: eq(authSchema.user.id, sessionRecord.userId)
-      });
-
-      if (!userRecord) {
-        app.logger.warn(
-          { userId: sessionRecord.userId },
-          'GET /api/auth/me - User not found for valid session'
-        );
-        return reply.status(401).send({
-          error: 'Unauthorized',
-          message: 'User not found'
-        });
-      }
-
+      const userRecord = session.user;
       app.logger.info(
         { userId: userRecord.id, email: userRecord.email },
-        'GET /api/auth/me - Auth user retrieved successfully'
+        'GET /api/auth/me - Session validated, user authenticated'
       );
 
-      // Step 5: Get CoinHub user profile by user ID
+      // Get CoinHub user profile by user ID
       // The users.id field MUST match the user.id field from Better Auth
       const profile = await app.db.query.users.findFirst({
         where: eq(schema.users.id, userRecord.id),
@@ -678,9 +578,9 @@ export function registerAuthRoutes(app: App) {
         'GET /api/auth/me - Profile lookup complete'
       );
 
-      // Step 6: Handle case where profile doesn't exist
+      // Handle case where profile doesn't exist
       if (!profile) {
-        app.logger.warn(
+        app.logger.info(
           { userId: userRecord.id, email: userRecord.email },
           'GET /api/auth/me - Profile not found for authenticated user'
         );
@@ -692,7 +592,7 @@ export function registerAuthRoutes(app: App) {
         });
       }
 
-      // Step 7: Generate signed URL for avatar if it exists
+      // Generate signed URL for avatar if it exists
       let avatarUrl = profile.avatarUrl;
       if (avatarUrl) {
         try {

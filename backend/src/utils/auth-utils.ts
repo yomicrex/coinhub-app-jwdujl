@@ -43,10 +43,11 @@ export function extractSessionToken(request: FastifyRequest): string | null {
 }
 
 /**
- * Validates session token from cookies or Authorization header
- * and returns the user session object
+ * Validates session using Better Auth's built-in session validation
+ * (which correctly handles token hashing)
  *
- * Replaces the requireAuth() middleware for manual session validation
+ * This function wraps app.requireAuth() to provide a non-middleware validation method
+ * suitable for use inside route handlers that need manual validation
  *
  * @param request Fastify request object
  * @param app App instance
@@ -55,45 +56,46 @@ export function extractSessionToken(request: FastifyRequest): string | null {
 export async function validateSession(
   request: FastifyRequest,
   app: App
-): Promise<{ user: { id: string; email: string }; session: any } | null> {
-  const sessionToken = extractSessionToken(request);
-
-  if (!sessionToken) {
-    return null;
-  }
-
+): Promise<{ user: { id: string; email: string; name?: string }; session?: any } | null> {
   try {
-    // Look up session in database
-    const sessionRecord = await app.db.query.session.findFirst({
-      where: eq(authSchema.session.token, sessionToken),
-    });
+    // Use Better Auth's built-in session validation (handles token hashing correctly)
+    const requireAuth = app.requireAuth();
 
-    if (!sessionRecord) {
-      return null;
+    // Create a mock reply object to capture the status code and send behavior
+    let statusCode = 500;
+    let responded = false;
+    let responseData: any = null;
+
+    const reply = {
+      status: (code: number) => {
+        statusCode = code;
+        return {
+          send: (data: any) => {
+            responded = true;
+            responseData = data;
+          }
+        };
+      }
+    } as any;
+
+    const result = await requireAuth(request, reply);
+
+    // If requireAuth returned a user session, return it
+    if (result && result.user) {
+      return {
+        user: {
+          id: result.user.id,
+          email: result.user.email,
+          name: result.user.name,
+        },
+        session: result,
+      };
     }
 
-    // Check if session is expired
-    if (new Date(sessionRecord.expiresAt) < new Date()) {
-      return null;
-    }
-
-    // Get user record
-    const userRecord = await app.db.query.user.findFirst({
-      where: eq(authSchema.user.id, sessionRecord.userId),
-    });
-
-    if (!userRecord) {
-      return null;
-    }
-
-    return {
-      user: {
-        id: userRecord.id,
-        email: userRecord.email,
-      },
-      session: sessionRecord,
-    };
-  } catch {
+    // If no result or status was 401, session is invalid
+    return null;
+  } catch (error) {
+    // Any error during validation means session is invalid
     return null;
   }
 }
