@@ -6,7 +6,7 @@ import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { authenticatedFetch } from '@/utils/api';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import {
   View,
@@ -130,18 +130,7 @@ export default function TradeDetailScreen() {
   const [uploadDescription, setUploadDescription] = useState('');
   const [uploading, setUploading] = useState(false);
 
-  useEffect(() => {
-    console.log('TradeDetailScreen: Component mounted, trade ID:', id);
-    if (id) {
-      fetchTradeDetail();
-    } else {
-      console.error('TradeDetailScreen: No trade ID provided in URL params');
-      setError('No trade ID provided');
-      setLoading(false);
-    }
-  }, [id, fetchTradeDetail]);
-
-  const fetchTradeDetail = async () => {
+  const fetchTradeDetail = useCallback(async () => {
     if (!id) {
       console.error('TradeDetailScreen: Cannot fetch trade - no ID');
       return;
@@ -185,7 +174,18 @@ export default function TradeDetailScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    console.log('TradeDetailScreen: Component mounted, trade ID:', id);
+    if (id) {
+      fetchTradeDetail();
+    } else {
+      console.error('TradeDetailScreen: No trade ID provided in URL params');
+      setError('No trade ID provided');
+      setLoading(false);
+    }
+  }, [id, fetchTradeDetail]);
 
   const fetchUserCoins = async () => {
     try {
