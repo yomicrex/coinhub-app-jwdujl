@@ -60,8 +60,14 @@ export function registerTradesRoutes(app: App) {
       // Extract session token from either Authorization header or cookies
       const sessionToken = extractSessionToken(request);
       app.logger.debug(
-        { tokenPresent: !!sessionToken, hasAuthHeader: !!request.headers.authorization, hasCookie: !!request.headers.cookie },
-        'Session token extraction result'
+        {
+          tokenPresent: !!sessionToken,
+          tokenLength: sessionToken?.length || 0,
+          tokenStart: sessionToken?.substring(0, 30) || 'N/A',
+          hasAuthHeader: !!request.headers.authorization,
+          hasCookie: !!request.headers.cookie
+        },
+        'Session token extraction result for trade initiation'
       );
 
       if (!sessionToken) {
@@ -75,13 +81,19 @@ export function registerTradesRoutes(app: App) {
       });
 
       if (!sessionRecord) {
-        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session token not found in database');
+        app.logger.warn(
+          { tokenLength: sessionToken.length, tokenStart: sessionToken.substring(0, 20) },
+          'Session token not found in database'
+        );
         return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid or expired' });
       }
 
       // Check if session is expired
       if (new Date(sessionRecord.expiresAt) < new Date()) {
-        app.logger.warn({ token: sessionToken.substring(0, 20), expiresAt: sessionRecord.expiresAt }, 'Session token expired');
+        app.logger.warn(
+          { tokenLength: sessionToken.length, tokenStart: sessionToken.substring(0, 20), expiresAt: sessionRecord.expiresAt },
+          'Session token expired'
+        );
         return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
       }
 

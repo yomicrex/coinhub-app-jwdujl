@@ -6,13 +6,14 @@ import * as authSchema from '../db/auth-schema.js';
 /**
  * Helper function to extract session token from either:
  * 1. Authorization header: Bearer <token>
- * 2. Cookie header: session=<token>
+ * 2. Cookie header: session=<token> or better-auth.session_token=<token>
  *
  * Supports both web browsers (cookies) and React Native (Authorization header)
  *
  * Priority:
  * 1. Authorization header (explicit token for React Native)
- * 2. Session cookie (automatic for web browsers)
+ * 2. better-auth.session_token cookie (Better Auth's session cookie)
+ * 3. session cookie (fallback for backward compatibility)
  *
  * @param request Fastify request object
  * @returns Session token string or null if not found
@@ -28,11 +29,23 @@ export function extractSessionToken(request: FastifyRequest): string | null {
   // Fall back to cookie header (web browsers)
   const cookieHeader = request.headers.cookie || '';
 
-  // Parse cookie header - look for "session=" cookie
-  // Handle both "session=value" and "session=value; Path=/" formats
+  if (!cookieHeader) {
+    return null;
+  }
+
+  // Parse cookie header - look for session cookies
+  // Better Auth uses "better-auth.session_token" or "session" cookies
   const cookies = cookieHeader.split(';');
   for (const cookie of cookies) {
     const trimmed = cookie.trim();
+
+    // Check for better-auth.session_token first (Better Auth's official cookie name)
+    if (trimmed.startsWith('better-auth.session_token=')) {
+      const value = trimmed.substring('better-auth.session_token='.length).trim();
+      if (value) return value;
+    }
+
+    // Fall back to session cookie for backward compatibility
     if (trimmed.startsWith('session=')) {
       const value = trimmed.substring('session='.length).trim();
       if (value) return value;

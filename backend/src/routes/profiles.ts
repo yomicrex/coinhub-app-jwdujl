@@ -710,13 +710,28 @@ export function registerProfileRoutes(app: App) {
         return reply.status(401).send({ error: 'Unauthorized', message: 'Authentication required' });
       }
 
+      app.logger.debug(
+        {
+          sessionTokenLength: sessionToken.length,
+          tokenStart: sessionToken.substring(0, 30),
+          tokenEnd: sessionToken.substring(Math.max(0, sessionToken.length - 20))
+        },
+        'POST /api/profiles/complete - Session token extracted'
+      );
+
       // Look up session in database
       const sessionRecord = await app.db.query.session.findFirst({
         where: eq(authSchema.session.token, sessionToken),
       });
 
       if (!sessionRecord) {
-        app.logger.warn({ tokenStart: sessionToken.substring(0, 20) }, 'POST /api/profiles/complete - Session not found');
+        app.logger.warn(
+          {
+            tokenLength: sessionToken.length,
+            tokenStart: sessionToken.substring(0, 20)
+          },
+          'POST /api/profiles/complete - Session not found'
+        );
         return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid' });
       }
 
