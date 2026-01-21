@@ -369,6 +369,94 @@ export function registerAuthRoutes(app: App) {
         return reply.status(500).send({ error: 'Lookup failed', details: String(error) });
       }
     });
+
+    /**
+     * GET /api/auth/debug/sessions
+     * DEBUG ENDPOINT - List all sessions in the database
+     * Shows session tokens, user IDs, and expiry times
+     * DISABLED IN PRODUCTION - Only available in development/staging
+     */
+    app.fastify.get('/api/auth/debug/sessions', async (request: FastifyRequest, reply: FastifyReply) => {
+      app.logger.warn('DEBUG: Listing all sessions - this endpoint should be disabled in production');
+
+      try {
+        const sessions = await app.db.query.session.findMany();
+        app.logger.info({ count: sessions.length }, 'DEBUG: Retrieved sessions for debugging');
+
+        return {
+          count: sessions.length,
+          sessions: sessions.map((s: any) => {
+            const token = String(s.token || '');
+            const expiresAt = s.expiresAt instanceof Date ? s.expiresAt : new Date(s.expiresAt as string | number);
+            return {
+              id: s.id,
+              userId: s.userId,
+              tokenLength: token.length,
+              tokenStart: token.substring(0, 20),
+              tokenEnd: token.substring(token.length - 10),
+              expiresAt: expiresAt,
+              isExpired: expiresAt < new Date(),
+              createdAt: s.createdAt,
+              updatedAt: s.updatedAt,
+            };
+          })
+        };
+      } catch (error) {
+        app.logger.error({ err: error }, 'DEBUG: Failed to list sessions');
+        return reply.status(500).send({ error: 'Failed to list sessions', details: String(error) });
+      }
+    });
+
+    /**
+     * GET /api/auth/debug/session/:token
+     * DEBUG ENDPOINT - Check if a specific session token exists in the database
+     * Helps diagnose session matching issues
+     * DISABLED IN PRODUCTION - Only available in development/staging
+     */
+    app.fastify.get('/api/auth/debug/session/:token', async (request: FastifyRequest, reply: FastifyReply) => {
+      const token = String((request.params as any).token);
+      app.logger.warn({ tokenLength: token.length }, 'DEBUG: Checking session token - this endpoint should be disabled in production');
+
+      try {
+        const session = await app.db.query.session.findFirst({
+          where: eq(authSchema.session.token, token)
+        });
+
+        if (!session) {
+          app.logger.info({ tokenLength: token.length }, 'DEBUG: Session token not found');
+          return {
+            found: false,
+            tokenLength: token.length,
+            tokenStart: token.substring(0, 20),
+            message: 'Session token not found in database'
+          };
+        }
+
+        // Get the user for this session
+        const user = await app.db.query.user.findFirst({
+          where: eq(authSchema.user.id, session.userId)
+        });
+
+        app.logger.info({ sessionId: session.id, userId: session.userId }, 'DEBUG: Session found');
+
+        return {
+          found: true,
+          sessionId: session.id,
+          userId: session.userId,
+          userEmail: user?.email,
+          tokenLength: session.token.length,
+          tokenMatch: session.token === token,
+          expiresAt: session.expiresAt,
+          isExpired: new Date(session.expiresAt) < new Date(),
+          createdAt: session.createdAt,
+          updatedAt: session.updatedAt,
+          note: new Date(session.expiresAt) < new Date() ? 'Session is expired' : 'Session is valid'
+        };
+      } catch (error) {
+        app.logger.error({ err: error, tokenLength: token.length }, 'DEBUG: Session lookup failed');
+        return reply.status(500).send({ error: 'Session lookup failed', details: String(error) });
+      }
+    });
   }
 
   /**
@@ -1578,26 +1666,60 @@ export function registerAuthRoutes(app: App) {
 
       // Step 5: Create session
       try {
+        const sessionToken = randomUUID();
+        const sessionId = randomUUID();
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+        app.logger.debug(
+          { userId: authUser.id, sessionToken, sessionId, expiresAt },
+          'Creating session with generated token'
+        );
+
         const session = await app.db
           .insert(authSchema.session)
           .values({
-            id: randomUUID(),
+            id: sessionId,
             userId: authUser.id,
-            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-            token: randomUUID(),
+            expiresAt: expiresAt,
+            token: sessionToken,
             ipAddress: request.ip,
             userAgent: request.headers['user-agent'],
           })
           .returning();
 
         app.logger.info(
-          { userId: authUser.id, identifier, identifierType: isEmail ? 'email' : 'username', sessionToken: session[0].token },
-          'Sign-in successful: session created'
+          {
+            userId: authUser.id,
+            identifier,
+            identifierType: isEmail ? 'email' : 'username',
+            sessionToken: session[0].token,
+            sessionId: session[0].id,
+            expiresAt: session[0].expiresAt,
+            tokenLength: session[0].token.length,
+          },
+          'Sign-in successful: session created and stored in database'
         );
+
+        // Verify session was stored correctly
+        const verifySession = await app.db.query.session.findFirst({
+          where: eq(authSchema.session.token, sessionToken)
+        });
+
+        if (verifySession) {
+          app.logger.debug(
+            { sessionId: verifySession.id, userId: verifySession.userId, tokenMatch: verifySession.token === sessionToken },
+            'Session verification: session found in database'
+          );
+        } else {
+          app.logger.error(
+            { sessionToken, sessionId },
+            'CRITICAL: Session not found in database after insertion'
+          );
+        }
 
         // Set secure HTTP-only cookie with proper cross-origin attributes
         const cookieOptions = [
-          `session=${session[0].token}`,
+          `session=${sessionToken}`,
           'HttpOnly',
           'Path=/',
           'SameSite=Lax',
@@ -1606,7 +1728,13 @@ export function registerAuthRoutes(app: App) {
         if (process.env.NODE_ENV === 'production') {
           cookieOptions.push('Secure');
         }
-        reply.header('Set-Cookie', cookieOptions.join('; '));
+        const setCookieHeader = cookieOptions.join('; ');
+        reply.header('Set-Cookie', setCookieHeader);
+
+        app.logger.debug(
+          { setCookieHeader: setCookieHeader.substring(0, 100) },
+          'Set-Cookie header set'
+        );
 
         // Also set Access-Control headers to allow credentials
         reply.header('Access-Control-Allow-Credentials', 'true');
@@ -1626,16 +1754,19 @@ export function registerAuthRoutes(app: App) {
             updatedAt: coinHubUser.updatedAt,
           },
           session: {
-            token: session[0].token,
-            expiresAt: session[0].expiresAt,
+            token: sessionToken,
+            expiresAt: expiresAt,
           },
         };
       } catch (sessionError) {
         app.logger.error(
-          { err: sessionError, userId: authUser.id, identifier },
+          { err: sessionError, userId: authUser.id, identifier, errorMessage: String(sessionError) },
           'Failed to create session'
         );
-        return reply.status(500).send({ error: 'Failed to create session' });
+        return reply.status(500).send({
+          error: 'Failed to create session',
+          details: String(sessionError)
+        });
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1716,6 +1847,11 @@ export function registerAuthRoutes(app: App) {
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
       try {
+        app.logger.debug(
+          { userId: authUser.id, sessionToken, sessionId, expiresAt },
+          'Email-only sign-in: creating session with generated token'
+        );
+
         const session = await app.db
           .insert(authSchema.session)
           .values({
@@ -1729,9 +1865,34 @@ export function registerAuthRoutes(app: App) {
           .returning();
 
         app.logger.info(
-          { userId: authUser.id, email: normalizedEmail, username: coinHubProfile.username, sessionId, sessionToken: session[0].token },
-          'Email-only sign-in successful: session created'
+          {
+            userId: authUser.id,
+            email: normalizedEmail,
+            username: coinHubProfile.username,
+            sessionId: session[0].id,
+            sessionToken: session[0].token,
+            expiresAt: session[0].expiresAt,
+            tokenLength: session[0].token.length,
+          },
+          'Email-only sign-in successful: session created and stored in database'
         );
+
+        // Verify session was stored correctly
+        const verifySession = await app.db.query.session.findFirst({
+          where: eq(authSchema.session.token, sessionToken)
+        });
+
+        if (verifySession) {
+          app.logger.debug(
+            { sessionId: verifySession.id, userId: verifySession.userId, tokenMatch: verifySession.token === sessionToken },
+            'Email-only sign-in: session verification - session found in database'
+          );
+        } else {
+          app.logger.error(
+            { sessionToken, sessionId },
+            'CRITICAL: Email-only sign-in - Session not found in database after insertion'
+          );
+        }
 
         // Set secure HTTP-only cookie with proper cross-origin attributes
         // Use same cookie format as other signin endpoints for consistency
@@ -1745,7 +1906,13 @@ export function registerAuthRoutes(app: App) {
         if (process.env.NODE_ENV === 'production') {
           cookieOptions.push('Secure');
         }
-        reply.header('Set-Cookie', cookieOptions.join('; '));
+        const setCookieHeader = cookieOptions.join('; ');
+        reply.header('Set-Cookie', setCookieHeader);
+
+        app.logger.debug(
+          { setCookieHeader: setCookieHeader.substring(0, 100) },
+          'Email-only sign-in: Set-Cookie header set'
+        );
 
         // Also set Access-Control headers to allow credentials
         reply.header('Access-Control-Allow-Credentials', 'true');
