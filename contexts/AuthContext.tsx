@@ -74,15 +74,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       console.log('AuthContext: Making /me request with session token');
       
-      // CRITICAL FIX: Backend expects session token in "session=<token>" cookie format
-      // NOT "better-auth.session_token=<token>"
+      // CRITICAL FIX: Use Authorization header for React Native (more reliable than cookies)
+      // Backend's extractSessionToken supports both "Bearer <token>" and "session=<token>" cookie
       const queryParams = forceRefresh ? `?_t=${Date.now()}` : '';
       const response = await fetch(`${API_URL}/api/auth/me${queryParams}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          // CRITICAL: Send token in the format the backend expects: "session=<token>"
-          'Cookie': `session=${sessionToken}`,
+          // Use Authorization header with Bearer token (preferred for React Native)
+          'Authorization': `Bearer ${sessionToken}`,
         },
         credentials: 'include',
       });
@@ -308,12 +308,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error('Not authenticated. Please sign in again.');
       }
       
-      // CRITICAL FIX: Backend expects session token in "session=<token>" cookie format
+      // CRITICAL FIX: Use Authorization header for React Native (more reliable than cookies)
       const response = await fetch(`${API_URL}/api/profiles/complete`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Cookie': `session=${sessionToken}`,
+          'Authorization': `Bearer ${sessionToken}`,
         },
         credentials: 'include',
         body: JSON.stringify({ username, displayName }),

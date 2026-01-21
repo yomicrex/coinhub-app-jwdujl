@@ -45,11 +45,11 @@ export async function authenticatedFetch(
   
   console.log('API: Making authenticated request to:', url);
   
-  // CRITICAL FIX: Backend expects session token in "session=<token>" cookie format
-  // NOT "better-auth.session_token=<token>"
+  // CRITICAL FIX: Use Authorization header for React Native (more reliable than cookies)
+  // Backend's extractSessionToken supports both "Bearer <token>" and "session=<token>" cookie
   const headers = {
     ...options.headers,
-    'Cookie': `session=${sessionToken}`,
+    'Authorization': `Bearer ${sessionToken}`,
   };
   
   // Add Content-Type for JSON requests if not already set
@@ -104,12 +104,12 @@ export async function authenticatedUpload(
   
   console.log('API: Uploading to:', url);
   
-  // CRITICAL FIX: Backend expects session token in "session=<token>" cookie format
+  // CRITICAL FIX: Use Authorization header for React Native (more reliable than cookies)
   // DO NOT set Content-Type for FormData - browser will set it with boundary
   const response = await fetch(url, {
     method: 'POST',
     headers: {
-      'Cookie': `session=${sessionToken}`,
+      'Authorization': `Bearer ${sessionToken}`,
     },
     credentials: 'include',
     body: formData,
