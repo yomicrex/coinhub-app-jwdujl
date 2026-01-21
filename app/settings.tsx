@@ -80,9 +80,14 @@ export default function SettingsScreen() {
                     if (result.success) {
                       console.log('Account deleted successfully');
                       
-                      // Sign out the user first
+                      // Sign out the user FIRST to clear the session
+                      console.log('Signing out user after account deletion');
                       await signOut();
                       
+                      // Wait a moment for the sign out to complete
+                      await new Promise(resolve => setTimeout(resolve, 500));
+                      
+                      // Show success message
                       Alert.alert(
                         'Account Deleted',
                         'Your account has been permanently deleted.',
@@ -90,8 +95,8 @@ export default function SettingsScreen() {
                           {
                             text: 'OK',
                             onPress: () => {
-                              // Redirect to auth screen
-                              console.log('Redirecting to auth screen after account deletion');
+                              // Force redirect to auth screen (login page)
+                              console.log('Redirecting to login screen after account deletion');
                               router.replace('/auth');
                             },
                           },

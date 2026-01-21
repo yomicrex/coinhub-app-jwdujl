@@ -84,7 +84,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             id: combinedUser.id,
             email: combinedUser.email,
             username: combinedUser.username,
-            displayName: combinedUser.displayName
+            displayName: combinedUser.displayName,
+            needsProfileCompletion: combinedUser.needsProfileCompletion
           });
           setUser(combinedUser);
           return combinedUser;
@@ -97,17 +98,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           };
           console.log('AuthContext: Setting user without profile - needs completion:', {
             id: userWithoutProfile.id,
-            email: userWithoutProfile.email
+            email: userWithoutProfile.email,
+            needsProfileCompletion: true
           });
           setUser(userWithoutProfile);
           return userWithoutProfile;
         } else {
-          console.log('AuthContext: No user data in response');
+          console.log('AuthContext: No user data in response - clearing user state');
           setUser(null);
           return null;
         }
       } else {
-        console.log('AuthContext: Failed to fetch user profile (status:', response.status, ') - user not authenticated');
+        console.log('AuthContext: Failed to fetch user profile (status:', response.status, ') - user not authenticated, clearing user state');
         setUser(null);
         return null;
       }
@@ -186,7 +188,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: userData.id,
         email: userData.email,
         username: userData.username,
-        displayName: userData.displayName
+        displayName: userData.displayName,
+        needsProfileCompletion: userData.needsProfileCompletion
       });
     } catch (error: any) {
       console.error('AuthContext: SignIn - Error:', error);
@@ -234,7 +237,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: userData.id,
         email: userData.email,
         username: userData.username,
-        displayName: userData.displayName
+        displayName: userData.displayName,
+        needsProfileCompletion: userData.needsProfileCompletion
       });
     } catch (error: any) {
       console.error('AuthContext: SignUp - Error:', error);
@@ -279,19 +283,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('AuthContext: SignOut - Signing out user');
     
     try {
-      // CRITICAL: Clear user state FIRST
+      // CRITICAL: Clear user state FIRST before making any API calls
       console.log('AuthContext: SignOut - Clearing user state IMMEDIATELY');
       setUser(null);
       
+      // Call Better Auth signOut
       await authClient.signOut();
       
-      console.log('AuthContext: SignOut - Complete');
+      console.log('AuthContext: SignOut - Better Auth signOut complete');
     } catch (error) {
-      console.error('AuthContext: SignOut - Error:', error);
+      console.error('AuthContext: SignOut - Error during signOut:', error);
       
       // Even if signOut fails, ensure user state is cleared
       setUser(null);
     }
+    
+    console.log('AuthContext: SignOut - User state cleared, user should be redirected to login');
   };
 
   const refreshUser = async () => {

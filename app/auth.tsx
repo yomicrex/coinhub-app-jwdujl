@@ -27,21 +27,16 @@ export default function AuthScreen() {
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [showProfileCompletion, setShowProfileCompletion] = useState(false);
 
   console.log('AuthScreen: Rendered with user:', user?.email, 'needsCompletion:', user?.needsProfileCompletion);
 
   useEffect(() => {
     console.log('AuthScreen: Auth state changed - loading:', loading, 'user:', user?.email, 'needsCompletion:', user?.needsProfileCompletion);
     
-    if (!loading && user) {
-      if (user.needsProfileCompletion) {
-        console.log('AuthScreen: User needs profile completion, showing form');
-        setShowProfileCompletion(true);
-      } else {
-        console.log('AuthScreen: User authenticated and profile complete, redirecting to home');
-        router.replace('/(tabs)/(home)');
-      }
+    // Only redirect if user is authenticated AND has a complete profile
+    if (!loading && user && !user.needsProfileCompletion) {
+      console.log('AuthScreen: User authenticated with complete profile, redirecting to home');
+      router.replace('/(tabs)/(home)');
     }
   }, [loading, user, router]);
 
@@ -64,6 +59,7 @@ export default function AuthScreen() {
         await signIn(email, password);
         console.log('AuthScreen: Sign in successful');
       }
+      // Don't redirect here - let the useEffect handle it based on user state
     } catch (error: any) {
       console.error('AuthScreen: Auth error:', error);
       Alert.alert('Error', error.message || 'Authentication failed');
@@ -104,6 +100,9 @@ export default function AuthScreen() {
       </SafeAreaView>
     );
   }
+
+  // Show profile completion form if user exists but needs to complete profile
+  const showProfileCompletion = user && user.needsProfileCompletion;
 
   if (showProfileCompletion) {
     return (
@@ -163,6 +162,7 @@ export default function AuthScreen() {
     );
   }
 
+  // Show login/signup form
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView

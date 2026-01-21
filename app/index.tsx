@@ -8,14 +8,20 @@ import { colors } from '@/styles/commonStyles';
 export default function Index() {
   const { user, loading } = useAuth();
 
-  console.log('Index screen - loading:', loading, 'user:', user?.username);
+  console.log('Index screen - loading:', loading, 'user:', user?.username, 'email:', user?.email);
 
   useEffect(() => {
     console.log('Index screen mounted - App starting');
   }, []);
 
   useEffect(() => {
-    console.log('Index screen - Auth state changed:', { loading, hasUser: !!user, username: user?.username });
+    console.log('Index screen - Auth state changed:', { 
+      loading, 
+      hasUser: !!user, 
+      username: user?.username,
+      email: user?.email,
+      needsProfileCompletion: user?.needsProfileCompletion 
+    });
   }, [loading, user]);
 
   // Always show loading while checking auth
@@ -30,20 +36,20 @@ export default function Index() {
     );
   }
 
-  // ALWAYS redirect to login screen first if no user
+  // No user at all - redirect to login screen
   if (!user) {
     console.log('No user found - redirecting to login screen');
     return <Redirect href="/auth" />;
   }
 
-  // If user needs profile completion, show auth screen
+  // User exists but needs profile completion - redirect to auth screen to complete profile
   if (user.needsProfileCompletion) {
-    console.log('User needs profile completion - redirecting to auth');
+    console.log('User needs profile completion - redirecting to auth screen');
     return <Redirect href="/auth" />;
   }
 
-  // User is authenticated and has profile, go to home
-  console.log('User authenticated - redirecting to home feed');
+  // User is authenticated and has complete profile - go to home
+  console.log('User authenticated with complete profile - redirecting to home feed');
   return <Redirect href="/(tabs)/(home)" />;
 }
 
