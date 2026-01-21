@@ -540,8 +540,7 @@ export function registerAuthRoutes(app: App) {
   /**
    * GET /api/auth/me
    * Get current authenticated user (protected)
-   * Uses Better Auth's built-in session validation (which handles token hashing)
-   * Returns full user profile with signed avatar URL
+   * Validates session and returns full user profile with signed avatar URL
    * Returns: { id, email, username, displayName, avatarUrl, bio, location, hasProfile: true }
    * Returns 401 if session is invalid
    */
@@ -549,14 +548,90 @@ export function registerAuthRoutes(app: App) {
     app.logger.info('GET /api/auth/me - fetching current user');
 
     try {
-      // Use Better Auth's built-in session validation (handles token hashing correctly)
-      const session = await requireAuth(request, reply);
-      if (!session) {
-        app.logger.warn('GET /api/auth/me - requireAuth failed, session is invalid');
-        return;
+      // Log incoming headers for debugging
+      const cookieHeader = request.headers.cookie || '';
+      const authHeader = request.headers.authorization || '';
+      app.logger.debug(
+        {
+          hasCookie: !!cookieHeader,
+          cookieLength: cookieHeader.length,
+          cookiePreview: cookieHeader.substring(0, 100),
+          hasAuthHeader: !!authHeader,
+          authHeaderPreview: authHeader.substring(0, 50)
+        },
+        'GET /api/auth/me - Headers received'
+      );
+
+      // Extract session token for debugging
+      const sessionToken = extractSessionToken(request);
+      app.logger.debug(
+        {
+          sessionTokenFound: !!sessionToken,
+          tokenLength: sessionToken?.length || 0,
+          tokenStart: sessionToken?.substring(0, 30) || 'N/A',
+          tokenEnd: sessionToken ? sessionToken.substring(Math.max(0, sessionToken.length - 20)) : 'N/A'
+        },
+        'GET /api/auth/me - Session token extraction'
+      );
+
+      if (!sessionToken) {
+        app.logger.warn('GET /api/auth/me - No session token found in request');
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          message: 'No active session'
+        });
       }
 
-      const userRecord = session.user;
+      // Look up session directly in database
+      app.logger.debug({ tokenStart: sessionToken.substring(0, 20) }, 'GET /api/auth/me - Looking up session in database');
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken)
+      });
+
+      if (!sessionRecord) {
+        app.logger.warn(
+          { tokenLength: sessionToken.length, tokenStart: sessionToken.substring(0, 20) },
+          'GET /api/auth/me - Session token not found in database'
+        );
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          message: 'Session not found'
+        });
+      }
+
+      app.logger.debug({ sessionUserId: sessionRecord.userId }, 'GET /api/auth/me - Session found in database');
+
+      // Check if session is expired
+      const expiresAt = new Date(sessionRecord.expiresAt);
+      const now = new Date();
+      if (expiresAt < now) {
+        app.logger.warn(
+          { expiresAt, now },
+          'GET /api/auth/me - Session has expired'
+        );
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          message: 'Session expired'
+        });
+      }
+
+      // Get user record from Better Auth
+      app.logger.debug({ userId: sessionRecord.userId }, 'GET /api/auth/me - Looking up user in database');
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId)
+      });
+
+      if (!userRecord) {
+        app.logger.warn(
+          { userId: sessionRecord.userId },
+          'GET /api/auth/me - User not found for valid session'
+        );
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          message: 'User not found'
+        });
+      }
+
       app.logger.info(
         { userId: userRecord.id, email: userRecord.email },
         'GET /api/auth/me - Session validated, user authenticated'

@@ -702,14 +702,40 @@ export function registerProfileRoutes(app: App) {
     app.logger.info('POST /api/profiles/complete - completing user profile');
 
     try {
-      // Use Better Auth's built-in session validation (handles token hashing correctly)
-      const session = await requireAuth(request, reply);
-      if (!session) {
-        app.logger.warn('POST /api/profiles/complete - requireAuth failed, session is invalid');
-        return;
+      // Extract session token from cookies or Authorization header
+      const sessionToken = extractSessionToken(request);
+
+      if (!sessionToken) {
+        app.logger.warn('POST /api/profiles/complete - No session token found');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Authentication required' });
       }
 
-      const userRecord = session.user;
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken),
+      });
+
+      if (!sessionRecord) {
+        app.logger.warn({ tokenStart: sessionToken.substring(0, 20) }, 'POST /api/profiles/complete - Session not found');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid' });
+      }
+
+      // Check if session is expired
+      if (new Date(sessionRecord.expiresAt) < new Date()) {
+        app.logger.warn({ tokenStart: sessionToken.substring(0, 20) }, 'POST /api/profiles/complete - Session expired');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      }
+
+      // Get user record
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId),
+      });
+
+      if (!userRecord) {
+        app.logger.warn({ userId: sessionRecord.userId }, 'POST /api/profiles/complete - User not found');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+      }
+
       app.logger.info({ userId: userRecord.id, email: userRecord.email }, 'Session validated for profile completion');
 
       // Validate request body
