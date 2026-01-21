@@ -85,15 +85,26 @@ export default function AdminViewAccountsScreen() {
           onPress: async () => {
             try {
               console.log('AdminViewAccountsScreen: Sending DELETE request for user ID:', account.id);
-              // FIXED: Use userId instead of username - backend expects userId in path parameter
+              // FIXED: Use userId in path parameter - backend expects /api/admin/users/:userId
               const response = await authenticatedFetch(`/api/admin/users/${account.id}`, {
                 method: 'DELETE',
               });
 
               if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                console.error('AdminViewAccountsScreen: Delete failed:', errorData);
-                throw new Error(errorData.message || 'Failed to delete account');
+                const errorText = await response.text();
+                console.error('AdminViewAccountsScreen: Delete failed, status:', response.status, 'error:', errorText);
+                
+                // Try to parse error as JSON
+                let errorMessage = 'Failed to delete account';
+                try {
+                  const errorData = JSON.parse(errorText);
+                  errorMessage = errorData.message || errorMessage;
+                } catch (e) {
+                  // If not JSON, use the text as is
+                  errorMessage = errorText || errorMessage;
+                }
+                
+                throw new Error(errorMessage);
               }
 
               console.log('AdminViewAccountsScreen: Account deleted successfully');

@@ -3,7 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { authenticatedFetch } from '@/utils/api';
@@ -17,6 +17,10 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
+  TextInput,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 
 interface Coin {
@@ -45,6 +49,10 @@ export default function HomeScreen() {
   const [coins, setCoins] = useState<Coin[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showCommentModal, setShowCommentModal] = useState(false);
+  const [selectedCoinId, setSelectedCoinId] = useState<string | null>(null);
+  const [commentText, setCommentText] = useState('');
+  const [submittingComment, setSubmittingComment] = useState(false);
 
   const fetchCoins = useCallback(async () => {
     console.log('HomeScreen: Fetching public coins feed from /api/coins/feed');
@@ -74,7 +82,7 @@ export default function HomeScreen() {
     }
   }, []);
 
-  useEffect(() => {
+  React.useEffect(() => {
     console.log('HomeScreen: Component mounted, user:', user?.username);
     console.log('HomeScreen: Backend URL:', API_URL);
     console.log('HomeScreen: Starting initial data fetch');
@@ -162,6 +170,68 @@ export default function HomeScreen() {
     }
   };
 
+  const handleComment = (coinId: string) => {
+    console.log('HomeScreen: User tapped comment button for coin:', coinId);
+    
+    if (!user) {
+      console.log('HomeScreen: User not logged in, redirecting to auth');
+      router.push('/auth');
+      return;
+    }
+    
+    // FIXED: Open comment modal instead of navigating
+    setSelectedCoinId(coinId);
+    setShowCommentModal(true);
+  };
+
+  const handleSubmitComment = async () => {
+    if (!commentText.trim() || !selectedCoinId || submittingComment) {
+      return;
+    }
+
+    console.log('HomeScreen: Submitting comment for coin:', selectedCoinId);
+    setSubmittingComment(true);
+
+    try {
+      const response = await authenticatedFetch(`/api/coins/${selectedCoinId}/comments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ content: commentText.trim() }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('HomeScreen: Failed to submit comment, status:', response.status, 'error:', errorText);
+        throw new Error('Failed to submit comment');
+      }
+
+      console.log('HomeScreen: Comment submitted successfully');
+      
+      // Update comment count optimistically
+      setCoins(prevCoins => 
+        prevCoins.map(c => 
+          c.id === selectedCoinId 
+            ? { ...c, commentCount: (c.commentCount || 0) + 1 }
+            : c
+        )
+      );
+      
+      // Close modal and reset
+      setShowCommentModal(false);
+      setCommentText('');
+      setSelectedCoinId(null);
+      
+      Alert.alert('Success', 'Comment posted!');
+    } catch (error) {
+      console.error('HomeScreen: Error submitting comment:', error);
+      Alert.alert('Error', 'Failed to post comment. Please try again.');
+    } finally {
+      setSubmittingComment(false);
+    }
+  };
+
   const handleAddCoin = () => {
     console.log('HomeScreen: User tapped Add Coin button');
     
@@ -224,7 +294,13 @@ export default function HomeScreen() {
           <Text style={styles.actionText}>{item.likeCount || 0}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.actionButton}>
+        <TouchableOpacity 
+          style={styles.actionButton}
+          onPress={(e) => {
+            e.stopPropagation();
+            handleComment(item.id);
+          }}
+        >
           <IconSymbol ios_icon_name="bubble.left" android_material_icon_name="chat-bubble-outline" size={24} color={colors.text} />
           <Text style={styles.actionText}>{item.commentCount || 0}</Text>
         </TouchableOpacity>
@@ -274,6 +350,64 @@ export default function HomeScreen() {
         }
         contentContainerStyle={coins.length === 0 ? styles.emptyList : undefined}
       />
+
+      {/* Comment Modal */}
+      <Modal
+        visible={showCommentModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => {
+          setShowCommentModal(false);
+          setCommentText('');
+          setSelectedCoinId(null);
+        }}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add Comment</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowCommentModal(false);
+                  setCommentText('');
+                  setSelectedCoinId(null);
+                }}
+              >
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={24}
+                  color={colors.text}
+                />
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              style={styles.commentInput}
+              placeholder="Write your comment..."
+              placeholderTextColor={colors.textSecondary}
+              value={commentText}
+              onChangeText={setCommentText}
+              multiline
+              maxLength={500}
+              autoFocus
+            />
+            <TouchableOpacity
+              style={[styles.submitButton, (!commentText.trim() || submittingComment) && styles.submitButtonDisabled]}
+              onPress={handleSubmitComment}
+              disabled={!commentText.trim() || submittingComment}
+            >
+              {submittingComment ? (
+                <ActivityIndicator size="small" color={colors.background} />
+              ) : (
+                <Text style={styles.submitButtonText}>Post Comment</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -405,6 +539,53 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   emptyButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.background,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  commentInput: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    color: colors.text,
+    minHeight: 120,
+    textAlignVertical: 'top',
+    marginBottom: 16,
+  },
+  submitButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+  },
+  submitButtonDisabled: {
+    opacity: 0.5,
+  },
+  submitButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.background,

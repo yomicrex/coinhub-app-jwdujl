@@ -925,8 +925,9 @@ export default function TradeDetailScreen() {
                 const offerCoin = offer.coin || offer.offeredCoin;
                 const offerUser = offer.offeredBy || offer.offerer;
 
-                if (!offerCoin || !offerUser) {
-                  console.log('TradeDetailScreen: Skipping offer with no coin data:', offer.id);
+                // FIXED: Don't skip offers without coin data - show a placeholder instead
+                if (!offerUser) {
+                  console.log('TradeDetailScreen: Skipping offer with no user data:', offer.id);
                   return null;
                 }
 
@@ -952,42 +953,62 @@ export default function TradeDetailScreen() {
                         </View>
                       )}
                     </View>
-                    <TouchableOpacity 
-                      style={[styles.coinCard, { marginBottom: 0 }]}
-                      onPress={() => handleViewCoinDetail(offerCoin, offer)}
-                      activeOpacity={0.7}
-                    >
-                      {offerCoin.images && offerCoin.images.length > 0 && offerCoin.images[0]?.url ? (
-                        <Image
-                          source={{ uri: offerCoin.images[0].url }}
-                          style={styles.coinImage}
-                          resizeMode="cover"
-                          onError={(e) => {
-                            console.error('TradeDetailScreen: Error loading offer coin image:', e.nativeEvent.error);
-                          }}
-                        />
-                      ) : (
+                    {/* FIXED: Show coin if available, otherwise show "Coin being prepared" message */}
+                    {offerCoin ? (
+                      <TouchableOpacity 
+                        style={[styles.coinCard, { marginBottom: 0 }]}
+                        onPress={() => handleViewCoinDetail(offerCoin, offer)}
+                        activeOpacity={0.7}
+                      >
+                        {offerCoin.images && offerCoin.images.length > 0 && offerCoin.images[0]?.url ? (
+                          <Image
+                            source={{ uri: offerCoin.images[0].url }}
+                            style={styles.coinImage}
+                            resizeMode="cover"
+                            onError={(e) => {
+                              console.error('TradeDetailScreen: Error loading offer coin image:', e.nativeEvent.error);
+                            }}
+                          />
+                        ) : (
+                          <View style={[styles.coinImage, { backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center' }]}>
+                            <IconSymbol
+                              ios_icon_name="photo"
+                              android_material_icon_name="image"
+                              size={32}
+                              color={colors.textSecondary}
+                            />
+                          </View>
+                        )}
+                        <View style={styles.coinInfo}>
+                          <Text style={styles.coinTitle}>{offerCoin.title}</Text>
+                          <View style={styles.coinDetailsRow}>
+                            <Text style={styles.coinDetails}>{offerCoin.country}</Text>
+                            <Text style={styles.coinDetailsSeparator}>•</Text>
+                            <Text style={styles.coinDetails}>{offerCoin.year}</Text>
+                          </View>
+                          <Text style={[styles.coinDetails, { color: colors.primary, marginTop: 4 }]}>
+                            Tap to view full details
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={[styles.coinCard, { marginBottom: 0, backgroundColor: colors.background }]}>
                         <View style={[styles.coinImage, { backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center' }]}>
                           <IconSymbol
-                            ios_icon_name="photo"
-                            android_material_icon_name="image"
+                            ios_icon_name="clock"
+                            android_material_icon_name="schedule"
                             size={32}
                             color={colors.textSecondary}
                           />
                         </View>
-                      )}
-                      <View style={styles.coinInfo}>
-                        <Text style={styles.coinTitle}>{offerCoin.title}</Text>
-                        <View style={styles.coinDetailsRow}>
-                          <Text style={styles.coinDetails}>{offerCoin.country}</Text>
-                          <Text style={styles.coinDetailsSeparator}>•</Text>
-                          <Text style={styles.coinDetails}>{offerCoin.year}</Text>
+                        <View style={styles.coinInfo}>
+                          <Text style={styles.coinTitle}>Coin Being Prepared</Text>
+                          <Text style={styles.coinDetails}>
+                            The coin details are being processed. Please check back soon.
+                          </Text>
                         </View>
-                        <Text style={[styles.coinDetails, { color: colors.primary, marginTop: 4 }]}>
-                          Tap to view full details
-                        </Text>
                       </View>
-                    </TouchableOpacity>
+                    )}
                     {offer.message && (
                       <View style={styles.offerMessageContainer}>
                         <Text style={styles.offerMessageLabel}>Message:</Text>
@@ -1007,8 +1028,8 @@ export default function TradeDetailScreen() {
                       </View>
                     )}
 
-                    {/* Action buttons for coin owner to respond to offers */}
-                    {canRespond && (
+                    {/* Action buttons for coin owner to respond to offers - ONLY show if coin data is available */}
+                    {canRespond && offerCoin && (
                       <View style={styles.offerActionsContainer}>
                         <Text style={styles.offerActionsPrompt}>What would you like to do?</Text>
                         <View style={styles.offerActionsButtons}>
