@@ -460,78 +460,137 @@ export function registerAuthRoutes(app: App) {
     app.logger.info('GET /api/auth/me - fetching current user');
 
     try {
-      // Extract session token using utility (supports both cookies and Authorization header)
+      // Step 1: Extract session token from cookies or Authorization header
+      const cookieHeader = request.headers.cookie || '';
+      const authHeader = request.headers.authorization || '';
+
+      app.logger.debug(
+        {
+          hasCookieHeader: !!cookieHeader,
+          cookieHeaderLength: cookieHeader.length,
+          hasAuthHeader: !!authHeader,
+          authHeaderStart: authHeader.substring(0, 20)
+        },
+        'GET /api/auth/me - Headers received'
+      );
+
       const sessionToken = extractSessionToken(request);
 
       if (!sessionToken) {
-        app.logger.warn('GET /api/auth/me - No session token found in request');
-        return reply.status(401).send({ error: 'Unauthorized', message: 'No active session' });
+        app.logger.warn(
+          { cookieHeader: cookieHeader.substring(0, 100), authHeader: authHeader.substring(0, 50) },
+          'GET /api/auth/me - No session token found in request'
+        );
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          message: 'No active session',
+          debug: {
+            hasCookie: cookieHeader.length > 0,
+            hasAuthHeader: authHeader.length > 0
+          }
+        });
       }
 
-      app.logger.info({ token: sessionToken.substring(0, 20) }, 'GET /api/auth/me - Profile request - session token received');
+      app.logger.info(
+        { tokenLength: sessionToken.length, tokenStart: sessionToken.substring(0, 50), tokenEnd: sessionToken.substring(sessionToken.length - 20) },
+        'GET /api/auth/me - Session token extracted successfully'
+      );
 
-      // Look up session in database
+      // Step 2: Look up session in database
       const sessionRecord = await app.db.query.session.findFirst({
         where: eq(authSchema.session.token, sessionToken)
       });
 
       if (!sessionRecord) {
-        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'GET /api/auth/me - Session token not found in database');
-        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid' });
+        app.logger.warn(
+          { tokenLength: sessionToken.length, tokenStart: sessionToken.substring(0, 30) },
+          'GET /api/auth/me - Session token not found in database'
+        );
+
+        // Debug: Check if token format matches what's in the database
+        try {
+          const allSessions = await app.db.query.session.findMany({ limit: 3 });
+          app.logger.debug(
+            {
+              searchedTokenLength: sessionToken.length,
+              databaseSessionCount: allSessions.length,
+              databaseSessionFormats: allSessions.map(s => ({
+                tokenLength: s.token.length,
+                tokenStart: s.token.substring(0, 30),
+                userId: s.userId
+              }))
+            },
+            'GET /api/auth/me - Debug: Session samples from database'
+          );
+        } catch (debugErr) {
+          app.logger.debug({ err: debugErr }, 'GET /api/auth/me - Could not fetch debug info');
+        }
+
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          message: 'Session invalid or not found',
+          debug: {
+            tokenLength: sessionToken.length,
+            hint: 'Session token format mismatch or expired'
+          }
+        });
       }
 
       app.logger.info(
-        { token: sessionToken.substring(0, 20), sessionUserId: sessionRecord.userId },
-        'GET /api/auth/me - Session found for user ID'
+        { sessionUserId: sessionRecord.userId, sessionExpiresAt: sessionRecord.expiresAt },
+        'GET /api/auth/me - Session found in database'
       );
 
-      // Check if session is expired
+      // Step 3: Check if session is expired
       if (new Date(sessionRecord.expiresAt) < new Date()) {
-        app.logger.info({ token: sessionToken.substring(0, 20) }, 'GET /api/auth/me - Session expired');
-        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+        app.logger.info(
+          { sessionExpiresAt: sessionRecord.expiresAt, now: new Date() },
+          'GET /api/auth/me - Session expired'
+        );
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          message: 'Session expired'
+        });
       }
 
-      // Get user record from Better Auth
+      // Step 4: Get user record from Better Auth
       const userRecord = await app.db.query.user.findFirst({
         where: eq(authSchema.user.id, sessionRecord.userId)
       });
 
       if (!userRecord) {
-        app.logger.warn({ userId: sessionRecord.userId }, 'GET /api/auth/me - User not found for valid session');
-        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+        app.logger.warn(
+          { userId: sessionRecord.userId },
+          'GET /api/auth/me - User not found for valid session'
+        );
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          message: 'User not found'
+        });
       }
 
       app.logger.info(
-        { userId: userRecord.id, authUserEmail: userRecord.email },
-        'GET /api/auth/me - Auth user retrieved'
+        { userId: userRecord.id, email: userRecord.email },
+        'GET /api/auth/me - Auth user retrieved successfully'
       );
 
-      // Get CoinHub user profile by user ID (CRITICAL: must match Better Auth user ID)
+      // Step 5: Get CoinHub user profile by user ID
       // The users.id field MUST match the user.id field from Better Auth
-      app.logger.debug(
-        { userId: userRecord.id, authUserEmail: userRecord.email },
-        'GET /api/auth/me - Looking up profile by user ID (users.id matches user.id)'
-      );
-
       const profile = await app.db.query.users.findFirst({
         where: eq(schema.users.id, userRecord.id),
       });
 
       app.logger.info(
         {
-          sessionUserId: sessionRecord.userId,
-          authUserId: userRecord.id,
-          authUserEmail: userRecord.email,
-          profileId: profile?.id,
-          profileUsername: profile?.username,
-          profileEmail: profile?.email,
+          userId: userRecord.id,
+          email: userRecord.email,
           profileFound: !!profile,
-          lookupStrategy: 'user-id-based'
+          profileUsername: profile?.username
         },
         'GET /api/auth/me - Profile lookup complete'
       );
 
-      // Handle case where profile doesn't exist
+      // Step 6: Handle case where profile doesn't exist
       if (!profile) {
         app.logger.warn(
           { userId: userRecord.id, email: userRecord.email },
@@ -548,7 +607,7 @@ export function registerAuthRoutes(app: App) {
         });
       }
 
-      // Generate signed URL for avatar if it exists
+      // Step 7: Generate signed URL for avatar if it exists
       let profileWithAvatar = profile;
       if (profile.avatarUrl) {
         try {
@@ -567,7 +626,7 @@ export function registerAuthRoutes(app: App) {
           email: userRecord.email,
           hasProfile: true
         },
-        'GET /api/auth/me - Returning profile for user'
+        'GET /api/auth/me - Returning full profile for user'
       );
 
       return {
@@ -587,7 +646,10 @@ export function registerAuthRoutes(app: App) {
       };
     } catch (error) {
       app.logger.error({ err: error }, 'GET /api/auth/me - Failed to fetch current user');
-      return reply.status(500).send({ error: 'Failed to fetch user' });
+      return reply.status(500).send({
+        error: 'Failed to fetch user',
+        message: String(error)
+      });
     }
   });
 

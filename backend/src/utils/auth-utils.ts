@@ -27,13 +27,19 @@ export function extractSessionToken(request: FastifyRequest): string | null {
 
   // Fall back to cookie header (web browsers)
   const cookieHeader = request.headers.cookie || '';
-  const sessionToken = cookieHeader
-    .split(';')
-    .find(cookie => cookie.trim().startsWith('session='))
-    ?.split('=')[1]
-    ?.trim();
 
-  return sessionToken || null;
+  // Parse cookie header - look for "session=" cookie
+  // Handle both "session=value" and "session=value; Path=/" formats
+  const cookies = cookieHeader.split(';');
+  for (const cookie of cookies) {
+    const trimmed = cookie.trim();
+    if (trimmed.startsWith('session=')) {
+      const value = trimmed.substring('session='.length).trim();
+      if (value) return value;
+    }
+  }
+
+  return null;
 }
 
 /**
