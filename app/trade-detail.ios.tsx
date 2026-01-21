@@ -162,7 +162,23 @@ export default function TradeDetailScreen() {
       }
 
       console.log('TradeDetailScreen: Trade data loaded successfully');
-      console.log('TradeDetailScreen: Offers:', data.offers);
+      console.log('TradeDetailScreen: Offers count:', data.offers?.length || 0);
+      
+      // Log each offer to help debug
+      if (data.offers && data.offers.length > 0) {
+        data.offers.forEach((offer: any, index: number) => {
+          console.log(`TradeDetailScreen: Offer ${index + 1}:`, {
+            id: offer.id,
+            hasOfferedCoin: !!offer.offeredCoin,
+            hasCoin: !!offer.coin,
+            offeredCoinId: offer.offeredCoin?.id || offer.coin?.id || 'MISSING',
+            offererUsername: offer.offerer?.username || offer.offeredBy?.username || 'MISSING',
+            status: offer.status,
+            isCounterOffer: offer.isCounterOffer
+          });
+        });
+      }
+      
       setTrade(data);
       setError(null);
     } catch (error: any) {
