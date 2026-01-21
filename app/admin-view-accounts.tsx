@@ -19,12 +19,12 @@ import { colors } from '@/styles/commonStyles';
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'http://localhost:3000';
 
 interface Account {
-  userId: string;
+  id: string;
   email: string;
-  username: string;
-  displayName: string;
-  role: string;
+  username: string | null;
+  displayName: string | null;
   createdAt: string;
+  hasProfile: boolean;
 }
 
 export default function AdminViewAccountsScreen() {
@@ -40,30 +40,36 @@ export default function AdminViewAccountsScreen() {
 
   const fetchAccounts = async () => {
     try {
-      console.log('AdminViewAccountsScreen: Calling GET /api/admin/accounts');
-      const response = await fetch(`${API_URL}/api/admin/accounts`, {
+      console.log('AdminViewAccountsScreen: Calling GET /api/admin/users');
+      const response = await fetch(`${API_URL}/api/admin/users`, {
         credentials: 'include',
       });
 
       if (!response.ok) {
-        console.error('AdminViewAccountsScreen: Failed to fetch accounts, status:', response.status);
-        throw new Error('Failed to fetch accounts');
+        console.error('AdminViewAccountsScreen: Failed to fetch users, status:', response.status);
+        throw new Error('Failed to fetch users');
       }
 
       const data = await response.json();
-      console.log('AdminViewAccountsScreen: Fetched accounts:', data);
+      console.log('AdminViewAccountsScreen: Fetched users:', data);
       
-      const accountsData = data?.accounts || data || [];
+      // The new endpoint returns an array of users directly
+      const accountsData = Array.isArray(data) ? data : (data?.users || []);
+      console.log('AdminViewAccountsScreen: Processed', accountsData.length, 'user accounts');
       setAccounts(accountsData);
     } catch (error) {
-      console.error('AdminViewAccountsScreen: Error fetching accounts:', error);
-      Alert.alert('Error', 'Failed to load accounts. Please try again.');
+      console.error('AdminViewAccountsScreen: Error fetching users:', error);
+      Alert.alert('Error', 'Failed to load user accounts. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAccountPress = (username: string) => {
+  const handleAccountPress = (username: string | null) => {
+    if (!username) {
+      Alert.alert('No Profile', 'This user has not completed their profile yet.');
+      return;
+    }
     console.log('AdminViewAccountsScreen: User tapped account:', username);
     router.push(`/user-profile?username=${username}`);
   };
@@ -71,8 +77,8 @@ export default function AdminViewAccountsScreen() {
   const filteredAccounts = accounts.filter(
     (account) =>
       account.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      account.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      account.displayName.toLowerCase().includes(searchQuery.toLowerCase())
+      (account.username && account.username.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (account.displayName && account.displayName.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   if (loading) {
@@ -148,17 +154,23 @@ export default function AdminViewAccountsScreen() {
         ) : (
           filteredAccounts.map((account) => (
             <TouchableOpacity
-              key={account.userId}
+              key={account.id}
               style={styles.accountCard}
               onPress={() => handleAccountPress(account.username)}
             >
               <View style={styles.accountHeader}>
                 <View style={styles.accountInfo}>
-                  <Text style={styles.displayName}>{account.displayName}</Text>
-                  <Text style={styles.username}>@{account.username}</Text>
+                  <Text style={styles.displayName}>
+                    {account.displayName || account.username || 'No Name'}
+                  </Text>
+                  {account.username && (
+                    <Text style={styles.username}>@{account.username}</Text>
+                  )}
                 </View>
-                <View style={[styles.roleBadge, account.role === 'admin' && styles.adminBadge]}>
-                  <Text style={styles.roleText}>{account.role}</Text>
+                <View style={[styles.roleBadge, !account.hasProfile && styles.incompleteProfileBadge]}>
+                  <Text style={styles.roleText}>
+                    {account.hasProfile ? 'Active' : 'Incomplete'}
+                  </Text>
                 </View>
               </View>
               <View style={styles.accountDetails}>
@@ -182,9 +194,22 @@ export default function AdminViewAccountsScreen() {
                     Joined {new Date(account.createdAt).toLocaleDateString()}
                   </Text>
                 </View>
+                {!account.hasProfile && (
+                  <View style={styles.detailRow}>
+                    <IconSymbol
+                      ios_icon_name="exclamationmark.triangle"
+                      android_material_icon_name="warning"
+                      size={16}
+                      color="#FF9500"
+                    />
+                    <Text style={[styles.detailText, { color: '#FF9500' }]}>
+                      Profile not completed
+                    </Text>
+                  </View>
+                )}
               </View>
               <View style={styles.accountFooter}>
-                <Text style={styles.userIdText}>ID: {account.userId}</Text>
+                <Text style={styles.userIdText}>ID: {account.id}</Text>
                 <IconSymbol
                   ios_icon_name="chevron.right"
                   android_material_icon_name="arrow-forward"
@@ -288,10 +313,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
-    backgroundColor: colors.primary,
+    backgroundColor: '#34C759',
   },
-  adminBadge: {
-    backgroundColor: '#FF3B30',
+  incompleteProfileBadge: {
+    backgroundColor: '#FF9500',
   },
   roleText: {
     fontSize: 12,
