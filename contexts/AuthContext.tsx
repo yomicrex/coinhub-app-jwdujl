@@ -48,15 +48,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('AuthContext: Session check before /me request:', {
           hasSession: !!session,
           sessionKeys: session ? Object.keys(session) : [],
+          hasDataSession: !!session?.data?.session,
           hasSessionProp: !!session?.session,
-          hasToken: !!session?.session?.token,
-          hasTokenDirect: !!session?.token,
-          tokenLength: session?.session?.token?.length || session?.token?.length,
           fullSession: JSON.stringify(session).substring(0, 200)
         });
         
-        // Check both session.session.token and session.token (different Better Auth versions)
-        const sessionToken = session?.session?.token || session?.token;
+        // CRITICAL FIX: Better Auth returns session in different formats:
+        // Format 1: { data: { session: { token: "..." } } }
+        // Format 2: { session: { token: "..." } }
+        // Format 3: { token: "..." }
+        const sessionToken = session?.data?.session?.token || session?.session?.token || session?.token;
+        
+        console.log('AuthContext: Token extraction:', {
+          hasDataSessionToken: !!session?.data?.session?.token,
+          hasSessionToken: !!session?.session?.token,
+          hasDirectToken: !!session?.token,
+          extractedToken: sessionToken?.substring(0, 20)
+        });
         
         if (!session || !sessionToken) {
           console.log('AuthContext: No valid session token found - user not authenticated');
@@ -303,14 +311,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       // Verify session is stored
       const storedSession = await authClient.getSession();
+      const storedToken = storedSession?.data?.session?.token || storedSession?.session?.token || storedSession?.token;
       console.log('AuthContext: SignIn - Stored session check:', {
         hasSession: !!storedSession,
         sessionKeys: storedSession ? Object.keys(storedSession) : [],
+        hasDataSession: !!storedSession?.data?.session,
         hasSessionProp: !!storedSession?.session,
-        hasToken: !!storedSession?.session?.token,
-        hasTokenDirect: !!storedSession?.token,
-        tokenLength: storedSession?.session?.token?.length || storedSession?.token?.length,
-        tokenMatches: (storedSession?.session?.token || storedSession?.token) === result.data?.session?.token,
+        hasToken: !!storedToken,
+        tokenLength: storedToken?.length,
+        tokenMatches: storedToken === result.data?.session?.token,
         fullSession: JSON.stringify(storedSession).substring(0, 300)
       });
       
@@ -374,11 +383,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       // Verify session is stored
       const storedSession = await authClient.getSession();
+      const storedToken = storedSession?.data?.session?.token || storedSession?.session?.token || storedSession?.token;
       console.log('AuthContext: SignUp - Stored session check:', {
         hasSession: !!storedSession,
-        hasToken: !!storedSession?.session?.token,
-        tokenLength: storedSession?.session?.token?.length,
-        tokenMatches: storedSession?.session?.token === result.data?.session?.token
+        hasToken: !!storedToken,
+        tokenLength: storedToken?.length,
+        tokenMatches: storedToken === result.data?.session?.token
       });
       
       // Fetch the full user profile with forced refresh
@@ -415,12 +425,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Check if we have a session first
       const session = await authClient.getSession();
       
-      // Check both session.session.token and session.token (different Better Auth versions)
-      const sessionToken = session?.session?.token || session?.token;
+      // CRITICAL FIX: Better Auth returns session in different formats
+      const sessionToken = session?.data?.session?.token || session?.session?.token || session?.token;
       
       console.log('AuthContext: CompleteProfile - Session check:', {
         hasSession: !!session,
         sessionKeys: session ? Object.keys(session) : [],
+        hasDataSession: !!session?.data?.session,
         hasSessionProp: !!session?.session,
         hasToken: !!sessionToken,
         tokenLength: sessionToken?.length
@@ -512,7 +523,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const getToken = async (): Promise<string | null> => {
     // Get session token from Better Auth
     const session = await authClient.getSession();
-    return session?.session?.token || null;
+    // CRITICAL FIX: Better Auth returns session in different formats
+    return session?.data?.session?.token || session?.session?.token || session?.token || null;
   };
 
   return (
