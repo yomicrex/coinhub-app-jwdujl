@@ -251,7 +251,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (!userData) {
         console.error('AuthContext: SignIn - Failed to fetch user profile after sign in');
-        throw new Error('Failed to load user profile');
+        // Don't throw error - the user might need to complete their profile
+        // The auth screen will handle showing the profile completion form
+        console.log('AuthContext: SignIn - User may need to complete profile, continuing...');
+        return;
       }
       
       console.log('AuthContext: SignIn - User state updated successfully:', {
@@ -300,7 +303,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (!userData) {
         console.error('AuthContext: SignUp - Failed to fetch user profile after sign up');
-        throw new Error('Failed to load user profile');
+        // Don't throw error - the user might need to complete their profile
+        // The auth screen will handle showing the profile completion form
+        console.log('AuthContext: SignUp - User may need to complete profile, continuing...');
+        return;
       }
       
       console.log('AuthContext: SignUp - User state updated successfully:', {

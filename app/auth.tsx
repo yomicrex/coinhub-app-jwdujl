@@ -72,7 +72,22 @@ export default function AuthScreen() {
       } else if (errorMessage.includes('Invalid credentials') || errorMessage.includes('Incorrect')) {
         errorMessage = 'Invalid email or password. Please try again.';
       } else if (errorMessage.includes('Failed to load user profile')) {
-        errorMessage = 'Account exists but profile is incomplete. Please complete your profile.';
+        // This means the account exists but the session validation failed
+        // Show a message and allow the user to try completing their profile
+        Alert.alert(
+          'Error',
+          'Account exists but profile is incomplete. Please complete your profile.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // The user state should already be set with needsProfileCompletion=true
+                // The useEffect will handle showing the profile completion form
+              }
+            }
+          ]
+        );
+        return; // Don't show the generic error alert
       }
       
       Alert.alert('Error', errorMessage);
