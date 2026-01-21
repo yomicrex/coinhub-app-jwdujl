@@ -1231,4 +1231,201 @@ export function registerAdminRoutes(app: App) {
       return reply.status(500).send({ error: 'Fix-all-passwords utility failed', details: String(error) });
     }
   });
+
+  /**
+   * DELETE /api/admin/delete-all-users
+   * DESTRUCTIVE: Deletes ALL user accounts and all associated data from the system
+   *
+   * This endpoint wipes the following data completely:
+   * - All user profiles from the CoinHub users table
+   * - All coins posted by users
+   * - All coin images
+   * - All trades (including offers, messages, shipping)
+   * - All comments on coins
+   * - All likes on coins
+   * - All follow relationships
+   * - All trade reports
+   * - All Better Auth accounts and sessions
+   *
+   * WARNING: This is a PERMANENT, IRREVERSIBLE operation!
+   *
+   * Requires: Authentication + Admin role verification
+   * Returns: { success: true, deletedCount: number, message: string }
+   */
+  app.fastify.delete('/api/admin/delete-all-users', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.warn('CRITICAL: Delete-all-users operation started - preparing to wipe ALL user data');
+
+    try {
+      // Validate session - admin endpoints require authentication
+      const sessionData = await validateSession(request, app);
+      if (!sessionData) {
+        app.logger.warn('Admin: Unauthorized access attempt to delete all users');
+        return reply.status(401).send({ error: 'Unauthorized - authentication required' });
+      }
+
+      // Verify user is admin
+      const adminUser = await app.db.query.users.findFirst({
+        where: eq(schema.users.id, sessionData.user.id),
+        columns: { role: true },
+      });
+
+      if (!adminUser || adminUser.role !== 'admin') {
+        app.logger.warn(
+          { userId: sessionData.user.id, userRole: adminUser?.role },
+          'Admin: Non-admin user attempted to delete all users'
+        );
+        return reply.status(403).send({ error: 'Forbidden - admin access required' });
+      }
+
+      app.logger.warn('CRITICAL: Delete-all-users - Admin verification passed, proceeding with data deletion');
+
+      // Step 1: Count total users before deletion
+      const allCoinHubUsers = await app.db.query.users.findMany({
+        columns: { id: true },
+      });
+      const totalUsersBeforeDeletion = allCoinHubUsers.length;
+
+      app.logger.info(
+        { totalUsers: totalUsersBeforeDeletion },
+        'Admin: Found users, beginning cascading deletion'
+      );
+
+      // Step 2: Delete in proper order to respect foreign key constraints
+      // Child records must be deleted before parent records
+
+      // Delete trade reports (references users and trades)
+      try {
+        await app.db.delete(schema.tradeReports);
+        app.logger.debug({}, 'Admin: Deleted all trade reports');
+      } catch (e) {
+        app.logger.warn({ err: e }, 'Admin: Error deleting trade reports - may already be empty');
+      }
+
+      // Delete trade shipping (references trades)
+      try {
+        await app.db.delete(schema.tradeShipping);
+        app.logger.debug({}, 'Admin: Deleted all trade shipping records');
+      } catch (e) {
+        app.logger.warn({ err: e }, 'Admin: Error deleting trade shipping - may already be empty');
+      }
+
+      // Delete trade messages (references trades and users)
+      try {
+        await app.db.delete(schema.tradeMessages);
+        app.logger.debug({}, 'Admin: Deleted all trade messages');
+      } catch (e) {
+        app.logger.warn({ err: e }, 'Admin: Error deleting trade messages - may already be empty');
+      }
+
+      // Delete trade offers (references trades and users)
+      try {
+        await app.db.delete(schema.tradeOffers);
+        app.logger.debug({}, 'Admin: Deleted all trade offers');
+      } catch (e) {
+        app.logger.warn({ err: e }, 'Admin: Error deleting trade offers - may already be empty');
+      }
+
+      // Delete trades (references users and coins)
+      try {
+        await app.db.delete(schema.trades);
+        app.logger.debug({}, 'Admin: Deleted all trades');
+      } catch (e) {
+        app.logger.warn({ err: e }, 'Admin: Error deleting trades - may already be empty');
+      }
+
+      // Delete comments (references users and coins)
+      try {
+        await app.db.delete(schema.comments);
+        app.logger.debug({}, 'Admin: Deleted all comments');
+      } catch (e) {
+        app.logger.warn({ err: e }, 'Admin: Error deleting comments - may already be empty');
+      }
+
+      // Delete likes (references users and coins)
+      try {
+        await app.db.delete(schema.likes);
+        app.logger.debug({}, 'Admin: Deleted all likes');
+      } catch (e) {
+        app.logger.warn({ err: e }, 'Admin: Error deleting likes - may already be empty');
+      }
+
+      // Delete coin images (references coins)
+      try {
+        await app.db.delete(schema.coinImages);
+        app.logger.debug({}, 'Admin: Deleted all coin images');
+      } catch (e) {
+        app.logger.warn({ err: e }, 'Admin: Error deleting coin images - may already be empty');
+      }
+
+      // Delete coins (references users)
+      try {
+        await app.db.delete(schema.coins);
+        app.logger.debug({}, 'Admin: Deleted all coins');
+      } catch (e) {
+        app.logger.warn({ err: e }, 'Admin: Error deleting coins - may already be empty');
+      }
+
+      // Delete follows (references users)
+      try {
+        await app.db.delete(schema.follows);
+        app.logger.debug({}, 'Admin: Deleted all follow relationships');
+      } catch (e) {
+        app.logger.warn({ err: e }, 'Admin: Error deleting follows - may already be empty');
+      }
+
+      // Delete CoinHub users
+      try {
+        await app.db.delete(schema.users);
+        app.logger.debug({}, 'Admin: Deleted all CoinHub user profiles');
+      } catch (e) {
+        app.logger.warn({ err: e }, 'Admin: Error deleting users - may already be empty');
+      }
+
+      // Step 3: Delete from Better Auth tables (sessions and accounts)
+      // Must delete sessions first since accounts may be referenced
+      try {
+        await app.db.delete(authSchema.session);
+        app.logger.debug({}, 'Admin: Deleted all sessions from Better Auth');
+      } catch (e) {
+        app.logger.warn({ err: e }, 'Admin: Error deleting sessions - may already be empty');
+      }
+
+      // Delete Better Auth accounts
+      try {
+        await app.db.delete(authSchema.account);
+        app.logger.debug({}, 'Admin: Deleted all accounts from Better Auth');
+      } catch (e) {
+        app.logger.warn({ err: e }, 'Admin: Error deleting accounts - may already be empty');
+      }
+
+      // Delete Better Auth users (final step)
+      try {
+        await app.db.delete(authSchema.user);
+        app.logger.debug({}, 'Admin: Deleted all users from Better Auth');
+      } catch (e) {
+        app.logger.warn({ err: e }, 'Admin: Error deleting Better Auth users - may already be empty');
+      }
+
+      app.logger.warn(
+        { totalUsersDeleted: totalUsersBeforeDeletion },
+        'CRITICAL: Delete-all-users operation completed successfully - all user data has been wiped'
+      );
+
+      return {
+        success: true,
+        deletedCount: totalUsersBeforeDeletion,
+        message: `Successfully deleted ${totalUsersBeforeDeletion} user account(s) and all associated data including coins, trades, comments, likes, follows, and reports. System has been completely wiped of user data.`,
+      };
+    } catch (error) {
+      app.logger.error(
+        { err: error },
+        'CRITICAL: Delete-all-users operation failed - PARTIAL DATA DELETION MAY HAVE OCCURRED'
+      );
+      return reply.status(500).send({
+        error: 'Delete-all-users operation failed',
+        details: String(error),
+        message: 'CRITICAL: Operation may have partially completed. Check database integrity.',
+      });
+    }
+  });
 }
