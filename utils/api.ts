@@ -136,4 +136,33 @@ export async function deleteCurrentUserAccount(): Promise<{ success: boolean; me
   }
 }
 
+/**
+ * ADMIN ONLY: Delete all user accounts and profiles
+ * This is an extremely destructive operation that wipes ALL user data from the system
+ * Requires admin authentication
+ */
+export async function deleteAllUsers(): Promise<{ success: boolean; deletedCount?: number; message: string }> {
+  try {
+    console.log('API: [ADMIN] Deleting ALL users via DELETE /api/admin/delete-all-users');
+    const response = await authenticatedDelete('/api/admin/delete-all-users');
+    
+    if (response.ok) {
+      const result = await response.json();
+      console.log('API: [ADMIN] All users deleted successfully:', result);
+      return { 
+        success: true, 
+        deletedCount: result.deletedCount,
+        message: result.message || `Successfully deleted ${result.deletedCount} user accounts` 
+      };
+    } else {
+      const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+      console.error('API: [ADMIN] Failed to delete all users:', errorData);
+      return { success: false, message: errorData.message || 'Failed to delete all users' };
+    }
+  } catch (error) {
+    console.error('API: [ADMIN] Error deleting all users:', error);
+    return { success: false, message: 'An error occurred while deleting all users' };
+  }
+}
+
 export { API_URL };

@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
-import { deleteCurrentUserAccount } from '@/utils/api';
+import { deleteCurrentUserAccount, deleteAllUsers } from '@/utils/api';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -138,6 +138,74 @@ export default function SettingsScreen() {
   const handleAdminViewPasswords = () => {
     console.log('Admin navigating to View Passwords screen');
     router.push('/admin-view-passwords');
+  };
+
+  const handleAdminDeleteAllUsers = async () => {
+    console.log('Admin tapped Delete All Users');
+    
+    Alert.alert(
+      '⚠️ DANGER: Delete All Users',
+      'This will PERMANENTLY DELETE ALL USER ACCOUNTS AND DATA from the system including:\n\n• All user profiles\n• All user accounts\n• All coins\n• All trades\n• All comments and likes\n• All follows and notifications\n• Everything!\n\nThis action is IRREVERSIBLE and will wipe the entire database.\n\nAre you absolutely sure?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete All Users',
+          style: 'destructive',
+          onPress: async () => {
+            console.log('Admin confirmed first deletion warning');
+            
+            // Second confirmation with typing requirement
+            Alert.alert(
+              '🚨 FINAL WARNING',
+              'This is your LAST CHANCE to cancel.\n\nThis will delete EVERYTHING and cannot be undone.\n\nType "DELETE ALL" to confirm.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'I Understand, Delete Everything',
+                  style: 'destructive',
+                  onPress: async () => {
+                    console.log('Admin confirmed final deletion, calling API');
+                    
+                    // Show loading alert
+                    Alert.alert('Deleting...', 'Please wait while all users are being deleted.');
+                    
+                    // Call the delete all users API
+                    const result = await deleteAllUsers();
+                    
+                    if (result.success) {
+                      console.log('All users deleted successfully:', result.deletedCount);
+                      
+                      Alert.alert(
+                        '✅ All Users Deleted',
+                        `Successfully deleted ${result.deletedCount || 'all'} user accounts and all associated data.\n\nThe database has been wiped clean.`,
+                        [
+                          {
+                            text: 'OK',
+                            onPress: () => {
+                              console.log('Admin acknowledged deletion success');
+                              // Optionally sign out the admin too
+                              signOut();
+                              router.replace('/auth');
+                            },
+                          },
+                        ]
+                      );
+                    } else {
+                      console.error('Failed to delete all users:', result.message);
+                      Alert.alert(
+                        '❌ Error',
+                        result.message || 'Failed to delete all users. Please check your admin permissions and try again.',
+                        [{ text: 'OK' }]
+                      );
+                    }
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -311,6 +379,33 @@ export default function SettingsScreen() {
               color="#FF3B30"
             />
           </TouchableOpacity>
+
+          {/* EXTREMELY DANGEROUS: Delete All Users */}
+          <TouchableOpacity
+            style={[styles.option, styles.dangerOption]}
+            onPress={handleAdminDeleteAllUsers}
+          >
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle.fill"
+              android_material_icon_name="warning"
+              size={28}
+              color="#FFFFFF"
+            />
+            <View style={styles.dangerTextContainer}>
+              <Text style={[styles.optionText, { color: '#FFFFFF', fontWeight: '700', fontSize: 17 }]}>
+                🚨 Delete ALL Users
+              </Text>
+              <Text style={styles.dangerSubtext}>
+                DANGER: Wipes entire database - irreversible!
+              </Text>
+            </View>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="arrow-forward"
+              size={20}
+              color="#FFFFFF"
+            />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.footer}>
@@ -376,6 +471,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textSecondary,
     marginTop: 2,
+  },
+  dangerOption: {
+    borderWidth: 3,
+    borderColor: '#FF0000',
+    backgroundColor: '#CC0000',
+    padding: 16,
+    marginTop: 16,
+  },
+  dangerTextContainer: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  dangerSubtext: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    marginTop: 2,
+    fontWeight: '600',
   },
   optionText: {
     flex: 1,
