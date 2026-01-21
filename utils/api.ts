@@ -45,10 +45,11 @@ export async function authenticatedFetch(
   
   console.log('API: Making authenticated request to:', url);
   
-  // CRITICAL FIX: Send token in cookie format for Better Auth
+  // CRITICAL FIX: Backend expects session token in "session=<token>" cookie format
+  // NOT "better-auth.session_token=<token>"
   const headers = {
     ...options.headers,
-    'Cookie': `better-auth.session_token=${sessionToken}`,
+    'Cookie': `session=${sessionToken}`,
   };
   
   // Add Content-Type for JSON requests if not already set
@@ -103,12 +104,12 @@ export async function authenticatedUpload(
   
   console.log('API: Uploading to:', url);
   
-  // CRITICAL FIX: Send token in cookie format for Better Auth
+  // CRITICAL FIX: Backend expects session token in "session=<token>" cookie format
   // DO NOT set Content-Type for FormData - browser will set it with boundary
   const response = await fetch(url, {
     method: 'POST',
     headers: {
-      'Cookie': `better-auth.session_token=${sessionToken}`,
+      'Cookie': `session=${sessionToken}`,
     },
     credentials: 'include',
     body: formData,

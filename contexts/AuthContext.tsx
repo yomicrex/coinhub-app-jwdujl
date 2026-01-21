@@ -74,15 +74,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       console.log('AuthContext: Making /me request with session token');
       
-      // CRITICAL FIX: Use Better Auth's $fetch which automatically handles session cookies
-      // This ensures the session token is sent correctly to the backend
+      // CRITICAL FIX: Backend expects session token in "session=<token>" cookie format
+      // NOT "better-auth.session_token=<token>"
       const queryParams = forceRefresh ? `?_t=${Date.now()}` : '';
       const response = await fetch(`${API_URL}/api/auth/me${queryParams}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          // CRITICAL: Send token in cookie format for Better Auth
-          'Cookie': `better-auth.session_token=${sessionToken}`,
+          // CRITICAL: Send token in the format the backend expects: "session=<token>"
+          'Cookie': `session=${sessionToken}`,
         },
         credentials: 'include',
       });
@@ -308,12 +308,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error('Not authenticated. Please sign in again.');
       }
       
-      // CRITICAL FIX: Send token in cookie format for Better Auth
+      // CRITICAL FIX: Backend expects session token in "session=<token>" cookie format
       const response = await fetch(`${API_URL}/api/profiles/complete`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Cookie': `better-auth.session_token=${sessionToken}`,
+          'Cookie': `session=${sessionToken}`,
         },
         credentials: 'include',
         body: JSON.stringify({ username, displayName }),
