@@ -506,15 +506,15 @@ export function registerAuthRoutes(app: App) {
         'GET /api/auth/me - Auth user retrieved'
       );
 
-      // Get CoinHub user profile by matching EMAIL (CRITICAL: must use email, not user ID)
-      // Email lookup ensures the correct profile is returned even when multiple profiles exist
+      // Get CoinHub user profile by user ID (CRITICAL: must match Better Auth user ID)
+      // The users.id field MUST match the user.id field from Better Auth
       app.logger.debug(
         { userId: userRecord.id, authUserEmail: userRecord.email },
-        'GET /api/auth/me - Looking up profile by email (email-first strategy)'
+        'GET /api/auth/me - Looking up profile by user ID (users.id matches user.id)'
       );
 
       const profile = await app.db.query.users.findFirst({
-        where: eq(schema.users.email, userRecord.email),
+        where: eq(schema.users.id, userRecord.id),
       });
 
       app.logger.info(
@@ -1321,7 +1321,7 @@ export function registerAuthRoutes(app: App) {
       let authUser;
 
       if (isEmail) {
-        // Look up by email in both auth user and CoinHub users tables
+        // Look up by email in Better Auth user table
         // Using case-insensitive comparison for email using SQL LOWER function
         try {
           authUser = await app.db.query.user.findFirst({
@@ -1329,14 +1329,14 @@ export function registerAuthRoutes(app: App) {
           });
 
           if (authUser) {
-            // Look up CoinHub profile by EMAIL (CRITICAL: must use email, not user ID)
-            // Email lookup ensures the correct profile is returned even when multiple profiles exist
+            // Look up CoinHub profile by user ID (CRITICAL: must match Better Auth user ID)
+            // The users.id field MUST match the user.id field from Better Auth
             app.logger.debug(
               { authUserId: authUser.id, email },
-              'Sign-in: Looking up profile by email (email-first strategy)'
+              'Sign-in: Looking up profile by user ID (users.id matches user.id)'
             );
             coinHubUser = await app.db.query.users.findFirst({
-              where: sql`LOWER(${schema.users.email}) = LOWER(${email})`,
+              where: eq(schema.users.id, authUser.id),
               columns: {
                 id: true,
                 email: true,
@@ -1607,15 +1607,15 @@ export function registerAuthRoutes(app: App) {
 
       app.logger.info({ userId: authUser.id, email: normalizedEmail }, 'Email-only sign-in: user found');
 
-      // Get CoinHub user profile by matching EMAIL (CRITICAL: must use email, not user ID)
-      // Email lookup ensures the correct profile is returned even when multiple profiles exist
+      // Get CoinHub user profile by user ID (CRITICAL: must match Better Auth user ID)
+      // The users.id field MUST match the user.id field from Better Auth
       app.logger.debug(
         { userId: authUser.id, email: normalizedEmail },
-        'Email-only sign-in: Looking up profile by email (email-first strategy)'
+        'Email-only sign-in: Looking up profile by user ID (users.id matches user.id)'
       );
 
       const coinHubProfile = await app.db.query.users.findFirst({
-        where: eq(schema.users.email, normalizedEmail)
+        where: eq(schema.users.id, authUser.id)
       });
 
       if (!coinHubProfile) {
