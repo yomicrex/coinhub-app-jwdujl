@@ -482,7 +482,11 @@ export function registerTradesRoutes(app: App) {
         if (offerCoinIds.length > 0) {
           const coinsData = await app.db.query.coins.findMany({
             where: (coinTable) => inArray(coinTable.id, offerCoinIds as string[]),
-            with: { images: true },
+            with: {
+              images: {
+                orderBy: (img) => img.orderIndex,
+              },
+            },
           });
 
           const coinsMap = new Map(coinsData.map((c) => [c.id, c]));
@@ -509,25 +513,14 @@ export function registerTradesRoutes(app: App) {
         {
           tradeId,
           offersCount: trade.offers.length,
-          rawOffers: JSON.stringify(trade.offers, null, 2),
-        },
-        'Trade offers raw data after query'
-      );
-
-      app.logger.info(
-        {
-          tradeId,
-          offersCount: trade.offers.length,
           offersDetail: trade.offers.map((o: any) => ({
             offerId: o.id,
             offeredCoinId: o.offeredCoinId,
-            offeredCoinIdType: typeof o.offeredCoinId,
-            offeredCoinExists: !!o.offeredCoin,
-            offeredCoinKeys: o.offeredCoin ? Object.keys(o.offeredCoin) : null,
-            offeredCoinData: o.offeredCoin ? { id: o.offeredCoin.id, title: o.offeredCoin.title, imageCount: o.offeredCoin.images?.length } : null,
+            offeredCoinLoaded: !!o.offeredCoin,
+            coinImageCount: o.offeredCoin?.images?.length || 0,
           })),
         },
-        'Trade offers data after query'
+        'Trade offers data after coin loading'
       );
 
       // Check access control
@@ -858,10 +851,24 @@ export function registerTradesRoutes(app: App) {
           offeredCoinId: newCoin.id,
           message: coinData.message,
           status: 'pending',
+          isCounterOffer: trade.status !== 'pending',
         })
         .returning();
 
-      app.logger.info({ tradeId, offerId: newOffer.id, coinId: newCoin.id, userId }, 'Trade offer created with uploaded coin');
+      // Update trade status to countered if needed
+      if (trade.status === 'pending') {
+        await app.db
+          .update(schema.trades)
+          .set({ status: 'countered', updatedAt: new Date() })
+          .where(eq(schema.trades.id, tradeId));
+
+        app.logger.info({ tradeId, status: 'countered' }, 'Trade status updated to countered');
+      }
+
+      app.logger.info(
+        { tradeId, offerId: newOffer.id, coinId: newCoin.id, userId, isCounterOffer: newOffer.isCounterOffer },
+        'Trade offer created with uploaded coin'
+      );
 
       // Get coin with images for response
       const coinWithImages = await app.db.query.coins.findFirst({
