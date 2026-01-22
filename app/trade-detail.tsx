@@ -95,6 +95,8 @@ interface TradeDetail {
   messages: TradeMessage[];
   shipping: ShippingInfo | null;
   createdAt: string;
+  canRate?: boolean;
+  hasRated?: boolean;
 }
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
@@ -121,6 +123,8 @@ export default function TradeDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [rating, setRating] = useState(0);
   const [showRatingModal, setShowRatingModal] = useState(false);
+  const [showCoinAvailabilityModal, setShowCoinAvailabilityModal] = useState(false);
+  const [coinToUpdate, setCoinToUpdate] = useState<Coin | null>(null);
 
   // Upload coin form state
   const [uploadImages, setUploadImages] = useState<string[]>([]);
@@ -151,7 +155,9 @@ export default function TradeDetailScreen() {
         status: data.status,
         offerCount: data.offers?.length || 0,
         messageCount: data.messages?.length || 0,
-        hasShipping: !!data.shipping
+        hasShipping: !!data.shipping,
+        canRate: data.canRate,
+        hasRated: data.hasRated
       });
       
       if (!data) {
@@ -645,13 +651,45 @@ export default function TradeDetailScreen() {
               }
 
               const data = await response.json();
-              console.log('TradeDetailScreen: Received status updated successfully');
+              console.log('TradeDetailScreen: Received status updated successfully, response:', data);
               
               if (data?.tradeCompleted) {
-                Alert.alert('Trade Completed!', 'Both parties have received their coins. Please rate your trading experience.', [
-                  { text: 'Rate Now', onPress: () => setShowRatingModal(true) },
-                  { text: 'Later', style: 'cancel' },
-                ]);
+                console.log('TradeDetailScreen: Trade completed! Showing coin availability prompt');
+                
+                // Determine which coin the user traded
+                const isInitiator = trade?.initiator.id === user?.id;
+                const acceptedOffer = trade?.offers.find(o => o.status === 'accepted');
+                const userTradedCoin = isInitiator 
+                  ? (acceptedOffer?.coin || acceptedOffer?.offeredCoin)
+                  : trade?.coin;
+                
+                if (userTradedCoin) {
+                  setCoinToUpdate(userTradedCoin);
+                }
+                
+                // Show rating modal first
+                Alert.alert(
+                  'Trade Completed!', 
+                  'Both parties have received their coins. Please rate your trading experience.',
+                  [
+                    { 
+                      text: 'Rate Now', 
+                      onPress: () => {
+                        setShowRatingModal(true);
+                      }
+                    },
+                    { 
+                      text: 'Later', 
+                      style: 'cancel',
+                      onPress: () => {
+                        // Show coin availability prompt after dismissing rating
+                        if (userTradedCoin) {
+                          setShowCoinAvailabilityModal(true);
+                        }
+                      }
+                    },
+                  ]
+                );
               } else {
                 Alert.alert('Success', 'Marked as received! Waiting for the other party to confirm receipt.');
               }
@@ -685,17 +723,59 @@ export default function TradeDetailScreen() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to submit rating');
+        const errorData = await response.json().catch(() => ({}));
+        console.error('TradeDetailScreen: Rating submission failed:', errorData);
+        throw new Error(errorData.message || 'Failed to submit rating');
       }
 
       console.log('TradeDetailScreen: Rating submitted successfully');
       Alert.alert('Success', 'Thank you for rating this trade!');
       setShowRatingModal(false);
       setRating(0);
+      
+      // Show coin availability prompt after rating
+      if (coinToUpdate) {
+        setShowCoinAvailabilityModal(true);
+      }
+      
       await fetchTradeDetail();
-    } catch (error) {
+    } catch (error: any) {
       console.error('TradeDetailScreen: Error submitting rating:', error);
-      Alert.alert('Error', 'Failed to submit rating');
+      Alert.alert('Error', error.message || 'Failed to submit rating');
+    }
+  };
+
+  const handleUpdateCoinAvailability = async (tradeStatus: 'open_to_trade' | 'not_for_trade') => {
+    if (!coinToUpdate) {
+      console.error('TradeDetailScreen: No coin to update');
+      return;
+    }
+
+    console.log('TradeDetailScreen: Updating coin availability to:', tradeStatus);
+
+    try {
+      const response = await authenticatedFetch(`/api/coins/${coinToUpdate.id}/availability`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ tradeStatus }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('TradeDetailScreen: Failed to update coin availability:', errorData);
+        throw new Error(errorData.message || 'Failed to update coin availability');
+      }
+
+      console.log('TradeDetailScreen: Coin availability updated successfully');
+      const statusText = tradeStatus === 'open_to_trade' ? 'available for trade' : 'not for trade';
+      Alert.alert('Success', `Your coin has been marked as ${statusText}.`);
+      setShowCoinAvailabilityModal(false);
+      setCoinToUpdate(null);
+    } catch (error: any) {
+      console.error('TradeDetailScreen: Error updating coin availability:', error);
+      Alert.alert('Error', error.message || 'Failed to update coin availability');
     }
   };
 
@@ -896,6 +976,22 @@ export default function TradeDetailScreen() {
                 {trade.status.charAt(0).toUpperCase() + trade.status.slice(1)}
               </Text>
             </View>
+
+            {/* Show rating button if trade is completed and user hasn't rated */}
+            {trade.status === 'completed' && trade.canRate && (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.primaryButton, { marginTop: 12 }]}
+                onPress={() => setShowRatingModal(true)}
+              >
+                <IconSymbol
+                  ios_icon_name="star.fill"
+                  android_material_icon_name="star"
+                  size={18}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.buttonText}>Rate This Trade</Text>
+              </TouchableOpacity>
+            )}
 
             {/* Cancel button - available for pending and accepted trades */}
             {(trade.status === 'pending' || trade.status === 'accepted' || trade.status === 'countered') && (
@@ -1804,6 +1900,74 @@ export default function TradeDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Coin Availability Modal */}
+      <Modal
+        visible={showCoinAvailabilityModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowCoinAvailabilityModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '50%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Update Coin Availability</Text>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => {
+                  setShowCoinAvailabilityModal(false);
+                  setCoinToUpdate(null);
+                }}
+              >
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={24}
+                  color={colors.text}
+                />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.availabilityContainer}>
+              <Text style={styles.availabilityText}>
+                You&apos;ve completed the trade for {coinToUpdate?.title}. Would you like to keep it available for trade or mark it as not for trade?
+              </Text>
+              <TouchableOpacity
+                style={[styles.actionButton, styles.primaryButton, { marginTop: 16 }]}
+                onPress={() => handleUpdateCoinAvailability('open_to_trade')}
+              >
+                <IconSymbol
+                  ios_icon_name="checkmark.circle"
+                  android_material_icon_name="check-circle"
+                  size={20}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.buttonText}>Keep Available for Trade</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actionButton, styles.secondaryButton, { marginTop: 12 }]}
+                onPress={() => handleUpdateCoinAvailability('not_for_trade')}
+              >
+                <IconSymbol
+                  ios_icon_name="xmark.circle"
+                  android_material_icon_name="cancel"
+                  size={20}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.buttonText}>Mark as Not for Trade</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actionButton, { marginTop: 12, backgroundColor: colors.border }]}
+                onPress={() => {
+                  setShowCoinAvailabilityModal(false);
+                  setCoinToUpdate(null);
+                }}
+              >
+                <Text style={[styles.buttonText, { color: colors.text }]}>Decide Later</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -2255,6 +2419,15 @@ const styles = StyleSheet.create({
   },
   starButton: {
     padding: 4,
+  },
+  availabilityContainer: {
+    padding: 24,
+  },
+  availabilityText: {
+    fontSize: 16,
+    color: colors.text,
+    textAlign: 'center',
+    lineHeight: 24,
   },
   uploadForm: {
     flex: 1,
