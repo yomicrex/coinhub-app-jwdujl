@@ -221,8 +221,14 @@ export default function TradeDetailScreen() {
 
       const data = await response.json();
       const coinsData = data?.coins || data || [];
-      console.log('TradeDetailScreen: Fetched', coinsData.length, 'user coins');
-      setUserCoins(coinsData);
+      
+      // Filter out the coin being traded if user is the coin owner
+      const filteredCoins = trade && trade.coinOwner.id === user.id
+        ? coinsData.filter((coin: Coin) => coin.id !== trade.coin.id)
+        : coinsData;
+      
+      console.log('TradeDetailScreen: Fetched', filteredCoins.length, 'user coins (filtered out trade coin if applicable)');
+      setUserCoins(filteredCoins);
     } catch (error) {
       console.error('TradeDetailScreen: Error fetching user coins:', error);
       Alert.alert('Error', 'Failed to load your coins');
@@ -416,7 +422,7 @@ export default function TradeDetailScreen() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
-          coinId,
+          offeredCoinId: coinId,
           message: offerMessage.trim() || undefined,
         }),
       });
@@ -826,6 +832,16 @@ export default function TradeDetailScreen() {
   
   const bothShipped = myShipped && theirShipped;
 
+  // Determine if user can make offers
+  // Coin owner can only make counter offers (after receiving an offer)
+  // Initiator can always make offers
+  const hasReceivedOffer = trade.offers.some(offer => {
+    const offerUser = offer.offeredBy || offer.offerer;
+    return offerUser && offerUser.id !== user?.id;
+  });
+  
+  const canMakeOffer = isInitiator || (isCoinOwner && hasReceivedOffer);
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Stack.Screen
@@ -941,7 +957,6 @@ export default function TradeDetailScreen() {
                 const offerCoin = offer.coin || offer.offeredCoin;
                 const offerUser = offer.offeredBy || offer.offerer;
 
-                // FIXED: Don't skip offers without coin data - show a placeholder instead
                 if (!offerUser) {
                   console.log('TradeDetailScreen: Skipping offer with no user data:', offer.id);
                   return null;
@@ -949,6 +964,7 @@ export default function TradeDetailScreen() {
 
                 const isMyOffer = offerUser.id === user?.id;
                 const canRespond = isCoinOwner && !isMyOffer && offer.status === 'pending';
+                const coinDataAvailable = !!offerCoin;
 
                 return (
                   <View key={offer.id} style={styles.offerCard}>
@@ -969,8 +985,7 @@ export default function TradeDetailScreen() {
                         </View>
                       )}
                     </View>
-                    {/* FIXED: Show coin if available, otherwise show "Coin being prepared" message */}
-                    {offerCoin ? (
+                    {coinDataAvailable ? (
                       <TouchableOpacity 
                         style={[styles.coinCard, { marginBottom: 0 }]}
                         onPress={() => handleViewCoinDetail(offerCoin, offer)}
@@ -1032,7 +1047,6 @@ export default function TradeDetailScreen() {
                       </View>
                     )}
                     
-                    {/* Status badges */}
                     {offer.status === 'accepted' && (
                       <View style={[styles.offerBadge, { backgroundColor: '#4CAF50', marginTop: 8, alignSelf: 'flex-start' }]}>
                         <Text style={styles.offerBadgeText}>✓ Accepted</Text>
@@ -1044,14 +1058,26 @@ export default function TradeDetailScreen() {
                       </View>
                     )}
 
-                    {/* Action buttons for coin owner to respond to offers - ONLY show if coin data is available */}
-                    {canRespond && offerCoin && (
+                    {canRespond && (
                       <View style={styles.offerActionsContainer}>
                         <Text style={styles.offerActionsPrompt}>What would you like to do?</Text>
+                        {!coinDataAvailable && (
+                          <View style={styles.loadingCoinDataBanner}>
+                            <ActivityIndicator size="small" color={colors.primary} />
+                            <Text style={styles.loadingCoinDataText}>
+                              Loading coin details... Please wait.
+                            </Text>
+                          </View>
+                        )}
                         <View style={styles.offerActionsButtons}>
                           <TouchableOpacity
-                            style={[styles.offerActionButton, styles.acceptButton]}
+                            style={[
+                              styles.offerActionButton, 
+                              styles.acceptButton,
+                              !coinDataAvailable && styles.disabledButton
+                            ]}
                             onPress={() => handleAcceptOffer(offer.id)}
+                            disabled={!coinDataAvailable}
                           >
                             <IconSymbol
                               ios_icon_name="checkmark.circle.fill"
@@ -1086,13 +1112,27 @@ export default function TradeDetailScreen() {
                             <Text style={styles.offerActionButtonText}>Counter</Text>
                           </TouchableOpacity>
                         </View>
+                        {!coinDataAvailable && (
+                          <TouchableOpacity
+                            style={[styles.actionButton, styles.secondaryButton, { marginTop: 12 }]}
+                            onPress={fetchTradeDetail}
+                          >
+                            <IconSymbol
+                              ios_icon_name="arrow.clockwise"
+                              android_material_icon_name="refresh"
+                              size={18}
+                              color="#FFFFFF"
+                            />
+                            <Text style={styles.buttonText}>Refresh Coin Data</Text>
+                          </TouchableOpacity>
+                        )}
                       </View>
                     )}
                   </View>
                 );
               })
             )}
-            {(trade.status === 'pending' || trade.status === 'countered') && (
+            {canMakeOffer && (trade.status === 'pending' || trade.status === 'countered') && (
               <View style={styles.offerButtonsContainer}>
                 <TouchableOpacity
                   style={[styles.actionButton, styles.primaryButton, { flex: 1, marginTop: 12, marginRight: 8 }]}
@@ -1118,6 +1158,19 @@ export default function TradeDetailScreen() {
                   />
                   <Text style={styles.buttonText}>Upload New Coin</Text>
                 </TouchableOpacity>
+              </View>
+            )}
+            {isCoinOwner && !hasReceivedOffer && (trade.status === 'pending' || trade.status === 'countered') && (
+              <View style={[styles.emptyOffersContainer, { marginTop: 12 }]}>
+                <IconSymbol
+                  ios_icon_name="clock"
+                  android_material_icon_name="schedule"
+                  size={32}
+                  color={colors.textSecondary}
+                />
+                <Text style={styles.emptyOffersText}>
+                  Waiting for the other user to make an offer. You can make a counter offer once they propose a trade.
+                </Text>
               </View>
             )}
           </View>
@@ -1371,7 +1424,6 @@ export default function TradeDetailScreen() {
                     </View>
                   )}
 
-                  {/* Action buttons for coin owner to respond to offers */}
                   {selectedOffer && isCoinOwner && selectedOffer.status === 'pending' && (
                     <View style={styles.coinDetailActions}>
                       <Text style={styles.actionPromptText}>What would you like to do?</Text>
@@ -1668,8 +1720,8 @@ export default function TradeDetailScreen() {
                     <ActivityIndicator size="small" color={colors.background} />
                   ) : (
                     <Text style={styles.buttonText}>Submit Offer</Text>
-                  )}
-                </TouchableOpacity>
+                  </TouchableOpacity>
+                </View>
               </ScrollView>
             </View>
           </KeyboardAvoidingView>
@@ -1948,6 +2000,31 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  offerActionsNote: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
+  loadingCoinDataBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    backgroundColor: colors.card,
+    borderRadius: 8,
+    marginBottom: 12,
+    gap: 8,
+  },
+  loadingCoinDataText: {
+    fontSize: 13,
+    color: colors.text,
+    fontStyle: 'italic',
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
   emptyOffersContainer: {
     alignItems: 'center',

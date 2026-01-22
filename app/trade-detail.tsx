@@ -964,6 +964,7 @@ export default function TradeDetailScreen() {
 
                 const isMyOffer = offerUser.id === user?.id;
                 const canRespond = isCoinOwner && !isMyOffer && offer.status === 'pending';
+                const coinDataAvailable = !!offerCoin;
 
                 return (
                   <View key={offer.id} style={styles.offerCard}>
@@ -985,7 +986,7 @@ export default function TradeDetailScreen() {
                       )}
                     </View>
                     
-                    {offerCoin ? (
+                    {coinDataAvailable ? (
                       <TouchableOpacity 
                         style={[styles.coinCard, { marginBottom: 0 }]}
                         onPress={() => handleViewCoinDetail(offerCoin, offer)}
@@ -1059,15 +1060,26 @@ export default function TradeDetailScreen() {
                       </View>
                     )}
 
-                    {/* FIXED: Show action buttons even if coin data is not yet available */}
                     {canRespond && (
                       <View style={styles.offerActionsContainer}>
                         <Text style={styles.offerActionsPrompt}>What would you like to do?</Text>
+                        {!coinDataAvailable && (
+                          <View style={styles.loadingCoinDataBanner}>
+                            <ActivityIndicator size="small" color={colors.primary} />
+                            <Text style={styles.loadingCoinDataText}>
+                              Loading coin details... Please wait.
+                            </Text>
+                          </View>
+                        )}
                         <View style={styles.offerActionsButtons}>
                           <TouchableOpacity
-                            style={[styles.offerActionButton, styles.acceptButton]}
+                            style={[
+                              styles.offerActionButton, 
+                              styles.acceptButton,
+                              !coinDataAvailable && styles.disabledButton
+                            ]}
                             onPress={() => handleAcceptOffer(offer.id)}
-                            disabled={!offerCoin}
+                            disabled={!coinDataAvailable}
                           >
                             <IconSymbol
                               ios_icon_name="checkmark.circle.fill"
@@ -1102,10 +1114,19 @@ export default function TradeDetailScreen() {
                             <Text style={styles.offerActionButtonText}>Counter</Text>
                           </TouchableOpacity>
                         </View>
-                        {!offerCoin && (
-                          <Text style={styles.offerActionsNote}>
-                            Note: Accept button will be enabled once coin details are loaded
-                          </Text>
+                        {!coinDataAvailable && (
+                          <TouchableOpacity
+                            style={[styles.actionButton, styles.secondaryButton, { marginTop: 12 }]}
+                            onPress={fetchTradeDetail}
+                          >
+                            <IconSymbol
+                              ios_icon_name="arrow.clockwise"
+                              android_material_icon_name="refresh"
+                              size={18}
+                              color="#FFFFFF"
+                            />
+                            <Text style={styles.buttonText}>Refresh Coin Data</Text>
+                          </TouchableOpacity>
                         )}
                       </View>
                     )}
@@ -1948,6 +1969,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
     fontStyle: 'italic',
+  },
+  loadingCoinDataBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    backgroundColor: colors.card,
+    borderRadius: 8,
+    marginBottom: 12,
+    gap: 8,
+  },
+  loadingCoinDataText: {
+    fontSize: 13,
+    color: colors.text,
+    fontStyle: 'italic',
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
   emptyOffersContainer: {
     alignItems: 'center',
