@@ -422,7 +422,7 @@ export default function TradeDetailScreen() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
-          coinId,
+          offeredCoinId: coinId,
           message: offerMessage.trim() || undefined,
         }),
       });
