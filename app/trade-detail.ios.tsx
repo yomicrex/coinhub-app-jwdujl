@@ -222,11 +222,14 @@ export default function TradeDetailScreen() {
       const data = await response.json();
       const coinsData = data?.coins || data || [];
       
-      // Filter out the coin being traded if user is the coin owner
-      const filteredCoins = trade && trade.coinOwner.id === user.id
+      // FIXED: Only filter out the trade coin if the current user is the coin owner
+      // Initiators should see all their coins
+      const isUserCoinOwner = trade && trade.coinOwner.id === user.id;
+      const filteredCoins = isUserCoinOwner
         ? coinsData.filter((coin: Coin) => coin.id !== trade.coin.id)
         : coinsData;
       
+      console.log('TradeDetailScreen: User is coin owner:', isUserCoinOwner);
       console.log('TradeDetailScreen: Fetched', filteredCoins.length, 'user coins (filtered out trade coin if applicable)');
       setUserCoins(filteredCoins);
     } catch (error) {
