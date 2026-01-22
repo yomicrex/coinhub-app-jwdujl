@@ -311,22 +311,9 @@ export default function FeedScreen() {
       return;
     }
     
-    // Navigate to propose trade screen or show modal
-    Alert.alert(
-      'Propose Trade',
-      'Would you like to propose a trade for this coin?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Propose Trade',
-          onPress: () => {
-            // TODO: Implement trade proposal flow
-            console.log('FeedScreen: Navigating to trade proposal for coin:', coinId);
-            Alert.alert('Coming Soon', 'Trade proposal feature is being implemented.');
-          },
-        },
-      ]
-    );
+    // Navigate to coin detail screen where user can propose trade
+    console.log('FeedScreen: Navigating to coin detail for trade proposal:', coinId);
+    router.push(`/coin-detail?id=${coinId}`);
   };
 
   const handleImageScroll = (coinId: string, event: NativeSyntheticEvent<NativeScrollEvent>) => {
