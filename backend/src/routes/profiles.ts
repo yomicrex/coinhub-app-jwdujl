@@ -47,35 +47,53 @@ export function registerProfileRoutes(app: App) {
 
       // Fetch trade statistics
       // Average rating from trade_ratings where rated_user_id = user.id
-      const ratingResult = await app.db
-        .select({
-          avgRating: sql<number>`AVG(${schema.tradeRatings.rating})`,
-          count: sql<number>`COUNT(*)`,
-        })
-        .from(schema.tradeRatings)
-        .where(eq(schema.tradeRatings.ratedUserId, userId))
-        .then((result) => result[0]);
+      let averageRating: number | null = null;
+      let completedTradesCount = 0;
 
-      const averageRating = ratingResult && ratingResult.count > 0
-        ? Math.round(ratingResult.avgRating * 10) / 10
-        : null;
+      try {
+        const ratingResult = await app.db
+          .select({
+            avgRating: sql<number>`AVG(${schema.tradeRatings.rating})`,
+            count: sql<number>`COUNT(*)`,
+          })
+          .from(schema.tradeRatings)
+          .where(eq(schema.tradeRatings.ratedUserId, userId));
+
+        app.logger.debug({ userId, ratingResult }, 'Rating query result');
+
+        if (ratingResult && ratingResult.length > 0) {
+          const rating = ratingResult[0];
+          if (rating.count && rating.count > 0 && rating.avgRating != null) {
+            averageRating = Math.round(rating.avgRating * 10) / 10;
+          }
+        }
+      } catch (ratingError) {
+        app.logger.warn({ err: ratingError, userId }, 'Failed to calculate average rating');
+      }
 
       // Count completed trades where user is either initiator or coin owner
-      const completedTradesResult = await app.db
-        .select({ count: sql<number>`COUNT(*)` })
-        .from(schema.trades)
-        .where(
-          and(
-            eq(schema.trades.status, 'completed'),
-            or(
-              eq(schema.trades.initiatorId, userId),
-              eq(schema.trades.coinOwnerId, userId)
+      try {
+        const completedTradesResult = await app.db
+          .select({ count: sql<number>`COUNT(*)` })
+          .from(schema.trades)
+          .where(
+            and(
+              eq(schema.trades.status, 'completed'),
+              or(
+                eq(schema.trades.initiatorId, userId),
+                eq(schema.trades.coinOwnerId, userId)
+              )
             )
-          )
-        )
-        .then((result) => result[0]);
+          );
 
-      const completedTradesCount = completedTradesResult?.count || 0;
+        app.logger.debug({ userId, completedTradesResult }, 'Completed trades query result');
+
+        if (completedTradesResult && completedTradesResult.length > 0) {
+          completedTradesCount = completedTradesResult[0].count || 0;
+        }
+      } catch (tradesError) {
+        app.logger.warn({ err: tradesError, userId }, 'Failed to calculate completed trades count');
+      }
 
       // Generate signed URL for avatar if it exists
       let avatarUrl = profile.avatarUrl;
@@ -133,35 +151,53 @@ export function registerProfileRoutes(app: App) {
 
       // Fetch trade statistics
       // Average rating from trade_ratings where rated_user_id = user.id
-      const ratingResult = await app.db
-        .select({
-          avgRating: sql<number>`AVG(${schema.tradeRatings.rating})`,
-          count: sql<number>`COUNT(*)`,
-        })
-        .from(schema.tradeRatings)
-        .where(eq(schema.tradeRatings.ratedUserId, profile.id))
-        .then((result) => result[0]);
+      let averageRating: number | null = null;
+      let completedTradesCount = 0;
 
-      const averageRating = ratingResult && ratingResult.count > 0
-        ? Math.round(ratingResult.avgRating * 10) / 10
-        : null;
+      try {
+        const ratingResult = await app.db
+          .select({
+            avgRating: sql<number>`AVG(${schema.tradeRatings.rating})`,
+            count: sql<number>`COUNT(*)`,
+          })
+          .from(schema.tradeRatings)
+          .where(eq(schema.tradeRatings.ratedUserId, profile.id));
+
+        app.logger.debug({ username, userId: profile.id, ratingResult }, 'Rating query result');
+
+        if (ratingResult && ratingResult.length > 0) {
+          const rating = ratingResult[0];
+          if (rating.count && rating.count > 0 && rating.avgRating != null) {
+            averageRating = Math.round(rating.avgRating * 10) / 10;
+          }
+        }
+      } catch (ratingError) {
+        app.logger.warn({ err: ratingError, username, userId: profile.id }, 'Failed to calculate average rating');
+      }
 
       // Count completed trades where user is either initiator or coin owner
-      const completedTradesResult = await app.db
-        .select({ count: sql<number>`COUNT(*)` })
-        .from(schema.trades)
-        .where(
-          and(
-            eq(schema.trades.status, 'completed'),
-            or(
-              eq(schema.trades.initiatorId, profile.id),
-              eq(schema.trades.coinOwnerId, profile.id)
+      try {
+        const completedTradesResult = await app.db
+          .select({ count: sql<number>`COUNT(*)` })
+          .from(schema.trades)
+          .where(
+            and(
+              eq(schema.trades.status, 'completed'),
+              or(
+                eq(schema.trades.initiatorId, profile.id),
+                eq(schema.trades.coinOwnerId, profile.id)
+              )
             )
-          )
-        )
-        .then((result) => result[0]);
+          );
 
-      const completedTradesCount = completedTradesResult?.count || 0;
+        app.logger.debug({ username, userId: profile.id, completedTradesResult }, 'Completed trades query result');
+
+        if (completedTradesResult && completedTradesResult.length > 0) {
+          completedTradesCount = completedTradesResult[0].count || 0;
+        }
+      } catch (tradesError) {
+        app.logger.warn({ err: tradesError, username, userId: profile.id }, 'Failed to calculate completed trades count');
+      }
 
       // Generate signed URL for avatar if it exists
       let avatarUrl = profile.avatarUrl;
@@ -276,35 +312,53 @@ export function registerProfileRoutes(app: App) {
 
       // Fetch trade statistics
       // Average rating from trade_ratings where rated_user_id = user.id
-      const ratingResult = await app.db
-        .select({
-          avgRating: sql<number>`AVG(${schema.tradeRatings.rating})`,
-          count: sql<number>`COUNT(*)`,
-        })
-        .from(schema.tradeRatings)
-        .where(eq(schema.tradeRatings.ratedUserId, profile.id))
-        .then((result) => result[0]);
+      let averageRating: number | null = null;
+      let completedTradesCount = 0;
 
-      const averageRating = ratingResult && ratingResult.count > 0
-        ? Math.round(ratingResult.avgRating * 10) / 10
-        : null;
+      try {
+        const ratingResult = await app.db
+          .select({
+            avgRating: sql<number>`AVG(${schema.tradeRatings.rating})`,
+            count: sql<number>`COUNT(*)`,
+          })
+          .from(schema.tradeRatings)
+          .where(eq(schema.tradeRatings.ratedUserId, profile.id));
+
+        app.logger.debug({ username, userId: profile.id, ratingResult }, 'Rating query result');
+
+        if (ratingResult && ratingResult.length > 0) {
+          const rating = ratingResult[0];
+          if (rating.count && rating.count > 0 && rating.avgRating != null) {
+            averageRating = Math.round(rating.avgRating * 10) / 10;
+          }
+        }
+      } catch (ratingError) {
+        app.logger.warn({ err: ratingError, username, userId: profile.id }, 'Failed to calculate average rating');
+      }
 
       // Count completed trades where user is either initiator or coin owner
-      const completedTradesResult = await app.db
-        .select({ count: sql<number>`COUNT(*)` })
-        .from(schema.trades)
-        .where(
-          and(
-            eq(schema.trades.status, 'completed'),
-            or(
-              eq(schema.trades.initiatorId, profile.id),
-              eq(schema.trades.coinOwnerId, profile.id)
+      try {
+        const completedTradesResult = await app.db
+          .select({ count: sql<number>`COUNT(*)` })
+          .from(schema.trades)
+          .where(
+            and(
+              eq(schema.trades.status, 'completed'),
+              or(
+                eq(schema.trades.initiatorId, profile.id),
+                eq(schema.trades.coinOwnerId, profile.id)
+              )
             )
-          )
-        )
-        .then((result) => result[0]);
+          );
 
-      const completedTradesCount = completedTradesResult?.count || 0;
+        app.logger.debug({ username, userId: profile.id, completedTradesResult }, 'Completed trades query result');
+
+        if (completedTradesResult && completedTradesResult.length > 0) {
+          completedTradesCount = completedTradesResult[0].count || 0;
+        }
+      } catch (tradesError) {
+        app.logger.warn({ err: tradesError, username, userId: profile.id }, 'Failed to calculate completed trades count');
+      }
 
       // Generate signed URL for avatar if it exists
       let avatarUrl = profile.avatarUrl;
@@ -500,35 +554,53 @@ export function registerProfileRoutes(app: App) {
 
       // Fetch trade statistics
       // Average rating from trade_ratings where rated_user_id = user.id
-      const ratingResult = await app.db
-        .select({
-          avgRating: sql<number>`AVG(${schema.tradeRatings.rating})`,
-          count: sql<number>`COUNT(*)`,
-        })
-        .from(schema.tradeRatings)
-        .where(eq(schema.tradeRatings.ratedUserId, session.user.id))
-        .then((result) => result[0]);
+      let averageRating: number | null = null;
+      let completedTradesCount = 0;
 
-      const averageRating = ratingResult && ratingResult.count > 0
-        ? Math.round(ratingResult.avgRating * 10) / 10
-        : null;
+      try {
+        const ratingResult = await app.db
+          .select({
+            avgRating: sql<number>`AVG(${schema.tradeRatings.rating})`,
+            count: sql<number>`COUNT(*)`,
+          })
+          .from(schema.tradeRatings)
+          .where(eq(schema.tradeRatings.ratedUserId, session.user.id));
+
+        app.logger.debug({ userId: session.user.id, ratingResult }, 'Rating query result');
+
+        if (ratingResult && ratingResult.length > 0) {
+          const rating = ratingResult[0];
+          if (rating.count && rating.count > 0 && rating.avgRating != null) {
+            averageRating = Math.round(rating.avgRating * 10) / 10;
+          }
+        }
+      } catch (ratingError) {
+        app.logger.warn({ err: ratingError, userId: session.user.id }, 'Failed to calculate average rating');
+      }
 
       // Count completed trades where user is either initiator or coin owner
-      const completedTradesResult = await app.db
-        .select({ count: sql<number>`COUNT(*)` })
-        .from(schema.trades)
-        .where(
-          and(
-            eq(schema.trades.status, 'completed'),
-            or(
-              eq(schema.trades.initiatorId, session.user.id),
-              eq(schema.trades.coinOwnerId, session.user.id)
+      try {
+        const completedTradesResult = await app.db
+          .select({ count: sql<number>`COUNT(*)` })
+          .from(schema.trades)
+          .where(
+            and(
+              eq(schema.trades.status, 'completed'),
+              or(
+                eq(schema.trades.initiatorId, session.user.id),
+                eq(schema.trades.coinOwnerId, session.user.id)
+              )
             )
-          )
-        )
-        .then((result) => result[0]);
+          );
 
-      const completedTradesCount = completedTradesResult?.count || 0;
+        app.logger.debug({ userId: session.user.id, completedTradesResult }, 'Completed trades query result');
+
+        if (completedTradesResult && completedTradesResult.length > 0) {
+          completedTradesCount = completedTradesResult[0].count || 0;
+        }
+      } catch (tradesError) {
+        app.logger.warn({ err: tradesError, userId: session.user.id }, 'Failed to calculate completed trades count');
+      }
 
       // Generate signed URL for avatar if it exists
       let avatarUrl = profile.avatarUrl;
