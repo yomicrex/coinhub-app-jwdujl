@@ -363,6 +363,34 @@ export const tradeReports = pgTable(
   ]
 );
 
+/**
+ * Trade Ratings Table
+ * Stores ratings given by users for trades
+ */
+export const tradeRatings = pgTable(
+  'trade_ratings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tradeId: uuid('trade_id').notNull().references(() => trades.id, {
+      onDelete: 'cascade',
+    }),
+    raterId: text('rater_id').notNull().references(() => users.id, {
+      onDelete: 'cascade',
+    }),
+    ratedUserId: text('rated_user_id').notNull().references(() => users.id, {
+      onDelete: 'cascade',
+    }),
+    rating: integer('rating').notNull(), // 1-5 stars
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_trade_rating_unique').on(table.tradeId, table.raterId),
+    index('idx_trade_rating_trade').on(table.tradeId),
+    index('idx_trade_rating_rater').on(table.raterId),
+    index('idx_trade_rating_rated').on(table.ratedUserId),
+  ]
+);
+
 // ===== RELATIONS =====
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -378,6 +406,8 @@ export const usersRelations = relations(users, ({ many }) => ({
   reportedTrades: many(tradeReports, { relationName: 'reporter' }),
   reviewedReports: many(tradeReports, { relationName: 'reviewer' }),
   reportedByUsers: many(tradeReports, { relationName: 'reportedUser' }),
+  givenRatings: many(tradeRatings, { relationName: 'rater' }),
+  receivedRatings: many(tradeRatings, { relationName: 'rated' }),
 }));
 
 export const coinsRelations = relations(coins, ({ one, many }) => ({
@@ -451,6 +481,7 @@ export const tradesRelations = relations(trades, ({ one, many }) => ({
   messages: many(tradeMessages),
   shipping: one(tradeShipping),
   reports: many(tradeReports),
+  ratings: many(tradeRatings),
 }));
 
 export const tradeOffersRelations = relations(tradeOffers, ({ one }) => ({
@@ -505,5 +536,22 @@ export const tradeReportsRelations = relations(tradeReports, ({ one }) => ({
     fields: [tradeReports.reviewedBy],
     references: [users.id],
     relationName: 'reviewer',
+  }),
+}));
+
+export const tradeRatingsRelations = relations(tradeRatings, ({ one }) => ({
+  trade: one(trades, {
+    fields: [tradeRatings.tradeId],
+    references: [trades.id],
+  }),
+  rater: one(users, {
+    fields: [tradeRatings.raterId],
+    references: [users.id],
+    relationName: 'rater',
+  }),
+  ratedUser: one(users, {
+    fields: [tradeRatings.ratedUserId],
+    references: [users.id],
+    relationName: 'rated',
   }),
 }));

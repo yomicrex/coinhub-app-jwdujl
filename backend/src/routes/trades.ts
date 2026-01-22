@@ -21,6 +21,10 @@ const CreateTradeOfferSchema = z.object({
   message: z.string().max(1000).optional(),
 });
 
+const RateTradeSchema = z.object({
+  rating: z.number().int().min(1).max(5, 'Rating must be between 1 and 5'),
+});
+
 const CounterOfferSchema = z.object({
   offeredCoinId: z.string().uuid('Invalid coin ID').optional().nullable(),
   message: z.string().max(1000).optional(),
@@ -2173,6 +2177,143 @@ export function registerTradesRoutes(app: App) {
       };
     } catch (error) {
       app.logger.error({ err: error, tradeId, userId }, 'Failed to cancel trade');
+      throw error;
+    }
+  });
+
+  /**
+   * POST /api/trades/:tradeId/rate
+   * Rate a completed trade (1-5 stars)
+   */
+  app.fastify.post('/api/trades/:tradeId/rate', async (request: FastifyRequest, reply: FastifyReply) => {
+    const { tradeId } = request.params as { tradeId: string };
+
+    app.logger.info({ tradeId }, 'POST /api/trades/:tradeId/rate - session extraction attempt');
+
+    let userId: string | null = null;
+
+    try {
+      // Extract session token from either Authorization header or cookies
+      const sessionToken = extractSessionToken(request);
+      app.logger.debug(
+        { tokenPresent: !!sessionToken, hasAuthHeader: !!request.headers.authorization, hasCookie: !!request.headers.cookie },
+        'Session token extraction result for trade rating'
+      );
+
+      if (!sessionToken) {
+        app.logger.warn({}, 'No session token found in request for trade rating');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'No active session' });
+      }
+
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken),
+      });
+
+      if (!sessionRecord) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session token not found in database');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid or expired' });
+      }
+
+      // Check if session is expired
+      if (new Date(sessionRecord.expiresAt) < new Date()) {
+        app.logger.warn({ token: sessionToken.substring(0, 20), expiresAt: sessionRecord.expiresAt }, 'Session token expired');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      }
+
+      // Get user from session
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId),
+      });
+
+      if (!userRecord) {
+        app.logger.warn({ userId: sessionRecord.userId }, 'User not found for valid session');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+      }
+
+      userId = userRecord.id;
+      app.logger.info({ userId, tradeId }, 'Session validated successfully for trade rating');
+    } catch (error) {
+      app.logger.error({ err: error }, 'Error validating session for trade rating');
+      return reply.status(500).send({ error: 'Internal server error', message: 'Session validation failed' });
+    }
+
+    app.logger.info({ tradeId, userId, body: request.body }, 'Rating trade');
+
+    try {
+      // Validate request body
+      const body = RateTradeSchema.parse(request.body);
+
+      // Get trade
+      const trade = await app.db.query.trades.findFirst({
+        where: eq(schema.trades.id, tradeId),
+      });
+
+      if (!trade) {
+        app.logger.warn({ tradeId }, 'Trade not found for rating');
+        return reply.status(404).send({ error: 'Trade not found' });
+      }
+
+      // Check if user is part of the trade
+      const isParticipant = trade.initiatorId === userId || trade.coinOwnerId === userId;
+      if (!isParticipant) {
+        app.logger.warn({ tradeId, userId }, 'User is not a participant in this trade');
+        return reply.status(403).send({ error: 'Forbidden - not a trade participant' });
+      }
+
+      // Check if trade is completed
+      if (trade.status !== 'completed') {
+        app.logger.warn({ tradeId, status: trade.status }, 'Cannot rate incomplete trade');
+        return reply.status(400).send({ error: 'Trade must be completed to rate' });
+      }
+
+      // Check if user already rated this trade
+      const existingRating = await app.db.query.tradeRatings.findFirst({
+        where: and(
+          eq(schema.tradeRatings.tradeId, tradeId),
+          eq(schema.tradeRatings.raterId, userId)
+        ),
+      });
+
+      if (existingRating) {
+        app.logger.warn({ tradeId, userId }, 'User has already rated this trade');
+        return reply.status(409).send({ error: 'Already rated', message: 'You have already rated this trade' });
+      }
+
+      // Determine rated user (the other participant)
+      const ratedUserId = trade.initiatorId === userId ? trade.coinOwnerId : trade.initiatorId;
+
+      // Create rating
+      const [newRating] = await app.db
+        .insert(schema.tradeRatings)
+        .values({
+          tradeId,
+          raterId: userId,
+          ratedUserId,
+          rating: body.rating,
+        })
+        .returning();
+
+      app.logger.info(
+        { ratingId: newRating.id, tradeId, userId, ratedUserId, rating: body.rating },
+        'Trade rating created successfully'
+      );
+
+      return {
+        success: true,
+        rating: {
+          id: newRating.id,
+          tradeId: newRating.tradeId,
+          rating: newRating.rating,
+          createdAt: newRating.createdAt,
+        },
+      };
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        app.logger.warn({ error: error.issues, userId }, 'Validation error');
+        return reply.status(400).send({ error: 'Validation failed', details: error.issues });
+      }
+      app.logger.error({ err: error, tradeId, userId }, 'Failed to rate trade');
       throw error;
     }
   });

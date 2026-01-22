@@ -28,6 +28,10 @@ const CreateCoinSchema = z.object({
   })).optional(),
 });
 
+const UpdateCoinAvailabilitySchema = z.object({
+  forTrade: z.boolean(),
+});
+
 const UpdateCoinSchema = z.object({
   title: z.string().min(1).max(255).optional(),
   country: z.string().min(1).max(100).optional(),
@@ -755,6 +759,118 @@ export function registerCoinsRoutes(app: App) {
       return { coins: result, total: result.length };
     } catch (error) {
       app.logger.error({ err: error, userId: id }, 'Failed to fetch user coins');
+      throw error;
+    }
+  });
+
+  /**
+   * PUT /api/coins/:coinId/availability
+   * Update whether a coin is available for trading
+   * Body: { forTrade: boolean }
+   */
+  app.fastify.put('/api/coins/:coinId/availability', async (request: FastifyRequest, reply: FastifyReply) => {
+    const { coinId } = request.params as { coinId: string };
+
+    app.logger.info({ coinId }, 'PUT /api/coins/:coinId/availability - session extraction attempt');
+
+    let userId: string | null = null;
+
+    try {
+      // Extract session token from either Authorization header or cookies
+      const sessionToken = extractSessionToken(request);
+      app.logger.debug(
+        { tokenPresent: !!sessionToken, hasAuthHeader: !!request.headers.authorization, hasCookie: !!request.headers.cookie },
+        'Session token extraction result for coin availability update'
+      );
+
+      if (!sessionToken) {
+        app.logger.warn({}, 'No session token found in request for coin availability update');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'No active session' });
+      }
+
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken),
+      });
+
+      if (!sessionRecord) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session token not found in database');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid or expired' });
+      }
+
+      // Check if session is expired
+      if (new Date(sessionRecord.expiresAt) < new Date()) {
+        app.logger.warn({ token: sessionToken.substring(0, 20), expiresAt: sessionRecord.expiresAt }, 'Session token expired');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      }
+
+      // Get user from session
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId),
+      });
+
+      if (!userRecord) {
+        app.logger.warn({ userId: sessionRecord.userId }, 'User not found for valid session');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+      }
+
+      userId = userRecord.id;
+      app.logger.info({ userId, coinId }, 'Session validated successfully for coin availability update');
+    } catch (error) {
+      app.logger.error({ err: error }, 'Error validating session for coin availability update');
+      return reply.status(500).send({ error: 'Internal server error', message: 'Session validation failed' });
+    }
+
+    app.logger.info({ coinId, userId, body: request.body }, 'Updating coin availability');
+
+    try {
+      // Validate request body
+      const body = UpdateCoinAvailabilitySchema.parse(request.body);
+
+      // Get coin
+      const coin = await app.db.query.coins.findFirst({
+        where: eq(schema.coins.id, coinId),
+      });
+
+      if (!coin) {
+        app.logger.warn({ coinId }, 'Coin not found');
+        return reply.status(404).send({ error: 'Coin not found' });
+      }
+
+      // Check if user owns the coin
+      if (coin.userId !== userId) {
+        app.logger.warn({ coinId, userId, coinOwnerId: coin.userId }, 'User does not own this coin');
+        return reply.status(403).send({ error: 'Forbidden - you do not own this coin' });
+      }
+
+      // Update coin trade status
+      const newTradeStatus = body.forTrade ? 'open_to_trade' : 'not_for_trade';
+      const [updatedCoin] = await app.db
+        .update(schema.coins)
+        .set({ tradeStatus: newTradeStatus as any, updatedAt: new Date() })
+        .where(eq(schema.coins.id, coinId))
+        .returning();
+
+      app.logger.info(
+        { coinId, userId, previousStatus: coin.tradeStatus, newStatus: newTradeStatus },
+        'Coin availability updated successfully'
+      );
+
+      return {
+        success: true,
+        coin: {
+          id: updatedCoin.id,
+          title: updatedCoin.title,
+          tradeStatus: updatedCoin.tradeStatus,
+          updatedAt: updatedCoin.updatedAt,
+        },
+      };
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        app.logger.warn({ error: error.issues, userId }, 'Validation error');
+        return reply.status(400).send({ error: 'Validation failed', details: error.issues });
+      }
+      app.logger.error({ err: error, coinId, userId }, 'Failed to update coin availability');
       throw error;
     }
   });

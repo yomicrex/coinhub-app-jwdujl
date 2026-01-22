@@ -884,4 +884,81 @@ export function registerProfileRoutes(app: App) {
       return reply.status(500).send({ error: 'Server error', message: 'Failed to complete profile' });
     }
   });
+
+  /**
+   * GET /api/users/:userId/rating
+   * Get average rating for a user based on trade ratings
+   * Returns: { userId, averageRating, totalRatings, ratings: [...] }
+   */
+  app.fastify.get('/api/users/:userId/rating', async (request: FastifyRequest, reply: FastifyReply) => {
+    const { userId } = request.params as { userId: string };
+
+    app.logger.info({ userId }, 'GET /api/users/:userId/rating');
+
+    try {
+      // Fetch all ratings for this user as the rated user
+      const ratings = await app.db.query.tradeRatings.findMany({
+        where: eq(schema.tradeRatings.ratedUserId, userId),
+        with: {
+          rater: {
+            columns: { id: true, username: true, displayName: true, avatarUrl: true },
+          },
+          trade: {
+            columns: { id: true, createdAt: true },
+          },
+        },
+        orderBy: (rating) => rating.createdAt,
+      });
+
+      if (ratings.length === 0) {
+        app.logger.info({ userId }, 'No ratings found for user');
+        return {
+          userId,
+          averageRating: 0,
+          totalRatings: 0,
+          ratings: [],
+        };
+      }
+
+      // Calculate average rating
+      const totalRating = ratings.reduce((sum, r) => sum + r.rating, 0);
+      const averageRating = totalRating / ratings.length;
+
+      // Generate signed URLs for avatars
+      const ratingsWithAvatars = await Promise.all(
+        ratings.map(async (rating) => {
+          let avatarUrl = rating.rater.avatarUrl;
+          if (avatarUrl) {
+            try {
+              const { url } = await app.storage.getSignedUrl(avatarUrl);
+              avatarUrl = url;
+            } catch (urlError) {
+              app.logger.warn({ err: urlError, userId: rating.rater.id }, 'Failed to generate avatar signed URL');
+              avatarUrl = null;
+            }
+          }
+
+          return {
+            id: rating.id,
+            rating: rating.rating,
+            rater: { ...rating.rater, avatarUrl },
+            tradeId: rating.trade.id,
+            createdAt: rating.createdAt,
+          };
+        })
+      );
+
+      app.logger.info({ userId, count: ratings.length, averageRating }, 'User ratings fetched');
+
+      return {
+        userId,
+        averageRating: Math.round(averageRating * 10) / 10, // Round to 1 decimal place
+        totalRatings: ratings.length,
+        ratings: ratingsWithAvatars,
+      };
+    } catch (error) {
+      app.logger.error({ err: error, userId }, 'Failed to fetch user rating');
+      return reply.status(500).send({ error: 'Server error', message: 'Failed to fetch user rating' });
+    }
+  });
 }
