@@ -1720,8 +1720,8 @@ export default function TradeDetailScreen() {
                     <ActivityIndicator size="small" color={colors.background} />
                   ) : (
                     <Text style={styles.buttonText}>Submit Offer</Text>
-                  </TouchableOpacity>
-                </View>
+                  )}
+                </TouchableOpacity>
               </ScrollView>
             </View>
           </KeyboardAvoidingView>
