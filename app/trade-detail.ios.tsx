@@ -526,7 +526,25 @@ export default function TradeDetailScreen() {
   const handleCounterOffer = () => {
     console.log('TradeDetailScreen: User initiating counter offer');
     setShowCoinDetail(false);
-    handleOpenCoinPicker();
+    // Show a choice dialog
+    Alert.alert(
+      'Make Counter Offer',
+      'Choose how you want to make your counter offer:',
+      [
+        {
+          text: 'Select from My Coins',
+          onPress: handleOpenCoinPicker,
+        },
+        {
+          text: 'Upload New Coin',
+          onPress: () => setShowUploadCoin(true),
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ]
+    );
   };
 
   const handleCancelTrade = async () => {
@@ -1136,32 +1154,45 @@ export default function TradeDetailScreen() {
               })
             )}
             {canMakeOffer && (trade.status === 'pending' || trade.status === 'countered') && (
-              <View style={styles.offerButtonsContainer}>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.primaryButton, { flex: 1, marginTop: 12, marginRight: 8 }]}
-                  onPress={handleOpenCoinPicker}
-                >
+              <>
+                <View style={styles.instructionBanner}>
                   <IconSymbol
-                    ios_icon_name="list.bullet"
-                    android_material_icon_name="list"
-                    size={18}
-                    color="#FFFFFF"
+                    ios_icon_name="info.circle.fill"
+                    android_material_icon_name="info"
+                    size={20}
+                    color={colors.primary}
                   />
-                  <Text style={styles.buttonText}>Select from My Coins</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.secondaryButton, { flex: 1, marginTop: 12 }]}
-                  onPress={() => setShowUploadCoin(true)}
-                >
-                  <IconSymbol
-                    ios_icon_name="plus.circle"
-                    android_material_icon_name="add-circle"
-                    size={18}
-                    color="#FFFFFF"
-                  />
-                  <Text style={styles.buttonText}>Upload New Coin</Text>
-                </TouchableOpacity>
-              </View>
+                  <Text style={styles.instructionText}>
+                    To make {isCoinOwner ? 'a counter offer' : 'an offer'}, choose a coin from your collection or upload a new one
+                  </Text>
+                </View>
+                <View style={styles.offerButtonsContainer}>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.primaryButton, { flex: 1, marginTop: 12, marginRight: 8 }]}
+                    onPress={handleOpenCoinPicker}
+                  >
+                    <IconSymbol
+                      ios_icon_name="list.bullet"
+                      android_material_icon_name="list"
+                      size={18}
+                      color="#FFFFFF"
+                    />
+                    <Text style={styles.buttonText}>Select from My Coins</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.secondaryButton, { flex: 1, marginTop: 12 }]}
+                    onPress={() => setShowUploadCoin(true)}
+                  >
+                    <IconSymbol
+                      ios_icon_name="plus.circle"
+                      android_material_icon_name="add-circle"
+                      size={18}
+                      color="#FFFFFF"
+                    />
+                    <Text style={styles.buttonText}>Upload New Coin</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
             )}
             {isCoinOwner && !hasReceivedOffer && (trade.status === 'pending' || trade.status === 'countered') && (
               <View style={[styles.emptyOffersContainer, { marginTop: 12 }]}>
@@ -1517,6 +1548,36 @@ export default function TradeDetailScreen() {
                 <ActivityIndicator size="large" color={colors.primary} />
                 <Text style={[styles.emptyText, { marginTop: 16 }]}>Loading your coins...</Text>
               </View>
+            ) : userCoins.length === 0 ? (
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <IconSymbol
+                  ios_icon_name="photo"
+                  android_material_icon_name="image"
+                  size={64}
+                  color={colors.textSecondary}
+                />
+                <Text style={[styles.emptyText, { marginTop: 16, marginBottom: 8 }]}>
+                  You don&apos;t have any other coins to offer
+                </Text>
+                <Text style={[styles.emptyText, { fontSize: 13, marginBottom: 16 }]}>
+                  Upload a new coin to make your offer
+                </Text>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.primaryButton]}
+                  onPress={() => {
+                    setShowCoinPicker(false);
+                    setShowUploadCoin(true);
+                  }}
+                >
+                  <IconSymbol
+                    ios_icon_name="plus.circle"
+                    android_material_icon_name="add-circle"
+                    size={20}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.buttonText}>Upload New Coin</Text>
+                </TouchableOpacity>
+              </View>
             ) : (
               <FlatList
                 data={userCoins}
@@ -1553,13 +1614,6 @@ export default function TradeDetailScreen() {
                     </View>
                   </TouchableOpacity>
                 )}
-                ListEmptyComponent={
-                  <View style={{ padding: 20 }}>
-                    <Text style={styles.emptyText}>
-                      You don&apos;t have any coins to offer yet
-                    </Text>
-                  </View>
-                }
               />
             )}
           </View>
@@ -1908,6 +1962,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.background,
+  },
+  instructionBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 12,
+    gap: 8,
+  },
+  instructionText: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.text,
+    lineHeight: 18,
   },
   offerButtonsContainer: {
     flexDirection: 'row',
