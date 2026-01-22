@@ -222,16 +222,12 @@ export default function TradeDetailScreen() {
       const data = await response.json();
       const coinsData = data?.coins || data || [];
       
-      // Only filter out the trade coin if the current user is the coin owner
-      // Initiators should see all their coins
-      const isUserCoinOwner = trade && trade.coinOwner.id === user.id;
-      const filteredCoins = isUserCoinOwner
-        ? coinsData.filter((coin: Coin) => coin.id !== trade.coin.id)
-        : coinsData;
+      console.log('TradeDetailScreen: Fetched', coinsData.length, 'total user coins');
+      console.log('TradeDetailScreen: User coins data:', coinsData.map((c: Coin) => ({ id: c.id, title: c.title })));
       
-      console.log('TradeDetailScreen: User is coin owner:', isUserCoinOwner);
-      console.log('TradeDetailScreen: Fetched', filteredCoins.length, 'user coins (filtered out trade coin if applicable)');
-      setUserCoins(filteredCoins);
+      // Don't filter out any coins - users should see all their coins
+      setUserCoins(coinsData);
+      console.log('TradeDetailScreen: Set', coinsData.length, 'coins for selection');
     } catch (error) {
       console.error('TradeDetailScreen: Error fetching user coins:', error);
       Alert.alert('Error', 'Failed to load your coins');
@@ -552,7 +548,7 @@ export default function TradeDetailScreen() {
 
     Alert.alert(
       'Cancel Trade',
-      'Are you sure you want to cancel this trade?',
+      'Are you sure you want to cancel this trade? This action cannot be undone.',
       [
         { text: 'No', style: 'cancel' },
         {
@@ -575,9 +571,9 @@ export default function TradeDetailScreen() {
                 throw new Error(errorData.message || 'Failed to cancel trade');
               }
 
-              console.log('TradeDetailScreen: Trade canceled successfully');
-              Alert.alert('Success', 'Trade canceled.', [
-                { text: 'OK', onPress: () => router.back() },
+              console.log('TradeDetailScreen: Trade canceled and deleted successfully');
+              Alert.alert('Success', 'Trade has been canceled and removed.', [
+                { text: 'OK', onPress: () => router.replace('/(tabs)/trades') },
               ]);
             } catch (error: any) {
               console.error('TradeDetailScreen: Error canceling trade:', error);
@@ -1517,7 +1513,7 @@ export default function TradeDetailScreen() {
                   color={colors.textSecondary}
                 />
                 <Text style={[styles.emptyText, { marginTop: 16, marginBottom: 8 }]}>
-                  You don&apos;t have any other coins to offer
+                  You don&apos;t have any coins to offer
                 </Text>
                 <Text style={[styles.emptyText, { fontSize: 13, marginBottom: 16 }]}>
                   Upload a new coin to make your offer
