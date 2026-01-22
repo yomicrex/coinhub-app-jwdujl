@@ -32,6 +32,8 @@ interface UserProfile {
   followerCount: number;
   followingCount: number;
   isFollowing: boolean;
+  averageRating?: number | null;
+  completedTradesCount?: number;
 }
 
 interface UserCoin {
@@ -265,6 +267,10 @@ export default function UserProfileScreen() {
     );
   }
 
+  const hasRating = profile.averageRating !== null && profile.averageRating !== undefined;
+  const ratingDisplay = hasRating ? profile.averageRating!.toFixed(1) : 'N/A';
+  const tradesCount = profile.completedTradesCount || 0;
+
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <Stack.Screen
@@ -328,6 +334,43 @@ export default function UserProfileScreen() {
               <Text style={styles.location}>{profile.location}</Text>
             </View>
           )}
+        </View>
+
+        {/* Trade Rating Section */}
+        <View style={styles.tradeRatingSection}>
+          <View style={styles.tradeRatingCard}>
+            <View style={styles.ratingItem}>
+              <View style={styles.ratingIconContainer}>
+                <IconSymbol
+                  ios_icon_name="star.fill"
+                  android_material_icon_name="star"
+                  size={20}
+                  color="#FFB800"
+                />
+              </View>
+              <View style={styles.ratingTextContainer}>
+                <Text style={styles.ratingValue}>{ratingDisplay}</Text>
+                <Text style={styles.ratingLabel}>Rating</Text>
+              </View>
+            </View>
+            
+            <View style={styles.ratingDivider} />
+            
+            <View style={styles.ratingItem}>
+              <View style={styles.ratingIconContainer}>
+                <IconSymbol
+                  ios_icon_name="checkmark.circle.fill"
+                  android_material_icon_name="check-circle"
+                  size={20}
+                  color={colors.primary}
+                />
+              </View>
+              <View style={styles.ratingTextContainer}>
+                <Text style={styles.ratingValue}>{tradesCount}</Text>
+                <Text style={styles.ratingLabel}>Trades</Text>
+              </View>
+            </View>
+          </View>
         </View>
 
         {/* Follow Button */}
@@ -496,6 +539,50 @@ const styles = StyleSheet.create({
   location: {
     fontSize: 13,
     color: colors.textSecondary,
+  },
+  tradeRatingSection: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  tradeRatingCard: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  ratingItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  ratingIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.backgroundAlt,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ratingTextContainer: {
+    flex: 1,
+  },
+  ratingValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  ratingLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  ratingDivider: {
+    width: 1,
+    backgroundColor: colors.border,
+    marginHorizontal: 12,
   },
   actionContainer: {
     paddingHorizontal: 20,

@@ -33,6 +33,11 @@ interface UserCoin {
   tradeStatus?: string;
 }
 
+interface ProfileData {
+  averageRating?: number | null;
+  completedTradesCount?: number;
+}
+
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 
 export default function ProfileScreen() {
@@ -42,6 +47,7 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
+  const [profileData, setProfileData] = useState<ProfileData>({});
 
   const fetchUserCoins = useCallback(async () => {
     if (!user?.id) {
@@ -107,6 +113,34 @@ export default function ProfileScreen() {
     }
   }, [user?.id, user?.username]);
 
+  const fetchProfileData = useCallback(async () => {
+    if (!user?.username) {
+      console.log('ProfileScreen: No username, skipping profile data fetch');
+      return;
+    }
+
+    console.log('ProfileScreen: Fetching profile data for user:', user.username);
+    
+    try {
+      const response = await fetch(`${API_URL}/api/users/${user.username}`, {
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('ProfileScreen: Profile data received:', data);
+        setProfileData({
+          averageRating: data.averageRating,
+          completedTradesCount: data.completedTradesCount,
+        });
+      } else {
+        console.error('ProfileScreen: Failed to fetch profile data, status:', response.status);
+      }
+    } catch (error) {
+      console.error('ProfileScreen: Error fetching profile data:', error);
+    }
+  }, [user?.username]);
+
   useEffect(() => {
     console.log('ProfileScreen: Component mounted/updated, user:', {
       id: user?.id,
@@ -118,8 +152,9 @@ export default function ProfileScreen() {
     if (user) {
       fetchUserCoins();
       fetchFollowCounts();
+      fetchProfileData();
     }
-  }, [user, fetchUserCoins, fetchFollowCounts]);
+  }, [user, fetchUserCoins, fetchFollowCounts, fetchProfileData]);
 
   const handleLogout = async () => {
     console.log('ProfileScreen: User tapped logout button');
@@ -183,6 +218,10 @@ export default function ProfileScreen() {
     );
   }
 
+  const hasRating = profileData.averageRating !== null && profileData.averageRating !== undefined;
+  const ratingDisplay = hasRating ? profileData.averageRating!.toFixed(1) : 'N/A';
+  const tradesCount = profileData.completedTradesCount || 0;
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
@@ -219,6 +258,41 @@ export default function ProfileScreen() {
             <View style={styles.stat}>
               <Text style={styles.statValue}>{coins.length}</Text>
               <Text style={styles.statLabel}>Coins</Text>
+            </View>
+          </View>
+
+          {/* Trade Rating Section */}
+          <View style={styles.tradeRatingCard}>
+            <View style={styles.ratingItem}>
+              <View style={styles.ratingIconContainer}>
+                <IconSymbol
+                  ios_icon_name="star.fill"
+                  android_material_icon_name="star"
+                  size={18}
+                  color="#FFB800"
+                />
+              </View>
+              <View style={styles.ratingTextContainer}>
+                <Text style={styles.ratingValue}>{ratingDisplay}</Text>
+                <Text style={styles.ratingLabel}>Rating</Text>
+              </View>
+            </View>
+            
+            <View style={styles.ratingDivider} />
+            
+            <View style={styles.ratingItem}>
+              <View style={styles.ratingIconContainer}>
+                <IconSymbol
+                  ios_icon_name="checkmark.circle.fill"
+                  android_material_icon_name="check-circle"
+                  size={18}
+                  color={colors.primary}
+                />
+              </View>
+              <View style={styles.ratingTextContainer}>
+                <Text style={styles.ratingValue}>{tradesCount}</Text>
+                <Text style={styles.ratingLabel}>Trades</Text>
+              </View>
             </View>
           </View>
 
@@ -365,7 +439,7 @@ const styles = StyleSheet.create({
   },
   stats: {
     flexDirection: 'row',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   stat: {
     alignItems: 'center',
@@ -380,6 +454,49 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     marginTop: 4,
+  },
+  tradeRatingCard: {
+    flexDirection: 'row',
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 16,
+    width: '100%',
+    maxWidth: 320,
+  },
+  ratingItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  ratingIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.backgroundAlt,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ratingTextContainer: {
+    flex: 1,
+  },
+  ratingValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  ratingLabel: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
+  ratingDivider: {
+    width: 1,
+    backgroundColor: colors.border,
+    marginHorizontal: 8,
   },
   actions: {
     flexDirection: 'row',
