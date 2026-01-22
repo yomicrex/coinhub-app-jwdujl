@@ -25,6 +25,10 @@ const RateTradeSchema = z.object({
   rating: z.number().int().min(1).max(5, 'Rating must be between 1 and 5'),
 });
 
+const ExchangeAddressSchema = z.object({
+  address: z.string().min(10).max(500, 'Address must be between 10 and 500 characters'),
+});
+
 const CounterOfferSchema = z.object({
   offeredCoinId: z.string().uuid('Invalid coin ID').optional().nullable(),
   message: z.string().max(1000).optional(),
@@ -650,6 +654,32 @@ export function registerTradesRoutes(app: App) {
         canRate = !hasRated; // Can rate if they haven't rated yet
       }
 
+      // Format shipping object with address information based on user role
+      let shippingWithAddresses: any = null;
+      if (trade.shipping) {
+        const isInitiator = trade.initiatorId === userId;
+        const myAddress = isInitiator ? trade.shipping.initiatorAddress : trade.shipping.ownerAddress;
+        const theirAddress = isInitiator ? trade.shipping.ownerAddress : trade.shipping.initiatorAddress;
+
+        shippingWithAddresses = {
+          id: trade.shipping.id,
+          tradeId: trade.shipping.tradeId,
+          initiatorShipped: trade.shipping.initiatorShipped,
+          initiatorTrackingNumber: trade.shipping.initiatorTrackingNumber,
+          initiatorShippedAt: trade.shipping.initiatorShippedAt,
+          initiatorReceived: trade.shipping.initiatorReceived,
+          initiatorReceivedAt: trade.shipping.initiatorReceivedAt,
+          ownerShipped: trade.shipping.ownerShipped,
+          ownerTrackingNumber: trade.shipping.ownerTrackingNumber,
+          ownerShippedAt: trade.shipping.ownerShippedAt,
+          ownerReceived: trade.shipping.ownerReceived,
+          ownerReceivedAt: trade.shipping.ownerReceivedAt,
+          myAddress,
+          theirAddress,
+          addressesExchanged: trade.shipping.addressesExchanged,
+        };
+      }
+
       app.logger.info({ tradeId, userId, canRate, hasRated }, 'Trade detail fetched');
 
       return {
@@ -659,6 +689,7 @@ export function registerTradesRoutes(app: App) {
         coinOwner: { ...trade.coinOwner, avatarUrl: ownerAvatarUrl },
         offers: offersWithImagesAndAvatars,
         messages: messagesWithAvatars,
+        shipping: shippingWithAddresses,
         canRate,
         hasRated,
       };
@@ -1637,6 +1668,162 @@ export function registerTradesRoutes(app: App) {
   });
 
   /**
+   * POST /api/trades/:tradeId/shipping/address
+   * Exchange shipping addresses
+   */
+  app.fastify.post('/api/trades/:tradeId/shipping/address', async (request: FastifyRequest, reply: FastifyReply) => {
+    const { tradeId } = request.params as { tradeId: string };
+
+    app.logger.info({ tradeId }, 'POST /api/trades/:tradeId/shipping/address - session extraction');
+
+    let userId: string | null = null;
+
+    try {
+      // Extract session token from either Authorization header or cookies
+      const sessionToken = extractSessionToken(request);
+      app.logger.debug(
+        { tokenPresent: !!sessionToken, hasAuthHeader: !!request.headers.authorization, hasCookie: !!request.headers.cookie },
+        'Session token extraction result for address exchange'
+      );
+
+      if (!sessionToken) {
+        app.logger.warn({}, 'No session token found in request for address exchange');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'No active session' });
+      }
+
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken),
+      });
+
+      if (!sessionRecord) {
+        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session token not found in database for address exchange');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid or expired' });
+      }
+
+      // Check if session is expired
+      if (new Date(sessionRecord.expiresAt) < new Date()) {
+        app.logger.warn({ token: sessionToken.substring(0, 20), expiresAt: sessionRecord.expiresAt }, 'Session token expired for address exchange');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      }
+
+      // Get user from session
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId),
+      });
+
+      if (!userRecord) {
+        app.logger.warn({ userId: sessionRecord.userId }, 'User not found for valid session in address exchange');
+        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+      }
+
+      userId = userRecord.id;
+      app.logger.info({ userId, tradeId }, 'Session validated successfully for address exchange');
+    } catch (error) {
+      app.logger.error({ err: error }, 'Error validating session for address exchange');
+      return reply.status(500).send({ error: 'Internal server error', message: 'Session validation failed' });
+    }
+
+    app.logger.info({ tradeId, userId, body: request.body }, 'Processing address exchange');
+
+    try {
+      const body = ExchangeAddressSchema.parse(request.body);
+
+      // Get trade
+      const trade = await app.db.query.trades.findFirst({
+        where: eq(schema.trades.id, tradeId),
+        with: { shipping: true },
+      });
+
+      if (!trade) {
+        app.logger.warn({ tradeId }, 'Trade not found');
+        return reply.status(404).send({ error: 'Trade not found' });
+      }
+
+      if (trade.status !== 'accepted') {
+        app.logger.warn({ tradeId, status: trade.status }, 'Trade not accepted yet');
+        return reply.status(400).send({ error: 'Trade must be accepted to exchange addresses' });
+      }
+
+      // Check access and determine if initiator or owner is providing address
+      const isInitiator = trade.initiatorId === userId;
+      const isOwner = trade.coinOwnerId === userId;
+
+      if (!isInitiator && !isOwner) {
+        app.logger.warn({ tradeId, userId, initiatorId: trade.initiatorId, ownerId: trade.coinOwnerId }, 'Unauthorized address exchange - not participant');
+        return reply.status(403).send({ error: 'Unauthorized' });
+      }
+
+      // Update shipping record with address
+      const updates: any = {};
+      if (isInitiator) {
+        updates.initiatorAddress = body.address;
+      } else {
+        updates.ownerAddress = body.address;
+      }
+
+      // Check if both addresses are now provided
+      const currentShipping = trade.shipping;
+      const willHaveInitiatorAddress = isInitiator ? true : !!currentShipping?.initiatorAddress;
+      const willHaveOwnerAddress = isOwner ? true : !!currentShipping?.ownerAddress;
+
+      if (willHaveInitiatorAddress && willHaveOwnerAddress) {
+        updates.addressesExchanged = true;
+      }
+
+      updates.updatedAt = new Date();
+
+      await app.db
+        .update(schema.tradeShipping)
+        .set(updates)
+        .where(eq(schema.tradeShipping.tradeId, tradeId));
+
+      // Fetch updated shipping record
+      const updatedShipping = await app.db.query.tradeShipping.findFirst({
+        where: eq(schema.tradeShipping.tradeId, tradeId),
+      });
+
+      app.logger.info(
+        { tradeId, userId, isInitiator, addressesExchanged: updatedShipping?.addressesExchanged },
+        'Shipping address exchanged'
+      );
+
+      // Build response with address info for the user
+      const myAddress = isInitiator ? updatedShipping?.initiatorAddress : updatedShipping?.ownerAddress;
+      const theirAddress = isInitiator ? updatedShipping?.ownerAddress : updatedShipping?.initiatorAddress;
+
+      return {
+        success: true,
+        addressesExchanged: updatedShipping?.addressesExchanged || false,
+        shipping: {
+          id: updatedShipping?.id,
+          tradeId: updatedShipping?.tradeId,
+          initiatorShipped: updatedShipping?.initiatorShipped || false,
+          initiatorTrackingNumber: updatedShipping?.initiatorTrackingNumber || null,
+          initiatorShippedAt: updatedShipping?.initiatorShippedAt || null,
+          initiatorReceived: updatedShipping?.initiatorReceived || false,
+          initiatorReceivedAt: updatedShipping?.initiatorReceivedAt || null,
+          ownerShipped: updatedShipping?.ownerShipped || false,
+          ownerTrackingNumber: updatedShipping?.ownerTrackingNumber || null,
+          ownerShippedAt: updatedShipping?.ownerShippedAt || null,
+          ownerReceived: updatedShipping?.ownerReceived || false,
+          ownerReceivedAt: updatedShipping?.ownerReceivedAt || null,
+          myAddress,
+          theirAddress,
+          addressesExchanged: updatedShipping?.addressesExchanged || false,
+        },
+      };
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        app.logger.warn({ error: error.issues, userId }, 'Validation error');
+        return reply.status(400).send({ error: 'Validation failed', details: error.issues });
+      }
+      app.logger.error({ err: error, tradeId, userId }, 'Failed to exchange addresses');
+      throw error;
+    }
+  });
+
+  /**
    * POST /api/trades/:tradeId/shipping/initiate
    * Mark coins as shipped with tracking number
    */
@@ -1712,6 +1899,12 @@ export function registerTradesRoutes(app: App) {
       if (trade.status !== 'accepted') {
         app.logger.warn({ tradeId, status: trade.status }, 'Trade not accepted yet');
         return reply.status(400).send({ error: 'Trade must be accepted before shipping' });
+      }
+
+      // Check if addresses have been exchanged
+      if (!trade.shipping?.addressesExchanged) {
+        app.logger.warn({ tradeId }, 'Addresses not exchanged yet');
+        return reply.status(400).send({ error: 'Both parties must provide shipping addresses before marking as shipped' });
       }
 
       // Check access and determine if initiator or owner is shipping
