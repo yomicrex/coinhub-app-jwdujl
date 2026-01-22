@@ -29,7 +29,17 @@ const CreateCoinSchema = z.object({
 });
 
 const UpdateCoinAvailabilitySchema = z.object({
-  forTrade: z.boolean(),
+  forTrade: z.boolean().optional(),
+  tradeStatus: z.enum(['open_to_trade', 'not_for_trade']).optional(),
+}).refine(
+  (data) => data.forTrade !== undefined || data.tradeStatus !== undefined,
+  { message: 'Either "forTrade" or "tradeStatus" field is required' }
+).transform((data) => {
+  // Support both forTrade boolean and tradeStatus enum
+  if (data.forTrade !== undefined) {
+    return { forTrade: data.forTrade };
+  }
+  return { forTrade: data.tradeStatus === 'open_to_trade' };
 });
 
 const UpdateCoinSchema = z.object({

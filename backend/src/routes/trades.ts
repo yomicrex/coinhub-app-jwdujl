@@ -633,7 +633,24 @@ export function registerTradesRoutes(app: App) {
         })
       );
 
-      app.logger.info({ tradeId, userId }, 'Trade detail fetched');
+      // Check if user can rate this trade (only if trade is completed and they haven't rated yet)
+      let canRate = false;
+      let hasRated = false;
+
+      if (trade.status === 'completed' && (trade.initiatorId === userId || trade.coinOwnerId === userId)) {
+        // Check if user has already rated
+        const userRating = await app.db.query.tradeRatings.findFirst({
+          where: and(
+            eq(schema.tradeRatings.tradeId, tradeId),
+            eq(schema.tradeRatings.raterId, userId)
+          ),
+        });
+
+        hasRated = !!userRating;
+        canRate = !hasRated; // Can rate if they haven't rated yet
+      }
+
+      app.logger.info({ tradeId, userId, canRate, hasRated }, 'Trade detail fetched');
 
       return {
         ...trade,
@@ -642,6 +659,8 @@ export function registerTradesRoutes(app: App) {
         coinOwner: { ...trade.coinOwner, avatarUrl: ownerAvatarUrl },
         offers: offersWithImagesAndAvatars,
         messages: messagesWithAvatars,
+        canRate,
+        hasRated,
       };
     } catch (error) {
       app.logger.error({ err: error, tradeId, userId }, 'Failed to fetch trade detail');
@@ -1881,6 +1900,8 @@ export function registerTradesRoutes(app: App) {
       return {
         ...receivedInfo,
         tradeCompleted,
+        promptCoinAvailability: tradeCompleted, // Prompt to update coin availability when trade completes
+        message: tradeCompleted ? 'Trade completed! You can now update your coin availability.' : 'Marked as received',
       };
     } catch (error) {
       app.logger.error({ err: error, tradeId, userId }, 'Failed to mark as received');
@@ -2347,6 +2368,7 @@ export function registerTradesRoutes(app: App) {
 
       return {
         success: true,
+        message: 'Rating submitted successfully',
         rating: {
           id: newRating.id,
           tradeId: newRating.tradeId,
