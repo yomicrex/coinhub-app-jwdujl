@@ -989,6 +989,10 @@ export default function TradeDetailScreen() {
                 const canRespond = isCoinOwner && !isMyOffer && offer.status === 'pending';
                 const coinDataAvailable = !!offerCoin;
 
+                // Determine offer type label
+                const offerTypeLabel = offer.isCounterOffer ? 'Counter Offer' : 'Initial Offer';
+                const offerTypeBadgeColor = offer.isCounterOffer ? '#9C27B0' : '#2196F3';
+
                 return (
                   <View key={offer.id} style={styles.offerCard}>
                     <View style={styles.offerHeader}>
@@ -1002,11 +1006,9 @@ export default function TradeDetailScreen() {
                           </View>
                         )}
                       </View>
-                      {offer.isCounterOffer && (
-                        <View style={[styles.offerBadge, { backgroundColor: '#9C27B0' }]}>
-                          <Text style={styles.offerBadgeText}>Counter Offer</Text>
-                        </View>
-                      )}
+                      <View style={[styles.offerBadge, { backgroundColor: offerTypeBadgeColor }]}>
+                        <Text style={styles.offerBadgeText}>{offerTypeLabel}</Text>
+                      </View>
                     </View>
                     
                     {coinDataAvailable ? (
