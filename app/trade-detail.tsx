@@ -83,6 +83,9 @@ interface ShippingInfo {
   ownerShippedAt?: string;
   ownerReceived: boolean;
   ownerReceivedAt?: string;
+  myAddress?: string;
+  theirAddress?: string;
+  addressesExchanged: boolean;
 }
 
 interface TradeDetail {
@@ -125,6 +128,9 @@ export default function TradeDetailScreen() {
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [showCoinAvailabilityModal, setShowCoinAvailabilityModal] = useState(false);
   const [coinToUpdate, setCoinToUpdate] = useState<Coin | null>(null);
+  const [showAddressModal, setShowAddressModal] = useState(false);
+  const [shippingAddress, setShippingAddress] = useState('');
+  const [submittingAddress, setSubmittingAddress] = useState(false);
 
   // Upload coin form state
   const [uploadImages, setUploadImages] = useState<string[]>([]);
@@ -156,6 +162,7 @@ export default function TradeDetailScreen() {
         offerCount: data.offers?.length || 0,
         messageCount: data.messages?.length || 0,
         hasShipping: !!data.shipping,
+        addressesExchanged: data.shipping?.addressesExchanged,
         canRate: data.canRate,
         hasRated: data.hasRated
       });
@@ -476,7 +483,7 @@ export default function TradeDetailScreen() {
               }
 
               console.log('TradeDetailScreen: Offer accepted successfully');
-              Alert.alert('Success', 'Offer accepted! You can now proceed with shipping.');
+              Alert.alert('Success', 'Offer accepted! Please provide your shipping address to proceed.');
               setShowCoinDetail(false);
               await fetchTradeDetail();
             } catch (error) {
@@ -597,6 +604,50 @@ export default function TradeDetailScreen() {
     );
   };
 
+  const handleSubmitAddress = async () => {
+    if (!shippingAddress.trim()) {
+      Alert.alert('Error', 'Please enter your shipping address');
+      return;
+    }
+
+    console.log('TradeDetailScreen: User submitting shipping address');
+    setSubmittingAddress(true);
+
+    try {
+      const response = await authenticatedFetch(`/api/trades/${id}/shipping/address`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ address: shippingAddress.trim() }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('TradeDetailScreen: Failed to submit address:', errorData);
+        throw new Error(errorData.message || 'Failed to submit address');
+      }
+
+      const data = await response.json();
+      console.log('TradeDetailScreen: Address submitted successfully, addressesExchanged:', data.addressesExchanged);
+      
+      if (data.addressesExchanged) {
+        Alert.alert('Success', 'Both addresses have been exchanged! You can now proceed with shipping.');
+      } else {
+        Alert.alert('Success', 'Your address has been submitted. Waiting for the other party to provide their address.');
+      }
+      
+      setShowAddressModal(false);
+      setShippingAddress('');
+      await fetchTradeDetail();
+    } catch (error: any) {
+      console.error('TradeDetailScreen: Error submitting address:', error);
+      Alert.alert('Error', error.message || 'Failed to submit address');
+    } finally {
+      setSubmittingAddress(false);
+    }
+  };
+
   const handleMarkShipped = async () => {
     console.log('TradeDetailScreen: User marking coin as shipped with tracking:', trackingNumber);
 
@@ -613,16 +664,18 @@ export default function TradeDetailScreen() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to update shipping');
+        const errorData = await response.json().catch(() => ({}));
+        console.error('TradeDetailScreen: Failed to mark as shipped:', errorData);
+        throw new Error(errorData.message || 'Failed to update shipping');
       }
 
       console.log('TradeDetailScreen: Shipping updated successfully');
       Alert.alert('Success', 'Marked as shipped!');
       setTrackingNumber('');
       await fetchTradeDetail();
-    } catch (error) {
+    } catch (error: any) {
       console.error('TradeDetailScreen: Error updating shipping:', error);
-      Alert.alert('Error', 'Failed to update shipping status');
+      Alert.alert('Error', error.message || 'Failed to update shipping status');
     }
   };
 
@@ -934,6 +987,12 @@ export default function TradeDetailScreen() {
   const theirReceivedAt = isInitiator ? trade.shipping?.ownerReceivedAt : trade.shipping?.initiatorReceivedAt;
   
   const bothShipped = myShipped && theirShipped;
+  
+  // Address exchange info
+  const myAddress = trade.shipping?.myAddress;
+  const theirAddress = trade.shipping?.theirAddress;
+  const addressesExchanged = trade.shipping?.addressesExchanged || false;
+  const needToProvideAddress = trade.status === 'accepted' && !myAddress;
 
   // Determine if user can make offers
   // Coin owner can only make counter offers (after receiving an offer)
@@ -1003,6 +1062,38 @@ export default function TradeDetailScreen() {
               </TouchableOpacity>
             )}
           </View>
+
+          {/* Address Exchange Prompt */}
+          {needToProvideAddress && (
+            <View style={styles.section}>
+              <View style={styles.addressPromptBanner}>
+                <IconSymbol
+                  ios_icon_name="location.fill"
+                  android_material_icon_name="location-on"
+                  size={24}
+                  color={colors.primary}
+                />
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.addressPromptTitle}>Shipping Address Required</Text>
+                  <Text style={styles.addressPromptText}>
+                    Please provide your shipping address so the other party can send you the coin.
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={[styles.actionButton, styles.primaryButton, { marginTop: 12 }]}
+                onPress={() => setShowAddressModal(true)}
+              >
+                <IconSymbol
+                  ios_icon_name="location.fill"
+                  android_material_icon_name="location-on"
+                  size={18}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.buttonText}>Provide Shipping Address</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           {/* Up for Trade Coin */}
           <View style={styles.section}>
@@ -1312,9 +1403,54 @@ export default function TradeDetailScreen() {
           </View>
 
           {/* Shipping Section */}
-          {trade.status === 'accepted' && (
+          {trade.status === 'accepted' && trade.shipping && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Shipping</Text>
+              <Text style={styles.sectionTitle}>Shipping Information</Text>
+              
+              {/* Address Exchange Status */}
+              {addressesExchanged ? (
+                <View style={styles.addressExchangedBanner}>
+                  <IconSymbol
+                    ios_icon_name="checkmark.circle.fill"
+                    android_material_icon_name="check-circle"
+                    size={24}
+                    color="#4CAF50"
+                  />
+                  <Text style={styles.addressExchangedText}>
+                    Addresses exchanged! You can now ship your coin.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.addressPendingBanner}>
+                  <IconSymbol
+                    ios_icon_name="clock.fill"
+                    android_material_icon_name="schedule"
+                    size={24}
+                    color="#FFA500"
+                  />
+                  <Text style={styles.addressPendingText}>
+                    {myAddress 
+                      ? 'Waiting for the other party to provide their address...'
+                      : 'Please provide your shipping address above to proceed.'}
+                  </Text>
+                </View>
+              )}
+
+              {/* Shipping Address Display */}
+              {theirAddress && (
+                <View style={styles.shippingCard}>
+                  <Text style={styles.shippingHeader}>Ship To:</Text>
+                  <View style={styles.addressBox}>
+                    <IconSymbol
+                      ios_icon_name="location.fill"
+                      android_material_icon_name="location-on"
+                      size={20}
+                      color={colors.primary}
+                    />
+                    <Text style={styles.addressText}>{theirAddress}</Text>
+                  </View>
+                </View>
+              )}
               
               {/* My Shipping */}
               <View style={styles.shippingCard}>
@@ -1342,7 +1478,7 @@ export default function TradeDetailScreen() {
                       </View>
                     )}
                   </>
-                ) : (
+                ) : addressesExchanged ? (
                   <>
                     <TextInput
                       style={styles.trackingInput}
@@ -1358,6 +1494,10 @@ export default function TradeDetailScreen() {
                       <Text style={styles.buttonText}>Mark as Shipped</Text>
                     </TouchableOpacity>
                   </>
+                ) : (
+                  <Text style={styles.emptyText}>
+                    Provide addresses before shipping
+                  </Text>
                 )}
               </View>
 
@@ -1499,6 +1639,75 @@ export default function TradeDetailScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Address Modal */}
+      <Modal
+        visible={showAddressModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowAddressModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ flex: 1, justifyContent: 'flex-end' }}
+          >
+            <View style={[styles.modalContent, { maxHeight: '70%' }]}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Provide Shipping Address</Text>
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={() => {
+                    setShowAddressModal(false);
+                    setShippingAddress('');
+                  }}
+                >
+                  <IconSymbol
+                    ios_icon_name="xmark"
+                    android_material_icon_name="close"
+                    size={24}
+                    color={colors.text}
+                  />
+                </TouchableOpacity>
+              </View>
+              <View style={{ padding: 16 }}>
+                <Text style={styles.addressModalText}>
+                  Please enter your complete shipping address. This will be shared with @{otherUser.username} so they can send you the coin.
+                </Text>
+                <TextInput
+                  style={[styles.formInput, styles.textArea, { marginTop: 16 }]}
+                  placeholder="Enter your full shipping address&#10;(Name, Street, City, State, ZIP, Country)"
+                  placeholderTextColor={colors.textSecondary}
+                  value={shippingAddress}
+                  onChangeText={setShippingAddress}
+                  multiline
+                  numberOfLines={6}
+                  textAlignVertical="top"
+                />
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.primaryButton, { marginTop: 16 }]}
+                  onPress={handleSubmitAddress}
+                  disabled={submittingAddress || !shippingAddress.trim()}
+                >
+                  {submittingAddress ? (
+                    <ActivityIndicator size="small" color={colors.background} />
+                  ) : (
+                    <>
+                      <IconSymbol
+                        ios_icon_name="checkmark.circle.fill"
+                        android_material_icon_name="check-circle"
+                        size={20}
+                        color="#FFFFFF"
+                      />
+                      <Text style={styles.buttonText}>Submit Address</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
 
       {/* Coin Detail Modal */}
       <Modal
@@ -2090,6 +2299,76 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.background,
+  },
+  addressPromptBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF3E0',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#FFB74D',
+  },
+  addressPromptTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#E65100',
+    marginBottom: 4,
+  },
+  addressPromptText: {
+    fontSize: 14,
+    color: '#E65100',
+    lineHeight: 20,
+  },
+  addressExchangedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F5E9',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+    gap: 8,
+  },
+  addressExchangedText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#2E7D32',
+    fontWeight: '500',
+  },
+  addressPendingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF3E0',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+    gap: 8,
+  },
+  addressPendingText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#E65100',
+    fontWeight: '500',
+  },
+  addressBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: colors.background,
+    padding: 12,
+    borderRadius: 8,
+    gap: 8,
+    marginTop: 8,
+  },
+  addressText: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text,
+    lineHeight: 20,
+  },
+  addressModalText: {
+    fontSize: 14,
+    color: colors.text,
+    lineHeight: 20,
   },
   instructionBanner: {
     flexDirection: 'row',
