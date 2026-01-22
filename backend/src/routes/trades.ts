@@ -141,28 +141,6 @@ export function registerTradesRoutes(app: App) {
         return reply.status(400).send({ error: 'Cannot initiate trade for your own coin' });
       }
 
-      // Check if there's an active trade (only pending or accepted trades are considered active)
-      // Allows new trades if previous trades are cancelled, completed, or disputed
-      const existingActiveTrade = await app.db.query.trades.findFirst({
-        where: and(
-          eq(schema.trades.initiatorId, userId),
-          eq(schema.trades.coinId, body.coinId),
-          or(
-            eq(schema.trades.status, 'pending'),
-            eq(schema.trades.status, 'accepted')
-          )
-        ),
-      });
-
-      if (existingActiveTrade) {
-        app.logger.warn({ userId, coinId: body.coinId, existingTradeId: existingActiveTrade.id }, 'Active trade already exists for this coin');
-        return reply.status(409).send({
-          error: 'You already have an active trade request for this coin',
-          existingTradeId: existingActiveTrade.id,
-          message: 'You can continue with the existing trade request'
-        });
-      }
-
       // Create new trade
       const [newTrade] = await app.db
         .insert(schema.trades)
@@ -2132,25 +2110,35 @@ export function registerTradesRoutes(app: App) {
         });
       }
 
-      // Update trade status to cancelled
-      const updatedTrade = await app.db
-        .update(schema.trades)
-        .set({ status: 'cancelled', updatedAt: new Date() })
-        .where(eq(schema.trades.id, tradeId))
-        .returning();
+      // Delete all related records in proper order (respecting foreign key constraints)
+      // 1. Delete trade reports
+      await app.db.delete(schema.tradeReports).where(eq(schema.tradeReports.tradeId, tradeId));
+      app.logger.debug({ tradeId }, 'Trade reports deleted');
+
+      // 2. Delete trade shipping
+      await app.db.delete(schema.tradeShipping).where(eq(schema.tradeShipping.tradeId, tradeId));
+      app.logger.debug({ tradeId }, 'Trade shipping records deleted');
+
+      // 3. Delete trade messages
+      await app.db.delete(schema.tradeMessages).where(eq(schema.tradeMessages.tradeId, tradeId));
+      app.logger.debug({ tradeId }, 'Trade messages deleted');
+
+      // 4. Delete trade offers
+      await app.db.delete(schema.tradeOffers).where(eq(schema.tradeOffers.tradeId, tradeId));
+      app.logger.debug({ tradeId }, 'Trade offers deleted');
+
+      // 5. Delete the trade itself
+      await app.db.delete(schema.trades).where(eq(schema.trades.id, tradeId));
+      app.logger.debug({ tradeId }, 'Trade record deleted');
 
       app.logger.info(
-        { tradeId, userId, previousStatus: trade.status, newStatus: updatedTrade[0]?.status },
-        'Trade cancelled successfully'
+        { tradeId, userId, previousStatus: trade.status },
+        'Trade and all related records deleted successfully'
       );
 
       return {
         success: true,
-        trade: {
-          id: updatedTrade[0]?.id,
-          status: updatedTrade[0]?.status || 'cancelled',
-          message: 'Trade cancelled successfully',
-        },
+        message: 'Trade cancelled and removed successfully',
       };
     } catch (error) {
       app.logger.error({ err: error, tradeId, userId }, 'Failed to cancel trade');
