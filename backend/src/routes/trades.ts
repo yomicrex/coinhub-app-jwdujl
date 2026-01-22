@@ -849,6 +849,18 @@ export function registerTradesRoutes(app: App) {
         return reply.status(503).send({ error: 'Failed to upload images' });
       }
 
+      // Determine if this is a counter offer
+      // First offer from initiator = initial offer (is_counter_offer = false)
+      // First offer from coin owner = counter offer (is_counter_offer = true)
+      // Any subsequent offer = counter offer (is_counter_offer = true)
+      const existingOffers = await app.db.query.tradeOffers.findMany({
+        where: eq(schema.tradeOffers.tradeId, tradeId),
+      });
+
+      const isFirstOffer = existingOffers.length === 0;
+      const isInitiator = userId === trade.initiatorId;
+      const isCounterOffer = !isFirstOffer || !isInitiator;
+
       // Create trade offer
       const [newOffer] = await app.db
         .insert(schema.tradeOffers)
@@ -858,12 +870,12 @@ export function registerTradesRoutes(app: App) {
           offeredCoinId: newCoin.id,
           message: coinData.message,
           status: 'pending',
-          isCounterOffer: trade.status !== 'pending',
+          isCounterOffer,
         })
         .returning();
 
-      // Update trade status to countered if needed
-      if (trade.status === 'pending') {
+      // Update trade status: only update to countered if this is a counter offer
+      if (isCounterOffer && trade.status === 'pending') {
         await app.db
           .update(schema.trades)
           .set({ status: 'countered', updatedAt: new Date() })
@@ -873,7 +885,16 @@ export function registerTradesRoutes(app: App) {
       }
 
       app.logger.info(
-        { tradeId, offerId: newOffer.id, coinId: newCoin.id, userId, isCounterOffer: newOffer.isCounterOffer },
+        {
+          tradeId,
+          offerId: newOffer.id,
+          coinId: newCoin.id,
+          userId,
+          isInitiator,
+          isFirstOffer,
+          isCounterOffer: newOffer.isCounterOffer,
+          reason: isFirstOffer ? (isInitiator ? 'first offer from initiator' : 'first offer from coin owner') : 'subsequent offer',
+        },
         'Trade offer created with uploaded coin'
       );
 
@@ -1021,6 +1042,18 @@ export function registerTradesRoutes(app: App) {
         }
       }
 
+      // Determine if this is a counter offer
+      // First offer from initiator = initial offer (is_counter_offer = false)
+      // First offer from coin owner = counter offer (is_counter_offer = true)
+      // Any subsequent offer = counter offer (is_counter_offer = true)
+      const existingOffers = await app.db.query.tradeOffers.findMany({
+        where: eq(schema.tradeOffers.tradeId, tradeId),
+      });
+
+      const isFirstOffer = existingOffers.length === 0;
+      const isInitiator = userId === trade.initiatorId;
+      const isCounterOffer = !isFirstOffer || !isInitiator;
+
       // Create trade offer
       const [newOffer] = await app.db
         .insert(schema.tradeOffers)
@@ -1029,16 +1062,18 @@ export function registerTradesRoutes(app: App) {
           offererId: userId,
           offeredCoinId: body.offeredCoinId || null,
           message: body.message || null,
-          isCounterOffer: trade.status !== 'pending',
+          isCounterOffer,
         })
         .returning();
 
-      // Update trade status to countered if needed
-      if (trade.status === 'pending') {
+      // Update trade status: only update to countered if this is a counter offer
+      if (isCounterOffer && trade.status === 'pending') {
         await app.db
           .update(schema.trades)
           .set({ status: 'countered', updatedAt: new Date() })
           .where(eq(schema.trades.id, tradeId));
+
+        app.logger.info({ tradeId, status: 'countered' }, 'Trade status updated to countered');
       }
 
       // Fetch full offer with related data
@@ -1080,7 +1115,18 @@ export function registerTradesRoutes(app: App) {
         })
       );
 
-      app.logger.info({ offerId: newOffer.id, tradeId, userId }, 'Trade offer created');
+      app.logger.info(
+        {
+          offerId: newOffer.id,
+          tradeId,
+          userId,
+          isInitiator,
+          isFirstOffer,
+          isCounterOffer: newOffer.isCounterOffer,
+          reason: isFirstOffer ? (isInitiator ? 'first offer from initiator' : 'first offer from coin owner') : 'subsequent offer',
+        },
+        'Trade offer created'
+      );
 
       return {
         id: newOffer.id,
