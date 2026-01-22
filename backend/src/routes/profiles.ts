@@ -274,6 +274,38 @@ export function registerProfileRoutes(app: App) {
 
       app.logger.info({ userId: profile.id, username }, 'User profile fetched');
 
+      // Fetch trade statistics
+      // Average rating from trade_ratings where rated_user_id = user.id
+      const ratingResult = await app.db
+        .select({
+          avgRating: sql<number>`AVG(${schema.tradeRatings.rating})`,
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(schema.tradeRatings)
+        .where(eq(schema.tradeRatings.ratedUserId, profile.id))
+        .then((result) => result[0]);
+
+      const averageRating = ratingResult && ratingResult.count > 0
+        ? Math.round(ratingResult.avgRating * 10) / 10
+        : null;
+
+      // Count completed trades where user is either initiator or coin owner
+      const completedTradesResult = await app.db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(schema.trades)
+        .where(
+          and(
+            eq(schema.trades.status, 'completed'),
+            or(
+              eq(schema.trades.initiatorId, profile.id),
+              eq(schema.trades.coinOwnerId, profile.id)
+            )
+          )
+        )
+        .then((result) => result[0]);
+
+      const completedTradesCount = completedTradesResult?.count || 0;
+
       // Generate signed URL for avatar if it exists
       let avatarUrl = profile.avatarUrl;
       if (avatarUrl) {
@@ -286,6 +318,8 @@ export function registerProfileRoutes(app: App) {
         }
       }
 
+      app.logger.info({ username, averageRating, completedTradesCount }, 'Trade statistics calculated');
+
       return {
         id: profile.id,
         username: profile.username,
@@ -296,6 +330,8 @@ export function registerProfileRoutes(app: App) {
         followerCount,
         followingCount,
         isFollowing,
+        averageRating,
+        completedTradesCount,
       };
     } catch (error) {
       app.logger.error({ err: error, username }, 'Failed to fetch user profile');
