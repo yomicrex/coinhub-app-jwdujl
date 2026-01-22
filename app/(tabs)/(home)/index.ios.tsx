@@ -103,7 +103,18 @@ export default function FeedScreen() {
       if (response.ok) {
         const data = await response.json();
         console.log('FeedScreen: Fetched', data.coins?.length || 0, 'trade coins');
-        setTradeCoins(data.coins || []);
+        
+        // Filter out user's own coins as an extra safety measure
+        const filteredCoins = (data.coins || []).filter((coin: Coin) => {
+          const isOwnCoin = user && coin.user.id === user.id;
+          if (isOwnCoin) {
+            console.log('FeedScreen: Filtering out user\'s own coin:', coin.id, coin.title);
+          }
+          return !isOwnCoin;
+        });
+        
+        console.log('FeedScreen: After filtering own coins:', filteredCoins.length, 'trade coins remaining');
+        setTradeCoins(filteredCoins);
       } else {
         console.error('FeedScreen: Failed to fetch trade coins, status:', response.status);
         setTradeCoins([]);
@@ -112,7 +123,7 @@ export default function FeedScreen() {
       console.error('FeedScreen: Error fetching trade coins:', error);
       setTradeCoins([]);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     console.log('FeedScreen: Component mounted, user:', user?.username);
@@ -329,6 +340,7 @@ export default function FeedScreen() {
     const commentCount = item.commentCount ?? item.comment_count ?? 0;
     const avatarUrl = item.user.avatarUrl || item.user.avatar_url;
     const currentImageIndex = imageScrollPositions[item.id] || 0;
+    const isOwnCoin = user && item.user.id === user.id;
 
     return (
       <TouchableOpacity
@@ -437,15 +449,17 @@ export default function FeedScreen() {
                 <Text style={styles.tradeCoinStatText}>{commentCount}</Text>
               </View>
             </View>
-            <TouchableOpacity
-              style={styles.tradeButton}
-              onPress={(e) => {
-                e.stopPropagation();
-                handleProposeTrade(item.id);
-              }}
-            >
-              <Text style={styles.tradeButtonText}>Trade</Text>
-            </TouchableOpacity>
+            {!isOwnCoin && (
+              <TouchableOpacity
+                style={styles.tradeButton}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  handleProposeTrade(item.id);
+                }}
+              >
+                <Text style={styles.tradeButtonText}>Trade</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </TouchableOpacity>
