@@ -1,5 +1,5 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { eq, desc, and, or } from 'drizzle-orm';
+import { eq, desc, and, or, ne } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import * as authSchema from '../db/auth-schema.js';
 import type { App } from '../index.js';
@@ -368,6 +368,11 @@ export function registerFeedRoutes(app: App) {
         eq(schema.coins.tradeStatus, 'open_to_trade'),
         eq(schema.coins.isTemporaryTradeCoin, false),
       ];
+
+      // Exclude current user's coins if authenticated
+      if (currentUserId) {
+        whereConditions.push(ne(schema.coins.userId, currentUserId));
+      }
 
       if (country) {
         whereConditions.push(eq(schema.coins.country, country));
