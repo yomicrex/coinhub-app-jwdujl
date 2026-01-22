@@ -1,5 +1,5 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { eq, and, or, ne } from 'drizzle-orm';
+import { eq, and, or, ne, inArray } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import * as authSchema from '../db/auth-schema.js';
 import type { App } from '../index.js';
@@ -445,6 +445,7 @@ export function registerTradesRoutes(app: App) {
     app.logger.info({ tradeId, userId }, 'Fetching trade detail');
 
     try {
+      // First fetch the base trade
       const trade = await app.db.query.trades.findFirst({
         where: eq(schema.trades.id, tradeId),
         with: {
@@ -460,10 +461,6 @@ export function registerTradesRoutes(app: App) {
           offers: {
             with: {
               offerer: { columns: { id: true, username: true, displayName: true, avatarUrl: true } },
-              offeredCoin: {
-                columns: { id: true, title: true, country: true, year: true, description: true, condition: true },
-                with: { images: true },
-              },
             },
             orderBy: (o) => o.createdAt,
           },
@@ -477,10 +474,61 @@ export function registerTradesRoutes(app: App) {
         },
       });
 
+      // Now fetch coins for all offers separately to ensure proper loading
+      let offersWithCoins: any[] = trade?.offers || [];
+      if (offersWithCoins.length > 0) {
+        const offerCoinIds = offersWithCoins.map((o) => o.offeredCoinId).filter((id) => id !== null);
+
+        if (offerCoinIds.length > 0) {
+          const coinsData = await app.db.query.coins.findMany({
+            where: (coinTable) => inArray(coinTable.id, offerCoinIds as string[]),
+            with: { images: true },
+          });
+
+          const coinsMap = new Map(coinsData.map((c) => [c.id, c]));
+
+          offersWithCoins = offersWithCoins.map((o) => ({
+            ...o,
+            offeredCoin: o.offeredCoinId ? (coinsMap.get(o.offeredCoinId) || null) : null,
+          }));
+        }
+      }
+
+      // Reconstruct the trade object with the properly loaded coins
+      if (trade) {
+        (trade as any).offers = offersWithCoins;
+      }
+
       if (!trade) {
         app.logger.warn({ tradeId }, 'Trade not found');
         return reply.status(404).send({ error: 'Trade not found' });
       }
+
+      // Diagnostic logging for offers and coin data
+      app.logger.info(
+        {
+          tradeId,
+          offersCount: trade.offers.length,
+          rawOffers: JSON.stringify(trade.offers, null, 2),
+        },
+        'Trade offers raw data after query'
+      );
+
+      app.logger.info(
+        {
+          tradeId,
+          offersCount: trade.offers.length,
+          offersDetail: trade.offers.map((o: any) => ({
+            offerId: o.id,
+            offeredCoinId: o.offeredCoinId,
+            offeredCoinIdType: typeof o.offeredCoinId,
+            offeredCoinExists: !!o.offeredCoin,
+            offeredCoinKeys: o.offeredCoin ? Object.keys(o.offeredCoin) : null,
+            offeredCoinData: o.offeredCoin ? { id: o.offeredCoin.id, title: o.offeredCoin.title, imageCount: o.offeredCoin.images?.length } : null,
+          })),
+        },
+        'Trade offers data after query'
+      );
 
       // Check access control
       const hasAccess = trade.initiatorId === userId || trade.coinOwnerId === userId;
@@ -565,9 +613,9 @@ export function registerTradesRoutes(app: App) {
 
       // Generate signed URLs for offered coin images
       const offersWithImagesAndAvatars = await Promise.all(
-        offersWithAvatars.map(async (offer) => {
+        offersWithAvatars.map(async (offer: any) => {
           const offeredCoinImagesWithUrls = await Promise.all(
-            (offer.offeredCoin?.images || []).map(async (img) => {
+            (offer.offeredCoin?.images || []).map(async (img: any) => {
               try {
                 const { url } = await app.storage.getSignedUrl(img.url);
                 return { ...img, url };
