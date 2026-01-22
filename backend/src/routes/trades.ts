@@ -257,6 +257,9 @@ export function registerTradesRoutes(app: App) {
         );
       }
 
+      // Exclude cancelled trades from the list
+      whereConditions.push(ne(schema.trades.status, 'cancelled'));
+
       if (status) {
         whereConditions.push(eq(schema.trades.status, status as any));
       }
@@ -454,8 +457,23 @@ export function registerTradesRoutes(app: App) {
 
       // Now fetch coins for all offers separately to ensure proper loading
       let offersWithCoins: any[] = trade?.offers || [];
+
+      app.logger.debug(
+        {
+          tradeId,
+          offersCount: offersWithCoins.length,
+          offerCoinIds: offersWithCoins.map((o) => o.offeredCoinId),
+        },
+        'Offers before coin loading'
+      );
+
       if (offersWithCoins.length > 0) {
         const offerCoinIds = offersWithCoins.map((o) => o.offeredCoinId).filter((id) => id !== null);
+
+        app.logger.debug(
+          { tradeId, validCoinIds: offerCoinIds },
+          'Valid coin IDs to fetch'
+        );
 
         if (offerCoinIds.length > 0) {
           const coinsData = await app.db.query.coins.findMany({
@@ -467,12 +485,19 @@ export function registerTradesRoutes(app: App) {
             },
           });
 
+          app.logger.debug(
+            { tradeId, coinsDataCount: coinsData.length, coinIds: coinsData.map((c) => c.id) },
+            'Coins fetched from database'
+          );
+
           const coinsMap = new Map(coinsData.map((c) => [c.id, c]));
 
           offersWithCoins = offersWithCoins.map((o) => ({
             ...o,
             offeredCoin: o.offeredCoinId ? (coinsMap.get(o.offeredCoinId) || null) : null,
           }));
+        } else {
+          app.logger.warn({ tradeId }, 'No valid coin IDs found in offers');
         }
       }
 
@@ -1466,6 +1491,12 @@ export function registerTradesRoutes(app: App) {
 
       if (!trade) {
         app.logger.warn({ tradeId }, 'Trade not found');
+        return reply.status(404).send({ error: 'Trade not found' });
+      }
+
+      // Reject access to cancelled trades
+      if (trade.status === 'cancelled') {
+        app.logger.warn({ tradeId, status: trade.status }, 'Attempted access to cancelled trade');
         return reply.status(404).send({ error: 'Trade not found' });
       }
 
