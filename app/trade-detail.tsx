@@ -443,7 +443,7 @@ export default function TradeDetailScreen() {
   };
 
   const handleAcceptOffer = async (offerId: string) => {
-    console.log('TradeDetailScreen: User accepting offer:', offerId);
+    console.log('TradeDetailScreen: User tapped Accept button for offer:', offerId);
 
     Alert.alert(
       'Accept Offer',
@@ -454,6 +454,7 @@ export default function TradeDetailScreen() {
           text: 'Accept',
           onPress: async () => {
             try {
+              console.log('TradeDetailScreen: Sending accept request to backend');
               const response = await authenticatedFetch(`/api/trades/${id}/offers/${offerId}/accept`, {
                 method: 'POST',
                 headers: {
@@ -463,6 +464,8 @@ export default function TradeDetailScreen() {
               });
 
               if (!response.ok) {
+                const errorText = await response.text();
+                console.error('TradeDetailScreen: Accept offer failed, status:', response.status, 'error:', errorText);
                 throw new Error('Failed to accept offer');
               }
 
@@ -472,7 +475,7 @@ export default function TradeDetailScreen() {
               await fetchTradeDetail();
             } catch (error) {
               console.error('TradeDetailScreen: Error accepting offer:', error);
-              Alert.alert('Error', 'Failed to accept offer');
+              Alert.alert('Error', 'Failed to accept offer. Please try again.');
             }
           },
         },
@@ -481,7 +484,7 @@ export default function TradeDetailScreen() {
   };
 
   const handleRejectOffer = async (offerId: string) => {
-    console.log('TradeDetailScreen: User rejecting offer:', offerId);
+    console.log('TradeDetailScreen: User tapped Reject button for offer:', offerId);
 
     Alert.alert(
       'Reject Offer',
@@ -493,6 +496,7 @@ export default function TradeDetailScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
+              console.log('TradeDetailScreen: Sending reject request to backend');
               const response = await authenticatedFetch(`/api/trades/${id}/offers/${offerId}/reject`, {
                 method: 'POST',
                 headers: {
@@ -502,6 +506,8 @@ export default function TradeDetailScreen() {
               });
 
               if (!response.ok) {
+                const errorText = await response.text();
+                console.error('TradeDetailScreen: Reject offer failed, status:', response.status, 'error:', errorText);
                 throw new Error('Failed to reject offer');
               }
 
@@ -511,7 +517,7 @@ export default function TradeDetailScreen() {
               await fetchTradeDetail();
             } catch (error) {
               console.error('TradeDetailScreen: Error rejecting offer:', error);
-              Alert.alert('Error', 'Failed to reject offer');
+              Alert.alert('Error', 'Failed to reject offer. Please try again.');
             }
           },
         },
@@ -520,7 +526,7 @@ export default function TradeDetailScreen() {
   };
 
   const handleCounterOffer = () => {
-    console.log('TradeDetailScreen: User initiating counter offer');
+    console.log('TradeDetailScreen: User tapped Counter Offer button');
     setShowCoinDetail(false);
     // Show a choice dialog
     Alert.alert(
