@@ -87,7 +87,7 @@ export function registerSubscriptionRoutes(app: App) {
       // Set limits based on tier
       const limits = {
         maxCoins: activeTier === 'free' ? 25 : null,
-        maxTrades: activeTier === 'free' ? 5 : null,
+        maxTrades: activeTier === 'free' ? 1 : null,
       };
 
       app.logger.info(
@@ -321,7 +321,7 @@ export function registerSubscriptionRoutes(app: App) {
 
       // Check free tier limits
       const stats = await getOrCreateMonthlyStats(app, session.user.id);
-      const limit = 5;
+      const limit = 1;
       const canInitiate = stats.tradesInitiatedCount < limit;
 
       if (!canInitiate) {
