@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "CoinHub",
@@ -45,7 +46,9 @@
       "router": {
         "origin": false
       },
-      "backendUrl": "https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev"
+      "backendUrl": "https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev",
+      "supabaseUrl": "YOUR_SUPABASE_URL_HERE",
+      "supabaseAnonKey": "YOUR_SUPABASE_ANON_KEY_HERE"
     }
   },
   "scheme": "CoinHub"
