@@ -1,5 +1,5 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import * as authSchema from '../db/auth-schema.js';
 import type { App } from '../index.js';
@@ -15,6 +15,34 @@ function getCurrentMonth(): string {
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
   return `${year}-${month}`;
+}
+
+// Helper function to get month and year from date
+function getMonthYear(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+}
+
+// Helper function to count actual coins uploaded by user in current month
+async function getActualCoinCountThisMonth(app: App, userId: string): Promise<number> {
+  const now = new Date();
+  const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+  const result = await app.db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(schema.coins)
+    .where(
+      and(
+        eq(schema.coins.userId, userId),
+        eq(schema.coins.isTemporaryTradeCoin, false),
+        sql`${schema.coins.createdAt} >= ${currentMonthStart}`,
+        sql`${schema.coins.createdAt} < ${nextMonthStart}`
+      )
+    );
+
+  return result[0]?.count || 0;
 }
 
 // Helper function to get or create monthly stats for current month
@@ -84,6 +112,44 @@ export function registerSubscriptionRoutes(app: App) {
         activeTier = 'free';
       }
 
+      // Get actual coin count from database and sync with stats
+      const actualCoinCount = await getActualCoinCountThisMonth(app, session.user.id);
+      let syncedCoinsUploadedCount = actualCoinCount;
+
+      // If actual count differs from cached count, update the stats
+      if (actualCoinCount !== stats.coinsUploadedCount) {
+        app.logger.info(
+          {
+            userId: session.user.id,
+            cachedCount: stats.coinsUploadedCount,
+            actualCount: actualCoinCount,
+          },
+          'Syncing coin count from database to stats'
+        );
+
+        try {
+          await app.db
+            .update(schema.userMonthlyStats)
+            .set({
+              coinsUploadedCount: actualCoinCount,
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(schema.userMonthlyStats.userId, session.user.id),
+                eq(schema.userMonthlyStats.month, getCurrentMonth())
+              )
+            );
+
+          app.logger.debug(
+            { userId: session.user.id, newCount: actualCoinCount },
+            'Coin count synced successfully'
+          );
+        } catch (syncError) {
+          app.logger.warn({ err: syncError, userId: session.user.id }, 'Failed to sync coin count to stats, using actual count from database');
+        }
+      }
+
       // Set limits based on tier
       const limits = {
         maxCoins: activeTier === 'free' ? 25 : null,
@@ -94,7 +160,7 @@ export function registerSubscriptionRoutes(app: App) {
         {
           userId: session.user.id,
           tier: activeTier,
-          coinsUploaded: stats.coinsUploadedCount,
+          coinsUploaded: syncedCoinsUploadedCount,
           tradesInitiated: stats.tradesInitiatedCount,
         },
         'Subscription status fetched'
@@ -102,7 +168,7 @@ export function registerSubscriptionRoutes(app: App) {
 
       return {
         tier: activeTier,
-        coinsUploadedThisMonth: stats.coinsUploadedCount,
+        coinsUploadedThisMonth: syncedCoinsUploadedCount,
         tradesInitiatedThisMonth: stats.tradesInitiatedCount,
         subscriptionExpiresAt: user.subscriptionExpiresAt?.toISOString() || null,
         limits,
@@ -249,26 +315,56 @@ export function registerSubscriptionRoutes(app: App) {
         };
       }
 
-      // Check free tier limits
+      // Check free tier limits with actual coin count from database
       const stats = await getOrCreateMonthlyStats(app, session.user.id);
+      const actualCoinCount = await getActualCoinCountThisMonth(app, session.user.id);
       const limit = 25;
-      const canUpload = stats.coinsUploadedCount < limit;
+      const canUpload = actualCoinCount < limit;
+
+      // If actual count differs from cached count, update the stats
+      if (actualCoinCount !== stats.coinsUploadedCount) {
+        app.logger.info(
+          {
+            userId: session.user.id,
+            cachedCount: stats.coinsUploadedCount,
+            actualCount: actualCoinCount,
+          },
+          'Syncing coin count from database to stats'
+        );
+
+        try {
+          await app.db
+            .update(schema.userMonthlyStats)
+            .set({
+              coinsUploadedCount: actualCoinCount,
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(schema.userMonthlyStats.userId, session.user.id),
+                eq(schema.userMonthlyStats.month, getCurrentMonth())
+              )
+            );
+        } catch (syncError) {
+          app.logger.warn({ err: syncError, userId: session.user.id }, 'Failed to sync coin count to stats, using actual count from database');
+        }
+      }
 
       if (!canUpload) {
         app.logger.warn(
-          { userId: session.user.id, uploaded: stats.coinsUploadedCount, limit },
+          { userId: session.user.id, uploaded: actualCoinCount, limit },
           'User exceeded monthly coin upload limit'
         );
       } else {
         app.logger.info(
-          { userId: session.user.id, uploaded: stats.coinsUploadedCount, limit },
+          { userId: session.user.id, uploaded: actualCoinCount, limit },
           'User can upload coin'
         );
       }
 
       return {
         canUpload,
-        coinsUploadedThisMonth: stats.coinsUploadedCount,
+        coinsUploadedThisMonth: actualCoinCount,
         limit,
         ...(canUpload ? {} : { reason: `You have reached the monthly limit of ${limit} coins for free users` }),
       };
