@@ -128,7 +128,7 @@ export function registerCommentsRoutes(app: App) {
 
   /**
    * DELETE /api/comments/:id
-   * Delete a comment (soft delete - owner or mod/admin can delete)
+   * Delete a comment (soft delete - owner can delete their own comments)
    */
   app.fastify.delete('/api/comments/:id', async (request: FastifyRequest, reply: FastifyReply) => {
     const session = await requireAuth(request, reply);
@@ -149,14 +149,10 @@ export function registerCommentsRoutes(app: App) {
         return reply.status(404).send({ error: 'Comment not found' });
       }
 
-      // Check authorization: owner or moderator/admin
+      // Check authorization: only owner can delete their own comments
       const isOwner = comment.userId === session.user.id;
-      const user = await app.db.query.users.findFirst({
-        where: eq(schema.users.id, session.user.id),
-      });
-      const isModerator = user?.role === 'moderator' || user?.role === 'admin';
 
-      if (!isOwner && !isModerator) {
+      if (!isOwner) {
         app.logger.warn(
           { commentId, userId: session.user.id, ownerId: comment.userId },
           'Unauthorized comment deletion'

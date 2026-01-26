@@ -56,7 +56,7 @@ export const users = pgTable(
     })
       .default('public')
       .notNull(),
-    role: text('role', { enum: ['user', 'moderator', 'admin'] })
+    role: text('role', { enum: ['user'] })
       .default('user')
       .notNull(),
     inviteCodeUsed: text('invite_code_used'),
