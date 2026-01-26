@@ -59,6 +59,11 @@ export const users = pgTable(
     role: text('role', { enum: ['user'] })
       .default('user')
       .notNull(),
+    subscriptionTier: text('subscription_tier', { enum: ['free', 'premium'] })
+      .default('free')
+      .notNull(),
+    subscriptionStartedAt: timestamp('subscription_started_at'),
+    subscriptionExpiresAt: timestamp('subscription_expires_at'),
     inviteCodeUsed: text('invite_code_used'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -67,6 +72,7 @@ export const users = pgTable(
     index('idx_user_email').on(table.email),
     index('idx_user_username').on(table.username),
     index('idx_user_role').on(table.role),
+    index('idx_user_subscription_tier').on(table.subscriptionTier),
   ]
 );
 
@@ -556,5 +562,37 @@ export const tradeRatingsRelations = relations(tradeRatings, ({ one }) => ({
     fields: [tradeRatings.ratedUserId],
     references: [users.id],
     relationName: 'rated',
+  }),
+}));
+
+/**
+ * User Monthly Stats Table
+ * Tracks monthly usage statistics for subscription limits
+ * Resets automatically each month based on YYYY-MM format
+ */
+export const userMonthlyStats = pgTable(
+  'user_monthly_stats',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    month: text('month').notNull(), // Format: YYYY-MM
+    coinsUploadedCount: integer('coins_uploaded_count').default(0).notNull(),
+    tradesInitiatedCount: integer('trades_initiated_count').default(0).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_user_id_month').on(table.userId, table.month),
+    index('idx_user_id').on(table.userId),
+    index('idx_month').on(table.month),
+  ]
+);
+
+export const userMonthlyStatsRelations = relations(userMonthlyStats, ({ one }) => ({
+  user: one(users, {
+    fields: [userMonthlyStats.userId],
+    references: [users.id],
   }),
 }));
