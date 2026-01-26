@@ -1,9 +1,10 @@
 
-import { Stack, useRouter } from 'expo-router';
+import React from 'react';
 import Constants from 'expo-constants';
+import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
-import React from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   View,
   Text,
@@ -12,14 +13,16 @@ import {
   TouchableOpacity,
   Alert,
   Linking,
-} from 'react-native';
+  Modal,
+} from 'react';
 import { colors } from '@/styles/commonStyles';
-import { useAuth } from '@/contexts/AuthContext';
-import { deleteCurrentUserAccount, deleteAllUsers, grantAdminAccess } from '@/utils/api';
+import { authenticatedFetch } from '@/utils/api';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { user, signOut } = useAuth();
+  const [showDeleteModal, setShowDeleteModal] = React.useState(false);
+  const [showPasswordResetModal, setShowPasswordResetModal] = React.useState(false);
 
   console.log('Settings screen loaded');
 
@@ -35,233 +38,87 @@ export default function SettingsScreen() {
 
   const handleContactSupport = () => {
     console.log('User tapped Contact Support');
-    Alert.alert(
-      'Contact Support',
-      'Email us at support@coinhub.app',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Open Email',
-          onPress: () => Linking.openURL('mailto:support@coinhub.app'),
+    Linking.openURL('mailto:support@coinhub.app');
+  };
+
+  const handleRequestPasswordReset = async () => {
+    console.log('User requested password reset');
+    
+    if (!user?.email) {
+      Alert.alert('Error', 'No email address found. Please log in again.');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${Constants.expoConfig?.extra?.backendUrl}/api/auth/request-password-reset`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-      ]
-    );
+        body: JSON.stringify({ email: user.email }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        console.log('Password reset email sent successfully');
+        setShowPasswordResetModal(false);
+        Alert.alert(
+          'Password Reset Email Sent',
+          'Check your email for a link to reset your password. The link will expire in 1 hour.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        console.error('Failed to send password reset email:', data);
+        Alert.alert('Error', data.error || 'Failed to send password reset email. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error requesting password reset:', error);
+      Alert.alert('Error', 'Failed to send password reset email. Please check your connection and try again.');
+    }
   };
 
   const handleDeleteAccount = async () => {
     console.log('User tapped Delete Account');
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteAccount = async () => {
+    console.log('User confirmed account deletion');
     
-    Alert.alert(
-      'Delete Account',
-      'Are you sure you want to delete your account? This action cannot be undone and will permanently delete:\n\n• All your coins\n• All your trades\n• All your comments and likes\n• Your profile and account data\n\nThis action is permanent and irreversible.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete Account',
-          style: 'destructive',
-          onPress: async () => {
-            console.log('User confirmed account deletion');
-            
-            // Second confirmation
-            Alert.alert(
-              'Final Confirmation',
-              'This is your last chance. Are you absolutely sure you want to permanently delete your account?',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Yes, Delete Forever',
-                  style: 'destructive',
-                  onPress: async () => {
-                    console.log('User confirmed final deletion, calling API');
-                    
-                    // Call the delete account API
-                    const result = await deleteCurrentUserAccount();
-                    
-                    if (result.success) {
-                      console.log('Account deleted successfully');
-                      
-                      // Sign out the user FIRST to clear the session
-                      console.log('Signing out user after account deletion');
-                      await signOut();
-                      
-                      // Wait a moment for the sign out to complete
-                      await new Promise(resolve => setTimeout(resolve, 500));
-                      
-                      // Show success message
-                      Alert.alert(
-                        'Account Deleted',
-                        'Your account has been permanently deleted.',
-                        [
-                          {
-                            text: 'OK',
-                            onPress: () => {
-                              // Force redirect to auth screen (login page)
-                              console.log('Redirecting to login screen after account deletion');
-                              router.replace('/auth');
-                            },
-                          },
-                        ]
-                      );
-                    } else {
-                      console.error('Failed to delete account:', result.message);
-                      Alert.alert(
-                        'Error',
-                        result.message || 'Failed to delete account. Please try again or contact support.',
-                        [{ text: 'OK' }]
-                      );
-                    }
-                  },
-                },
-              ]
-            );
-          },
-        },
-      ]
-    );
-  };
+    try {
+      const response = await authenticatedFetch('/api/users/me', {
+        method: 'DELETE',
+      });
 
-  const handleAdminResetAllPasswords = () => {
-    console.log('Admin navigating to Reset All Passwords screen');
-    router.push('/admin-reset-all-passwords');
-  };
-
-  const handleAdminDeleteUser = () => {
-    console.log('Admin navigating to Delete User screen');
-    router.push('/admin-delete-user');
-  };
-
-  const handleAdminViewAccounts = () => {
-    console.log('Admin navigating to View Accounts screen');
-    router.push('/admin-view-accounts');
-  };
-
-  const handleAdminViewPasswords = () => {
-    console.log('Admin navigating to View Passwords screen');
-    router.push('/admin-view-passwords');
-  };
-
-  const handleGrantAdminAccess = async () => {
-    console.log('User tapped Grant Admin Access');
-    
-    if (!user?.email) {
-      Alert.alert('Error', 'No user email found. Please log in again.');
-      return;
+      if (response.ok) {
+        console.log('Account deleted successfully');
+        setShowDeleteModal(false);
+        
+        // Sign out the user
+        await signOut();
+        
+        Alert.alert(
+          'Account Deleted',
+          'Your account has been permanently deleted.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                router.replace('/auth');
+              },
+            },
+          ]
+        );
+      } else {
+        const data = await response.json();
+        console.error('Failed to delete account:', data);
+        Alert.alert('Error', data.error || 'Failed to delete account. Please try again or contact support.');
+      }
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      Alert.alert('Error', 'Failed to delete account. Please check your connection and try again.');
     }
-    
-    Alert.alert(
-      'Grant Admin Access',
-      `Grant admin privileges to your account?\n\nEmail: ${user.email}\n\nThis will allow you to use admin-only features like deleting all users.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Grant Admin Access',
-          onPress: async () => {
-            console.log('User confirmed granting admin access to:', user.email);
-            
-            const result = await grantAdminAccess(user.email);
-            
-            if (result.success) {
-              console.log('Admin access granted successfully');
-              Alert.alert(
-                '✅ Admin Access Granted',
-                'You now have admin privileges. You can now use admin-only features.\n\nPlease refresh the app or log out and log back in for changes to take effect.',
-                [{ text: 'OK' }]
-              );
-            } else {
-              console.error('Failed to grant admin access:', result.message);
-              Alert.alert(
-                '❌ Error',
-                result.message || 'Failed to grant admin access. Please try again.',
-                [{ text: 'OK' }]
-              );
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const handleAdminDeleteAllUsers = async () => {
-    console.log('Admin tapped Delete All Users');
-    
-    Alert.alert(
-      '⚠️ DANGER: Delete All Users',
-      'This will PERMANENTLY DELETE ALL USER ACCOUNTS AND DATA from the system including:\n\n• All user profiles\n• All user accounts\n• All coins\n• All trades\n• All comments and likes\n• All follows and notifications\n• Everything!\n\nThis action is IRREVERSIBLE and will wipe the entire database.\n\nAre you absolutely sure?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete All Users',
-          style: 'destructive',
-          onPress: async () => {
-            console.log('Admin confirmed first deletion warning');
-            
-            // Second confirmation with typing requirement
-            Alert.alert(
-              '🚨 FINAL WARNING',
-              'This is your LAST CHANCE to cancel.\n\nThis will delete EVERYTHING and cannot be undone.\n\nType "DELETE ALL" to confirm.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'I Understand, Delete Everything',
-                  style: 'destructive',
-                  onPress: async () => {
-                    console.log('Admin confirmed final deletion, calling API');
-                    
-                    // Show loading alert
-                    Alert.alert('Deleting...', 'Please wait while all users are being deleted.');
-                    
-                    // Call the delete all users API
-                    const result = await deleteAllUsers();
-                    
-                    if (result.success) {
-                      console.log('All users deleted successfully:', result.deletedCount);
-                      
-                      Alert.alert(
-                        '✅ All Users Deleted',
-                        `Successfully deleted ${result.deletedCount || 'all'} user accounts and all associated data.\n\nThe database has been wiped clean.`,
-                        [
-                          {
-                            text: 'OK',
-                            onPress: () => {
-                              console.log('Admin acknowledged deletion success');
-                              // Sign out the admin and redirect to login
-                              signOut();
-                              router.replace('/auth');
-                            },
-                          },
-                        ]
-                      );
-                    } else {
-                      console.error('Failed to delete all users:', result.message);
-                      
-                      // Check if the error is about admin permissions
-                      const errorMessage = result.message || 'Failed to delete all users';
-                      const isPermissionError = errorMessage.toLowerCase().includes('admin') || 
-                                               errorMessage.toLowerCase().includes('permission') ||
-                                               errorMessage.toLowerCase().includes('403');
-                      
-                      if (isPermissionError) {
-                        Alert.alert(
-                          '❌ Admin Access Required',
-                          'You need admin privileges to delete all users.\n\nPlease use the "Grant Admin Access" button first to give yourself admin permissions, then try again.',
-                          [{ text: 'OK' }]
-                        );
-                      } else {
-                        Alert.alert(
-                          '❌ Error',
-                          errorMessage,
-                          [{ text: 'OK' }]
-                        );
-                      }
-                    }
-                  },
-                },
-              ]
-            );
-          },
-        },
-      ]
-    );
   };
 
   return (
@@ -276,6 +133,26 @@ export default function SettingsScreen() {
       <ScrollView style={styles.scrollView}>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
+          
+          <TouchableOpacity 
+            style={styles.option} 
+            onPress={() => setShowPasswordResetModal(true)}
+          >
+            <IconSymbol
+              ios_icon_name="key"
+              android_material_icon_name="vpn-key"
+              size={24}
+              color={colors.primary}
+            />
+            <Text style={styles.optionText}>Reset Password</Text>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="arrow-forward"
+              size={20}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+
           <TouchableOpacity style={styles.option} onPress={handleDeleteAccount}>
             <IconSymbol
               ios_icon_name="trash"
@@ -342,160 +219,83 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Admin Tools</Text>
-          <Text style={styles.sectionSubtitle}>
-            Development/Testing Tools - Not for production use
-          </Text>
-
-          {/* Grant Admin Access Button */}
-          <TouchableOpacity
-            style={[styles.option, styles.adminAccessOption]}
-            onPress={handleGrantAdminAccess}
-          >
-            <IconSymbol
-              ios_icon_name="shield.checkered"
-              android_material_icon_name="verified-user"
-              size={28}
-              color="#007AFF"
-            />
-            <View style={styles.prominentTextContainer}>
-              <Text style={[styles.optionText, { color: '#007AFF', fontWeight: '700', fontSize: 17 }]}>
-                Grant Admin Access
-              </Text>
-              <Text style={styles.prominentSubtext}>
-                Give yourself admin privileges for testing
-              </Text>
-            </View>
-            <IconSymbol
-              ios_icon_name="chevron.right"
-              android_material_icon_name="arrow-forward"
-              size={20}
-              color="#007AFF"
-            />
-          </TouchableOpacity>
-
-          {/* PROMINENT: Reset All Passwords Button */}
-          <TouchableOpacity
-            style={[styles.option, styles.prominentOption]}
-            onPress={handleAdminResetAllPasswords}
-          >
-            <IconSymbol
-              ios_icon_name="arrow.clockwise.circle.fill"
-              android_material_icon_name="refresh"
-              size={28}
-              color="#FF3B30"
-            />
-            <View style={styles.prominentTextContainer}>
-              <Text style={[styles.optionText, { color: '#FF3B30', fontWeight: '700', fontSize: 17 }]}>
-                Reset All Passwords to 123456
-              </Text>
-              <Text style={styles.prominentSubtext}>
-                Fix login issues by resetting all account passwords
-              </Text>
-            </View>
-            <IconSymbol
-              ios_icon_name="chevron.right"
-              android_material_icon_name="arrow-forward"
-              size={20}
-              color="#FF3B30"
-            />
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[styles.option, styles.adminOption]}
-            onPress={handleAdminViewPasswords}
-          >
-            <IconSymbol
-              ios_icon_name="key.fill"
-              android_material_icon_name="vpn-key"
-              size={24}
-              color="#FF9500"
-            />
-            <Text style={[styles.optionText, { color: '#FF9500', fontWeight: '600' }]}>
-              View Test Account Passwords
-            </Text>
-            <IconSymbol
-              ios_icon_name="chevron.right"
-              android_material_icon_name="arrow-forward"
-              size={20}
-              color="#FF9500"
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.option, styles.adminOption]}
-            onPress={handleAdminViewAccounts}
-          >
-            <IconSymbol
-              ios_icon_name="person.2"
-              android_material_icon_name="group"
-              size={24}
-              color="#007AFF"
-            />
-            <Text style={styles.optionText}>View All Accounts</Text>
-            <IconSymbol
-              ios_icon_name="chevron.right"
-              android_material_icon_name="arrow-forward"
-              size={20}
-              color={colors.textSecondary}
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.option, styles.adminOption]}
-            onPress={handleAdminDeleteUser}
-          >
-            <IconSymbol
-              ios_icon_name="person.crop.circle.badge.minus"
-              android_material_icon_name="person-remove"
-              size={24}
-              color="#FF3B30"
-            />
-            <Text style={[styles.optionText, { color: '#FF3B30' }]}>
-              Delete User Account
-            </Text>
-            <IconSymbol
-              ios_icon_name="chevron.right"
-              android_material_icon_name="arrow-forward"
-              size={20}
-              color="#FF3B30"
-            />
-          </TouchableOpacity>
-
-          {/* EXTREMELY DANGEROUS: Delete All Users */}
-          <TouchableOpacity
-            style={[styles.option, styles.dangerOption]}
-            onPress={handleAdminDeleteAllUsers}
-          >
-            <IconSymbol
-              ios_icon_name="exclamationmark.triangle.fill"
-              android_material_icon_name="warning"
-              size={28}
-              color="#FFFFFF"
-            />
-            <View style={styles.dangerTextContainer}>
-              <Text style={[styles.optionText, { color: '#FFFFFF', fontWeight: '700', fontSize: 17 }]}>
-                🚨 Delete ALL Users
-              </Text>
-              <Text style={styles.dangerSubtext}>
-                DANGER: Wipes entire database - irreversible!
-              </Text>
-            </View>
-            <IconSymbol
-              ios_icon_name="chevron.right"
-              android_material_icon_name="arrow-forward"
-              size={20}
-              color="#FFFFFF"
-            />
-          </TouchableOpacity>
-        </View>
-
         <View style={styles.footer}>
           <Text style={styles.footerText}>CoinHub v1.0.0</Text>
           <Text style={styles.footerText}>© 2026 CoinHub. All rights reserved.</Text>
         </View>
       </ScrollView>
+
+      {/* Password Reset Modal */}
+      <Modal
+        visible={showPasswordResetModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPasswordResetModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Reset Password</Text>
+            <Text style={styles.modalMessage}>
+              We'll send a password reset link to your email address:
+              {'\n\n'}
+              <Text style={styles.modalEmail}>{user?.email}</Text>
+              {'\n\n'}
+              The link will expire in 1 hour.
+            </Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={() => setShowPasswordResetModal(false)}
+              >
+                <Text style={styles.modalButtonTextCancel}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonConfirm]}
+                onPress={handleRequestPasswordReset}
+              >
+                <Text style={styles.modalButtonTextConfirm}>Send Reset Link</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Account Modal */}
+      <Modal
+        visible={showDeleteModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDeleteModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Delete Account</Text>
+            <Text style={styles.modalMessage}>
+              Are you sure you want to delete your account? This action cannot be undone and will permanently delete:
+              {'\n\n'}
+              • All your coins{'\n'}
+              • All your trades{'\n'}
+              • All your comments and likes{'\n'}
+              • Your profile and account data{'\n\n'}
+              This action is permanent and irreversible.
+            </Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={() => setShowDeleteModal(false)}
+              >
+                <Text style={styles.modalButtonTextCancel}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonDelete]}
+                onPress={confirmDeleteAccount}
+              >
+                <Text style={styles.modalButtonTextDelete}>Delete Forever</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -520,13 +320,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     paddingHorizontal: 4,
   },
-  sectionSubtitle: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginBottom: 8,
-    paddingHorizontal: 4,
-    fontStyle: 'italic',
-  },
   option: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -534,50 +327,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     marginBottom: 8,
-  },
-  adminOption: {
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  adminAccessOption: {
-    borderWidth: 2,
-    borderColor: '#007AFF',
-    backgroundColor: '#F0F8FF',
-    padding: 16,
-    marginBottom: 16,
-  },
-  prominentOption: {
-    borderWidth: 2,
-    borderColor: '#FF3B30',
-    backgroundColor: '#FFF5F5',
-    padding: 16,
-    marginBottom: 16,
-  },
-  prominentTextContainer: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  prominentSubtext: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  dangerOption: {
-    borderWidth: 3,
-    borderColor: '#FF0000',
-    backgroundColor: '#CC0000',
-    padding: 16,
-    marginTop: 16,
-  },
-  dangerTextContainer: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  dangerSubtext: {
-    fontSize: 12,
-    color: '#FFFFFF',
-    marginTop: 2,
-    fontWeight: '600',
   },
   optionText: {
     flex: 1,
@@ -594,5 +343,70 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textSecondary,
     marginBottom: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: colors.text,
+    marginBottom: 24,
+    lineHeight: 24,
+  },
+  modalEmail: {
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalButtonCancel: {
+    backgroundColor: colors.border,
+  },
+  modalButtonConfirm: {
+    backgroundColor: colors.primary,
+  },
+  modalButtonDelete: {
+    backgroundColor: '#FF3B30',
+  },
+  modalButtonTextCancel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  modalButtonTextConfirm: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  modalButtonTextDelete: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });

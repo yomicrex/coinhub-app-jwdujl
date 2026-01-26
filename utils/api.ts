@@ -120,48 +120,4 @@ export async function authenticatedUpload(
   return response;
 }
 
-// Legacy functions for backward compatibility
-export async function deleteCurrentUserAccount() {
-  console.log('API: Deleting current user account');
-  const response = await authenticatedFetch('/api/users/me', {
-    method: 'DELETE',
-  });
-  
-  if (!response.ok) {
-    throw new Error('Failed to delete account');
-  }
-  
-  return response.json();
-}
-
-export async function deleteAllUsers() {
-  console.log('API: Admin deleting all users');
-  const response = await authenticatedFetch('/api/admin/delete-all-users', {
-    method: 'DELETE',
-  });
-  
-  if (!response.ok) {
-    throw new Error('Failed to delete all users');
-  }
-  
-  return response.json();
-}
-
-export async function grantAdminAccess(email: string) {
-  console.log('API: Granting admin access to:', email);
-  const response = await authenticatedFetch('/api/admin/grant-admin-access', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ email }),
-  });
-  
-  if (!response.ok) {
-    throw new Error('Failed to grant admin access');
-  }
-  
-  return response.json();
-}
-
 export { API_URL };
