@@ -332,8 +332,8 @@ export default function SubscriptionScreen() {
         {!isPremium && (
           <View style={styles.freeTierInfo}>
             <Text style={styles.freeTierTitle}>Free Tier Limits</Text>
-            <Text style={styles.freeTierText}>• 25 coin uploads per month</Text>
-            <Text style={styles.freeTierText}>• 5 trade initiations per month</Text>
+            <Text style={styles.freeTierText}>• {status.limits.maxCoins || 25} coin uploads per month</Text>
+            <Text style={styles.freeTierText}>• {status.limits.maxTrades || 1} trade initiation{(status.limits.maxTrades || 1) === 1 ? '' : 's'} per month</Text>
             <Text style={styles.freeTierText}>• Limits reset on the 1st of each month</Text>
           </View>
         )}
