@@ -225,6 +225,41 @@ export default function CoinDetailScreen() {
 
     if (!coin) return;
 
+    // Check trade initiation limit
+    console.log('CoinDetailScreen: Checking trade initiation limit');
+    try {
+      const response = await fetch(`${API_URL}/api/subscription/can-initiate-trade`, {
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('CoinDetailScreen: Trade limit check result:', data);
+        
+        if (!data.canInitiate) {
+          const limitText = data.limit ? `${data.limit}` : 'unlimited';
+          const message = `You've reached your monthly limit of ${limitText} trade initiations. ${data.reason || 'Upgrade to Premium for unlimited trades.'}`;
+          
+          Alert.alert(
+            'Trade Limit Reached',
+            message,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Upgrade to Premium', 
+                onPress: () => router.push('/subscription')
+              }
+            ]
+          );
+          return;
+        }
+      } else {
+        console.error('CoinDetailScreen: Failed to check trade limit, status:', response.status);
+      }
+    } catch (error) {
+      console.error('CoinDetailScreen: Error checking trade limit:', error);
+    }
+
     console.log('CoinDetailScreen: User tapped propose trade button - showing coin selection modal');
     setShowTradeModal(true);
   };
@@ -322,6 +357,22 @@ export default function CoinDetailScreen() {
       }
 
       console.log('CoinDetailScreen: Trade created successfully with initial offer');
+      
+      // Track the trade initiation
+      try {
+        await fetch(`${API_URL}/api/subscription/track-trade-initiation`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({}),
+        });
+        console.log('CoinDetailScreen: Trade initiation tracked');
+      } catch (error) {
+        console.error('CoinDetailScreen: Error tracking trade initiation:', error);
+      }
+      
       setOfferMessage('');
 
       Alert.alert(
@@ -467,6 +518,21 @@ export default function CoinDetailScreen() {
       }
 
       console.log('CoinDetailScreen: Trade created successfully with uploaded coin');
+      
+      // Track the trade initiation
+      try {
+        await fetch(`${API_URL}/api/subscription/track-trade-initiation`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({}),
+        });
+        console.log('CoinDetailScreen: Trade initiation tracked');
+      } catch (error) {
+        console.error('CoinDetailScreen: Error tracking trade initiation:', error);
+      }
       
       // Reset form
       setUploadImages([]);

@@ -38,6 +38,17 @@ interface ProfileData {
   completedTradesCount?: number;
 }
 
+interface SubscriptionStatus {
+  tier: 'free' | 'premium';
+  coinsUploadedThisMonth: number;
+  tradesInitiatedThisMonth: number;
+  subscriptionExpiresAt: string | null;
+  limits: {
+    maxCoins: number | null;
+    maxTrades: number | null;
+  };
+}
+
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 
 export default function ProfileScreen() {
@@ -48,6 +59,7 @@ export default function ProfileScreen() {
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [profileData, setProfileData] = useState<ProfileData>({});
+  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus | null>(null);
 
   const fetchUserCoins = useCallback(async () => {
     if (!user?.id) {
@@ -141,6 +153,25 @@ export default function ProfileScreen() {
     }
   }, [user?.username]);
 
+  const fetchSubscriptionStatus = useCallback(async () => {
+    console.log('ProfileScreen: Fetching subscription status');
+    try {
+      const response = await fetch(`${API_URL}/api/subscription/status`, {
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('ProfileScreen: Subscription status received:', data);
+        setSubscriptionStatus(data);
+      } else {
+        console.error('ProfileScreen: Failed to fetch subscription status, status:', response.status);
+      }
+    } catch (error) {
+      console.error('ProfileScreen: Error fetching subscription status:', error);
+    }
+  }, []);
+
   useEffect(() => {
     console.log('ProfileScreen: Component mounted/updated, user:', {
       id: user?.id,
@@ -153,8 +184,9 @@ export default function ProfileScreen() {
       fetchUserCoins();
       fetchFollowCounts();
       fetchProfileData();
+      fetchSubscriptionStatus();
     }
-  }, [user, fetchUserCoins, fetchFollowCounts, fetchProfileData]);
+  }, [user, fetchUserCoins, fetchFollowCounts, fetchProfileData, fetchSubscriptionStatus]);
 
   const handleLogout = async () => {
     console.log('ProfileScreen: User tapped logout button');
@@ -243,6 +275,18 @@ export default function ProfileScreen() {
 
           <Text style={styles.displayName}>{user.displayName || user.username}</Text>
           <Text style={styles.username}>@{user.username}</Text>
+
+          {subscriptionStatus?.tier === 'premium' && (
+            <View style={styles.premiumBadge}>
+              <IconSymbol
+                ios_icon_name="star.fill"
+                android_material_icon_name="star"
+                size={14}
+                color="#FFB800"
+              />
+              <Text style={styles.premiumBadgeText}>Premium Member</Text>
+            </View>
+          )}
 
           {user.bio && <Text style={styles.bio}>{user.bio}</Text>}
 
@@ -429,6 +473,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
     marginBottom: 12,
+  },
+  premiumBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(255, 184, 0, 0.1)',
+    borderRadius: 20,
+    gap: 6,
+    marginBottom: 12,
+  },
+  premiumBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFB800',
   },
   bio: {
     fontSize: 14,

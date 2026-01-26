@@ -231,6 +231,33 @@ export default function SettingsScreen() {
         }}
       />
       <ScrollView style={styles.scrollView}>
+        {/* Subscription Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Subscription</Text>
+          
+          <TouchableOpacity
+            style={styles.option}
+            onPress={() => {
+              console.log('SettingsScreen: User tapped Manage Subscription');
+              router.push('/subscription');
+            }}
+          >
+            <IconSymbol
+              ios_icon_name="star.fill"
+              android_material_icon_name="star"
+              size={24}
+              color="#FFB800"
+            />
+            <Text style={styles.optionText}>Manage Subscription</Text>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="arrow-forward"
+              size={20}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
           

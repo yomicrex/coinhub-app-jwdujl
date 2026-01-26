@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
 import { authenticatedFetch, authenticatedUpload } from '@/utils/api';
+import Constants from 'expo-constants';
+
+const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 
 export default function AddCoinScreen() {
   const [title, setTitle] = useState('');
@@ -35,8 +38,40 @@ export default function AddCoinScreen() {
   const [tradeStatus, setTradeStatus] = useState<'not_for_trade' | 'open_to_trade'>('not_for_trade');
   const [images, setImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [checkingLimit, setCheckingLimit] = useState(true);
+  const [canUpload, setCanUpload] = useState(true);
+  const [limitMessage, setLimitMessage] = useState('');
   const router = useRouter();
   const { user } = useAuth();
+
+  useEffect(() => {
+    checkUploadLimit();
+  }, []);
+
+  const checkUploadLimit = async () => {
+    console.log('AddCoinScreen: Checking upload limit');
+    setCheckingLimit(true);
+    try {
+      const response = await authenticatedFetch(`${API_URL}/api/subscription/can-upload-coin`);
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('AddCoinScreen: Upload limit check result:', data);
+        setCanUpload(data.canUpload);
+        if (!data.canUpload) {
+          const limitText = data.limit ? `${data.limit}` : 'unlimited';
+          const message = `You've reached your monthly limit of ${limitText} coin uploads. ${data.reason || 'Upgrade to Premium for unlimited uploads.'}`;
+          setLimitMessage(message);
+        }
+      } else {
+        console.error('AddCoinScreen: Failed to check upload limit, status:', response.status);
+      }
+    } catch (error) {
+      console.error('AddCoinScreen: Error checking upload limit:', error);
+    } finally {
+      setCheckingLimit(false);
+    }
+  };
 
   const pickImages = async () => {
     console.log('AddCoinScreen: User tapped pick images');
@@ -72,6 +107,23 @@ export default function AddCoinScreen() {
 
   const handleSubmit = async () => {
     console.log('AddCoinScreen: User tapped save button');
+    
+    // Check upload limit first
+    if (!canUpload) {
+      console.log('AddCoinScreen: Upload limit reached');
+      Alert.alert(
+        'Upload Limit Reached',
+        limitMessage,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Upgrade to Premium', 
+            onPress: () => router.push('/subscription')
+          }
+        ]
+      );
+      return;
+    }
     
     // Validate required fields
     if (!agency || !country || !year) {
@@ -199,6 +251,20 @@ export default function AddCoinScreen() {
 
       console.log('AddCoinScreen: Upload complete -', uploadedCount, 'succeeded,', failedCount, 'failed');
 
+      // Track the coin upload
+      try {
+        await authenticatedFetch(`${API_URL}/api/subscription/track-coin-upload`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({}),
+        });
+        console.log('AddCoinScreen: Coin upload tracked');
+      } catch (error) {
+        console.error('AddCoinScreen: Error tracking coin upload:', error);
+      }
+
       if (uploadedCount > 0) {
         const message = failedCount > 0 
           ? `Coin added! ${uploadedCount} image(s) uploaded successfully, ${failedCount} failed.`
@@ -250,6 +316,30 @@ export default function AddCoinScreen() {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
+        {checkingLimit && (
+          <View style={styles.checkingBanner}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={styles.checkingText}>Checking upload limit...</Text>
+          </View>
+        )}
+
+        {!checkingLimit && !canUpload && (
+          <View style={styles.limitBanner}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle.fill"
+              android_material_icon_name="warning"
+              size={20}
+              color={colors.error}
+            />
+            <View style={styles.limitBannerContent}>
+              <Text style={styles.limitBannerText}>{limitMessage}</Text>
+              <TouchableOpacity onPress={() => router.push('/subscription')}>
+                <Text style={styles.upgradeLinkText}>Upgrade to Premium →</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         <View style={styles.section}>
           <Text style={styles.label}>Images *</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
@@ -550,5 +640,42 @@ const styles = StyleSheet.create({
   },
   tradeOptionTextActive: {
     color: colors.text,
+  },
+  checkingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    marginBottom: 16,
+    gap: 12,
+  },
+  checkingText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  limitBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 12,
+    backgroundColor: `${colors.error}15`,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.error,
+    marginBottom: 16,
+    gap: 12,
+  },
+  limitBannerContent: {
+    flex: 1,
+  },
+  limitBannerText: {
+    fontSize: 14,
+    color: colors.text,
+    marginBottom: 8,
+  },
+  upgradeLinkText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
   },
 });
