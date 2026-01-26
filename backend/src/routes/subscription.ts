@@ -30,6 +30,10 @@ async function getActualCoinCountThisMonth(app: App, userId: string): Promise<nu
   const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
+  // Convert dates to ISO strings for database query
+  const currentMonthStartStr = currentMonthStart.toISOString();
+  const nextMonthStartStr = nextMonthStart.toISOString();
+
   const result = await app.db
     .select({ count: sql<number>`COUNT(*)` })
     .from(schema.coins)
@@ -37,8 +41,8 @@ async function getActualCoinCountThisMonth(app: App, userId: string): Promise<nu
       and(
         eq(schema.coins.userId, userId),
         eq(schema.coins.isTemporaryTradeCoin, false),
-        sql`${schema.coins.createdAt} >= ${currentMonthStart}`,
-        sql`${schema.coins.createdAt} < ${nextMonthStart}`
+        sql`${schema.coins.createdAt} >= ${currentMonthStartStr}`,
+        sql`${schema.coins.createdAt} < ${nextMonthStartStr}`
       )
     );
 
