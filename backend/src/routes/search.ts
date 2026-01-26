@@ -14,6 +14,9 @@ export function registerSearchRoutes(app: App) {
       unit,
       organization,
       condition,
+      agency,
+      deployment,
+      manufacturer,
       openToTrade,
       limit = 20,
       offset = 0,
@@ -25,13 +28,16 @@ export function registerSearchRoutes(app: App) {
       unit?: string;
       organization?: string;
       condition?: string;
+      agency?: string;
+      deployment?: string;
+      manufacturer?: string;
       openToTrade?: string;
       limit?: number;
       offset?: number;
     };
 
     app.logger.info(
-      { q, country, year_from, year_to, unit, organization, condition, openToTrade, limit, offset },
+      { q, country, year_from, year_to, unit, organization, condition, agency, deployment, manufacturer, openToTrade, limit, offset },
       'Searching coins',
     );
 
@@ -65,6 +71,18 @@ export function registerSearchRoutes(app: App) {
         conditions.push(eq(schema.coins.condition, condition as any));
       }
 
+      if (agency) {
+        conditions.push(ilike(schema.coins.agency, `%${agency}%`));
+      }
+
+      if (deployment) {
+        conditions.push(ilike(schema.coins.deployment, `%${deployment}%`));
+      }
+
+      if (manufacturer) {
+        conditions.push(ilike(schema.coins.manufacturer, `%${manufacturer}%`));
+      }
+
       if (openToTrade === 'true') {
         conditions.push(eq(schema.coins.tradeStatus, 'open_to_trade'));
       }
@@ -91,6 +109,9 @@ export function registerSearchRoutes(app: App) {
         unit: coin.unit,
         organization: coin.organization,
         condition: coin.condition,
+        agency: coin.agency,
+        deployment: coin.deployment,
+        manufacturer: coin.manufacturer,
         imageUrl: coin.images[0]?.url || null,
         user: coin.user,
         likeCount: coin.likes.length,
@@ -106,23 +127,78 @@ export function registerSearchRoutes(app: App) {
     }
   });
 
-  // Search users by username or display name
+  // Search users by username or display name, or by coins they own
   app.fastify.get('/api/search/users', async (request: FastifyRequest, reply: FastifyReply) => {
-    const { q, limit = 20, offset = 0 } = request.query as { q?: string; limit?: number; offset?: number };
+    const { q, agency, country, unit, limit = 20, offset = 0 } = request.query as {
+      q?: string;
+      agency?: string;
+      country?: string;
+      unit?: string;
+      limit?: number;
+      offset?: number;
+    };
 
-    app.logger.info({ q, limit, offset }, 'Searching users');
+    app.logger.info({ q, agency, country, unit, limit, offset }, 'Searching users');
 
     try {
-      if (!q || q.length < 2) {
-        app.logger.warn({ q }, 'Search query too short');
-        return reply.status(400).send({ error: 'Search query must be at least 2 characters' });
-      }
+      let users;
 
-      const users = await app.db.query.users.findMany({
-        where: or(ilike(schema.users.username, `%${q}%`), ilike(schema.users.displayName, `%${q}%`)),
-        limit,
-        offset,
-      });
+      // If searching by coin attributes, find users who own coins with these attributes
+      if (agency || country || unit) {
+        app.logger.debug({ agency, country, unit }, 'Searching users by coin attributes');
+
+        const coinConditions: any[] = [eq(schema.coins.visibility, 'public')];
+
+        if (agency) {
+          coinConditions.push(ilike(schema.coins.agency, `%${agency}%`));
+        }
+
+        if (country) {
+          coinConditions.push(ilike(schema.coins.country, `%${country}%`));
+        }
+
+        if (unit) {
+          coinConditions.push(ilike(schema.coins.unit, `%${unit}%`));
+        }
+
+        // Find unique users who own coins matching these criteria
+        const coinsMatchingCriteria = await app.db.query.coins.findMany({
+          where: and(...coinConditions),
+          columns: { userId: true },
+        });
+
+        const uniqueUserIds = [...new Set(coinsMatchingCriteria.map((c) => c.userId))];
+
+        if (uniqueUserIds.length === 0) {
+          app.logger.info({ agency, country, unit }, 'No users found with coins matching criteria');
+          return [];
+        }
+
+        users = await app.db.query.users.findMany({
+          where: (table) => {
+            const userIdColumn = schema.users.id;
+            // Filter to only users with matching coins
+            return or(...uniqueUserIds.map((id) => eq(userIdColumn, id)));
+          },
+          limit,
+          offset,
+        });
+      } else if (q) {
+        // Search by username or display name
+        if (q.length < 2) {
+          app.logger.warn({ q }, 'Search query too short');
+          return reply.status(400).send({ error: 'Search query must be at least 2 characters' });
+        }
+
+        users = await app.db.query.users.findMany({
+          where: or(ilike(schema.users.username, `%${q}%`), ilike(schema.users.displayName, `%${q}%`)),
+          limit,
+          offset,
+        });
+      } else {
+        app.logger.warn({}, 'No search criteria provided');
+        return reply.status(400).send({ error: 'Please provide a search query (q) or coin filter criteria (agency, country, or unit)' });
+      }
 
       // Generate signed URLs for user avatars
       const usersWithAvatars = await Promise.all(
@@ -144,7 +220,7 @@ export function registerSearchRoutes(app: App) {
       app.logger.info({ q, count: usersWithAvatars.length }, 'User search completed');
       return usersWithAvatars;
     } catch (error) {
-      app.logger.error({ err: error, q }, 'Failed to search users');
+      app.logger.error({ err: error, q, agency, country, unit }, 'Failed to search users');
       throw error;
     }
   });
@@ -159,6 +235,9 @@ export function registerSearchRoutes(app: App) {
       unit,
       organization,
       condition,
+      agency,
+      deployment,
+      manufacturer,
       openToTrade,
       limit = 20,
       offset = 0,
@@ -170,6 +249,9 @@ export function registerSearchRoutes(app: App) {
       unit?: string;
       organization?: string;
       condition?: string;
+      agency?: string;
+      deployment?: string;
+      manufacturer?: string;
       openToTrade?: string;
       limit?: number;
       offset?: number;
@@ -207,6 +289,18 @@ export function registerSearchRoutes(app: App) {
         conditions.push(eq(schema.coins.condition, condition as any));
       }
 
+      if (agency) {
+        conditions.push(ilike(schema.coins.agency, `%${agency}%`));
+      }
+
+      if (deployment) {
+        conditions.push(ilike(schema.coins.deployment, `%${deployment}%`));
+      }
+
+      if (manufacturer) {
+        conditions.push(ilike(schema.coins.manufacturer, `%${manufacturer}%`));
+      }
+
       if (openToTrade === 'true') {
         conditions.push(eq(schema.coins.tradeStatus, 'open_to_trade'));
       }
@@ -232,6 +326,9 @@ export function registerSearchRoutes(app: App) {
       const countries = [...new Set(allCoins.map((c) => c.country))];
       const units = [...new Set(allCoins.map((c) => c.unit).filter(Boolean))];
       const organizations = [...new Set(allCoins.map((c) => c.organization).filter(Boolean))];
+      const agencies = [...new Set(allCoins.map((c) => c.agency).filter(Boolean))];
+      const deployments = [...new Set(allCoins.map((c) => c.deployment).filter(Boolean))];
+      const manufacturers = [...new Set(allCoins.map((c) => c.manufacturer).filter(Boolean))];
       const conditions_list = [...new Set(allCoins.map((c) => c.condition).filter(Boolean))];
 
       // Format results
@@ -243,6 +340,9 @@ export function registerSearchRoutes(app: App) {
         unit: coin.unit,
         organization: coin.organization,
         condition: coin.condition,
+        agency: coin.agency,
+        deployment: coin.deployment,
+        manufacturer: coin.manufacturer,
         imageUrl: coin.images[0]?.url || null,
         owner: {
           id: coin.user?.id || '',
@@ -262,6 +362,9 @@ export function registerSearchRoutes(app: App) {
           countries,
           units,
           organizations,
+          agencies,
+          deployments,
+          manufacturers,
           conditions: conditions_list,
         },
       };
