@@ -11,20 +11,26 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
   Linking,
   Modal,
-} from 'react';
+  TextInput,
+  ActivityIndicator,
+} from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { authenticatedFetch } from '@/utils/api';
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { user, signOut } = useAuth();
+  const { user, signOut, refreshUser } = useAuth();
   const [showDeleteModal, setShowDeleteModal] = React.useState(false);
   const [showPasswordResetModal, setShowPasswordResetModal] = React.useState(false);
+  const [showEmailUpdateModal, setShowEmailUpdateModal] = React.useState(false);
+  const [newEmail, setNewEmail] = React.useState('');
+  const [isUpdatingEmail, setIsUpdatingEmail] = React.useState(false);
+  const [isResettingPassword, setIsResettingPassword] = React.useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = React.useState(false);
 
-  console.log('Settings screen loaded');
+  console.log('Settings screen loaded', { userEmail: user?.email });
 
   const handlePrivacyPolicy = () => {
     console.log('User tapped Privacy Policy');
@@ -45,9 +51,11 @@ export default function SettingsScreen() {
     console.log('User requested password reset');
     
     if (!user?.email) {
-      Alert.alert('Error', 'No email address found. Please log in again.');
+      showErrorModal('Error', 'No email address found. Please log in again.');
       return;
     }
+
+    setIsResettingPassword(true);
 
     try {
       const response = await fetch(`${Constants.expoConfig?.extra?.backendUrl}/api/auth/request-password-reset`, {
@@ -63,22 +71,86 @@ export default function SettingsScreen() {
       if (response.ok) {
         console.log('Password reset email sent successfully');
         setShowPasswordResetModal(false);
-        Alert.alert(
+        showSuccessModal(
           'Password Reset Email Sent',
-          'Check your email for a link to reset your password. The link will expire in 1 hour.',
-          [{ text: 'OK' }]
+          `Check your email (${user.email}) for a link to reset your password. The link will expire in 1 hour.`
         );
       } else {
         console.error('Failed to send password reset email:', data);
-        Alert.alert('Error', data.error || 'Failed to send password reset email. Please try again.');
+        showErrorModal('Error', data.error || 'Failed to send password reset email. Please try again.');
       }
     } catch (error) {
       console.error('Error requesting password reset:', error);
-      Alert.alert('Error', 'Failed to send password reset email. Please check your connection and try again.');
+      showErrorModal('Error', 'Failed to send password reset email. Please check your connection and try again.');
+    } finally {
+      setIsResettingPassword(false);
     }
   };
 
-  const handleDeleteAccount = async () => {
+  const handleUpdateEmail = async () => {
+    console.log('User requested email update', { newEmail });
+
+    if (!newEmail || !newEmail.trim()) {
+      showErrorModal('Error', 'Please enter a valid email address.');
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(newEmail)) {
+      showErrorModal('Error', 'Please enter a valid email address.');
+      return;
+    }
+
+    if (newEmail.toLowerCase() === user?.email?.toLowerCase()) {
+      showErrorModal('Error', 'This is already your current email address.');
+      return;
+    }
+
+    setIsUpdatingEmail(true);
+
+    try {
+      const response = await authenticatedFetch('/api/users/me/email', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: newEmail }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        console.log('Email updated successfully', { newEmail: data.email });
+        setShowEmailUpdateModal(false);
+        setNewEmail('');
+        
+        // Refresh user data to update the email in the UI
+        try {
+          await refreshUser();
+          console.log('User data refreshed after email update');
+        } catch (refreshError) {
+          console.error('Failed to refresh user data:', refreshError);
+          // Continue anyway - the email was updated successfully
+        }
+        
+        showSuccessModal(
+          'Email Updated',
+          `Your email has been successfully updated to ${data.email}. Please use this email for future logins.`
+        );
+      } else {
+        console.error('Failed to update email:', data);
+        showErrorModal('Error', data.error || data.message || 'Failed to update email. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error updating email:', error);
+      showErrorModal('Error', 'Failed to update email. Please check your connection and try again.');
+    } finally {
+      setIsUpdatingEmail(false);
+    }
+  };
+
+  const handleDeleteAccount = () => {
     console.log('User tapped Delete Account');
     setShowDeleteModal(true);
   };
@@ -86,6 +158,8 @@ export default function SettingsScreen() {
   const confirmDeleteAccount = async () => {
     console.log('User confirmed account deletion');
     
+    setIsDeletingAccount(true);
+
     try {
       const response = await authenticatedFetch('/api/users/me', {
         method: 'DELETE',
@@ -98,27 +172,53 @@ export default function SettingsScreen() {
         // Sign out the user
         await signOut();
         
-        Alert.alert(
+        showSuccessModal(
           'Account Deleted',
           'Your account has been permanently deleted.',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                router.replace('/auth');
-              },
-            },
-          ]
+          () => {
+            router.replace('/auth');
+          }
         );
       } else {
         const data = await response.json();
         console.error('Failed to delete account:', data);
-        Alert.alert('Error', data.error || 'Failed to delete account. Please try again or contact support.');
+        showErrorModal('Error', data.error || 'Failed to delete account. Please try again or contact support.');
       }
     } catch (error) {
       console.error('Error deleting account:', error);
-      Alert.alert('Error', 'Failed to delete account. Please check your connection and try again.');
+      showErrorModal('Error', 'Failed to delete account. Please check your connection and try again.');
+    } finally {
+      setIsDeletingAccount(false);
     }
+  };
+
+  // Helper functions for showing modals
+  const [modalState, setModalState] = React.useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: 'success' | 'error';
+    onClose?: () => void;
+  }>({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'success',
+  });
+
+  const showSuccessModal = (title: string, message: string, onClose?: () => void) => {
+    setModalState({ visible: true, title, message, type: 'success', onClose });
+  };
+
+  const showErrorModal = (title: string, message: string, onClose?: () => void) => {
+    setModalState({ visible: true, title, message, type: 'error', onClose });
+  };
+
+  const closeModal = () => {
+    if (modalState.onClose) {
+      modalState.onClose();
+    }
+    setModalState({ ...modalState, visible: false });
   };
 
   return (
@@ -134,6 +234,28 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
           
+          <TouchableOpacity 
+            style={styles.option} 
+            onPress={() => setShowEmailUpdateModal(true)}
+          >
+            <IconSymbol
+              ios_icon_name="envelope"
+              android_material_icon_name="email"
+              size={24}
+              color={colors.primary}
+            />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionText}>Update Email</Text>
+              <Text style={styles.optionSubtext}>{user?.email || 'No email set'}</Text>
+            </View>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="arrow-forward"
+              size={20}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+
           <TouchableOpacity 
             style={styles.option} 
             onPress={() => setShowPasswordResetModal(true)}
@@ -225,12 +347,65 @@ export default function SettingsScreen() {
         </View>
       </ScrollView>
 
+      {/* Email Update Modal */}
+      <Modal
+        visible={showEmailUpdateModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !isUpdatingEmail && setShowEmailUpdateModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Update Email Address</Text>
+            <Text style={styles.modalMessage}>
+              Current email: <Text style={styles.modalEmail}>{user?.email}</Text>
+              {'\n\n'}
+              Enter your new email address:
+            </Text>
+            <TextInput
+              style={styles.input}
+              placeholder="new.email@example.com"
+              placeholderTextColor={colors.textSecondary}
+              value={newEmail}
+              onChangeText={setNewEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!isUpdatingEmail}
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={() => {
+                  setShowEmailUpdateModal(false);
+                  setNewEmail('');
+                }}
+                disabled={isUpdatingEmail}
+              >
+                <Text style={styles.modalButtonTextCancel}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonConfirm]}
+                onPress={handleUpdateEmail}
+                disabled={isUpdatingEmail}
+              >
+                {isUpdatingEmail ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalButtonTextConfirm}>Update Email</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Password Reset Modal */}
       <Modal
         visible={showPasswordResetModal}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowPasswordResetModal(false)}
+        onRequestClose={() => !isResettingPassword && setShowPasswordResetModal(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -246,14 +421,20 @@ export default function SettingsScreen() {
               <TouchableOpacity
                 style={[styles.modalButton, styles.modalButtonCancel]}
                 onPress={() => setShowPasswordResetModal(false)}
+                disabled={isResettingPassword}
               >
                 <Text style={styles.modalButtonTextCancel}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalButton, styles.modalButtonConfirm]}
                 onPress={handleRequestPasswordReset}
+                disabled={isResettingPassword}
               >
-                <Text style={styles.modalButtonTextConfirm}>Send Reset Link</Text>
+                {isResettingPassword ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalButtonTextConfirm}>Send Reset Link</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -265,7 +446,7 @@ export default function SettingsScreen() {
         visible={showDeleteModal}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowDeleteModal(false)}
+        onRequestClose={() => !isDeletingAccount && setShowDeleteModal(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -283,16 +464,43 @@ export default function SettingsScreen() {
               <TouchableOpacity
                 style={[styles.modalButton, styles.modalButtonCancel]}
                 onPress={() => setShowDeleteModal(false)}
+                disabled={isDeletingAccount}
               >
                 <Text style={styles.modalButtonTextCancel}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalButton, styles.modalButtonDelete]}
                 onPress={confirmDeleteAccount}
+                disabled={isDeletingAccount}
               >
-                <Text style={styles.modalButtonTextDelete}>Delete Forever</Text>
+                {isDeletingAccount ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalButtonTextDelete}>Delete Forever</Text>
+                )}
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Success/Error Modal */}
+      <Modal
+        visible={modalState.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{modalState.title}</Text>
+            <Text style={styles.modalMessage}>{modalState.message}</Text>
+            <TouchableOpacity
+              style={[styles.modalButton, styles.modalButtonConfirm, { width: '100%' }]}
+              onPress={closeModal}
+            >
+              <Text style={styles.modalButtonTextConfirm}>OK</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -328,11 +536,20 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 8,
   },
-  optionText: {
+  optionContent: {
     flex: 1,
+    marginLeft: 12,
+  },
+  optionText: {
     fontSize: 16,
     color: colors.text,
     marginLeft: 12,
+    flex: 1,
+  },
+  optionSubtext: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   footer: {
     alignItems: 'center',
@@ -374,6 +591,16 @@ const styles = StyleSheet.create({
   modalEmail: {
     fontWeight: '600',
     color: colors.primary,
+  },
+  input: {
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    color: colors.text,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   modalButtons: {
     flexDirection: 'row',
