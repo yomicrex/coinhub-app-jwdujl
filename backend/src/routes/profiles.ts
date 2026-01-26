@@ -20,6 +20,10 @@ const UpdateSettingsSchema = z.object({
   marketingEmails: z.boolean().optional(),
 });
 
+const UpdateEmailSchema = z.object({
+  email: z.string().email('Invalid email format').min(1).max(255),
+});
+
 export function registerProfileRoutes(app: App) {
   const requireAuth = app.requireAuth();
 
@@ -721,6 +725,111 @@ export function registerProfileRoutes(app: App) {
       }
       app.logger.error({ err: error, userId: session.user.id }, 'Unexpected error updating settings');
       return reply.status(500).send({ error: 'Update failed' });
+    }
+  });
+
+  /**
+   * PATCH /api/users/me/email
+   * Update the current user's email address (protected)
+   * Updates both Better Auth user table and CoinHub users table
+   */
+  app.fastify.patch('/api/users/me/email', async (request: FastifyRequest, reply: FastifyReply) => {
+    const session = await requireAuth(request, reply);
+    if (!session) return;
+
+    app.logger.info({ userId: session.user.id }, 'Updating user email');
+
+    try {
+      const body = UpdateEmailSchema.parse(request.body);
+      const normalizedEmail = body.email.toLowerCase();
+
+      app.logger.info({ userId: session.user.id, newEmail: normalizedEmail }, 'Email update request validated');
+
+      // Check if email is already in use by another user (case-insensitive)
+      const existingUser = await app.db.query.users.findFirst({
+        where: and(
+          eq(schema.users.email, normalizedEmail),
+          // Exclude current user from the check
+          sql`${schema.users.id} != ${session.user.id}`
+        ),
+        columns: { id: true, email: true },
+      });
+
+      if (existingUser) {
+        app.logger.warn(
+          { userId: session.user.id, email: normalizedEmail },
+          'Email already in use by another user'
+        );
+        return reply.status(400).send({
+          error: 'Email already in use',
+          message: 'This email address is already associated with another account',
+        });
+      }
+
+      // Update Better Auth user table
+      try {
+        await app.db
+          .update(authSchema.user)
+          .set({ email: normalizedEmail, updatedAt: new Date() })
+          .where(eq(authSchema.user.id, session.user.id));
+
+        app.logger.debug(
+          { userId: session.user.id, email: normalizedEmail },
+          'Better Auth email updated'
+        );
+      } catch (authUpdateError) {
+        app.logger.error(
+          { err: authUpdateError, userId: session.user.id, email: normalizedEmail },
+          'Failed to update Better Auth email'
+        );
+        return reply.status(500).send({
+          error: 'Database error',
+          message: 'Failed to update email in authentication system',
+        });
+      }
+
+      // Update CoinHub users table
+      try {
+        const updated = await app.db
+          .update(schema.users)
+          .set({ email: normalizedEmail, updatedAt: new Date() })
+          .where(eq(schema.users.id, session.user.id))
+          .returning({ email: schema.users.email });
+
+        app.logger.info(
+          { userId: session.user.id, email: normalizedEmail },
+          'User email updated successfully in both tables'
+        );
+
+        return {
+          success: true,
+          email: updated[0].email,
+          message: 'Email updated successfully',
+        };
+      } catch (coinHubUpdateError) {
+        app.logger.error(
+          { err: coinHubUpdateError, userId: session.user.id, email: normalizedEmail },
+          'Failed to update CoinHub email after successful auth update'
+        );
+        return reply.status(500).send({
+          error: 'Database error',
+          message: 'Failed to update email in user profile',
+        });
+      }
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        app.logger.warn({ error: error.issues }, 'Email validation failed');
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: error.issues,
+        });
+      }
+
+      app.logger.error({ err: error, userId: session.user.id }, 'Failed to update user email');
+      return reply.status(500).send({
+        error: 'Update failed',
+        message: 'An unexpected error occurred while updating your email',
+      });
     }
   });
 
