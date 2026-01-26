@@ -8,10 +8,10 @@ import {
   TextInput,
   TouchableOpacity,
   Image,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
@@ -20,8 +20,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { colors } from '@/styles/commonStyles';
 import Constants from 'expo-constants';
 import { useAuth } from '@/contexts/AuthContext';
-
-const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
+import { authenticatedFetch, authenticatedUpload, API_URL } from '@/utils/api';
 
 export default function EditCoinScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -41,6 +40,14 @@ export default function EditCoinScreen() {
   const [saving, setSaving] = useState(false);
   const router = useRouter();
   const { user } = useAuth();
+
+  // Success modal state
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+
+  // Error modal state
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const fetchCoinData = useCallback(async () => {
     try {
@@ -74,23 +81,23 @@ export default function EditCoinScreen() {
       setLoading(false);
     } catch (error: any) {
       console.error('EditCoinScreen: Error fetching coin:', error);
-      Alert.alert('Error', error.message || 'Failed to load coin');
+      setErrorMessage(error.message || 'Failed to load coin');
+      setShowErrorModal(true);
       setLoading(false);
-      router.back();
     }
-  }, [id, router]);
+  }, [id]);
 
   useEffect(() => {
     console.log('EditCoinScreen: Component mounted, coinId:', id);
     if (!id) {
       console.error('EditCoinScreen: No coin ID provided');
-      Alert.alert('Error', 'No coin ID provided');
-      router.back();
+      setErrorMessage('No coin ID provided');
+      setShowErrorModal(true);
       return;
     }
 
     fetchCoinData();
-  }, [id, router, fetchCoinData]);
+  }, [id, fetchCoinData]);
 
   const pickImages = async () => {
     console.log('EditCoinScreen: User tapped pick images');
@@ -130,13 +137,15 @@ export default function EditCoinScreen() {
     // Validate required fields
     if (!agency || !country || !year) {
       console.log('EditCoinScreen: Missing required fields');
-      Alert.alert('Error', 'Please fill in Agency, Country, and Year (all are required)');
+      setErrorMessage('Please fill in Agency, Country, and Year (all are required)');
+      setShowErrorModal(true);
       return;
     }
 
     if (images.length === 0) {
       console.log('EditCoinScreen: No images selected');
-      Alert.alert('Error', 'Please add at least one image');
+      setErrorMessage('Please add at least one image');
+      setShowErrorModal(true);
       return;
     }
 
@@ -174,12 +183,12 @@ export default function EditCoinScreen() {
 
       console.log('EditCoinScreen: Sending coin data to backend:', coinData);
 
-      const coinResponse = await fetch(`${API_URL}/api/coins/${id}`, {
+      // FIXED: Use authenticatedFetch instead of raw fetch
+      const coinResponse = await authenticatedFetch(`/api/coins/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
         body: JSON.stringify(coinData),
       });
 
@@ -220,13 +229,10 @@ export default function EditCoinScreen() {
             const imageIndex = images.indexOf(uri);
             formData.append('orderIndex', imageIndex.toString());
 
-            console.log('EditCoinScreen: Uploading to:', `${API_URL}/api/coins/${id}/images`);
+            console.log('EditCoinScreen: Uploading to:', `/api/coins/${id}/images`);
             
-            const imageResponse = await fetch(`${API_URL}/api/coins/${id}/images`, {
-              method: 'POST',
-              credentials: 'include',
-              body: formData,
-            });
+            // FIXED: Use authenticatedUpload instead of raw fetch
+            const imageResponse = await authenticatedUpload(`/api/coins/${id}/images`, formData);
 
             console.log('EditCoinScreen: Image', i + 1, 'upload response status:', imageResponse.status);
 
@@ -247,26 +253,34 @@ export default function EditCoinScreen() {
         console.log('EditCoinScreen: Upload complete -', uploadedCount, 'succeeded,', failedCount, 'failed');
 
         if (failedCount > 0) {
-          Alert.alert(
-            'Partial Success',
-            `Coin updated! ${uploadedCount} new image(s) uploaded successfully, ${failedCount} failed.`,
-            [{ text: 'OK', onPress: () => router.back() }]
-          );
+          setSuccessMessage(`Coin updated! ${uploadedCount} new image(s) uploaded successfully, ${failedCount} failed.`);
+          setShowSuccessModal(true);
         } else {
-          Alert.alert('Success', 'Coin and images updated successfully!', [
-            { text: 'OK', onPress: () => router.back() },
-          ]);
+          setSuccessMessage('Coin and images updated successfully!');
+          setShowSuccessModal(true);
         }
       } else {
-        Alert.alert('Success', 'Coin updated successfully!', [
-          { text: 'OK', onPress: () => router.back() },
-        ]);
+        setSuccessMessage('Coin updated successfully!');
+        setShowSuccessModal(true);
       }
     } catch (error: any) {
       console.error('EditCoinScreen: Error updating coin:', error);
-      Alert.alert('Error', error.message || 'Failed to update coin');
+      setErrorMessage(error.message || 'Failed to update coin');
+      setShowErrorModal(true);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const closeSuccessModal = () => {
+    setShowSuccessModal(false);
+    router.back();
+  };
+
+  const closeErrorModal = () => {
+    setShowErrorModal(false);
+    if (!id || errorMessage === 'No coin ID provided') {
+      router.back();
     }
   };
 
@@ -503,6 +517,58 @@ export default function EditCoinScreen() {
         </View>
       </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Success Modal */}
+      <Modal
+        visible={showSuccessModal}
+        transparent
+        animationType="fade"
+        onRequestClose={closeSuccessModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalIconContainer}>
+              <IconSymbol
+                ios_icon_name="checkmark.circle.fill"
+                android_material_icon_name="check-circle"
+                size={64}
+                color={colors.success}
+              />
+            </View>
+            <Text style={styles.modalTitle}>Success</Text>
+            <Text style={styles.modalMessage}>{successMessage}</Text>
+            <TouchableOpacity style={styles.modalButton} onPress={closeSuccessModal}>
+              <Text style={styles.modalButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Error Modal */}
+      <Modal
+        visible={showErrorModal}
+        transparent
+        animationType="fade"
+        onRequestClose={closeErrorModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalIconContainer}>
+              <IconSymbol
+                ios_icon_name="exclamationmark.triangle.fill"
+                android_material_icon_name="error"
+                size={64}
+                color={colors.error}
+              />
+            </View>
+            <Text style={styles.modalTitle}>Error</Text>
+            <Text style={styles.modalMessage}>{errorMessage}</Text>
+            <TouchableOpacity style={styles.modalButton} onPress={closeErrorModal}>
+              <Text style={styles.modalButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -626,5 +692,50 @@ const styles = StyleSheet.create({
   },
   tradeOptionTextActive: {
     color: colors.text,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: colors.background,
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+  },
+  modalIconContainer: {
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginBottom: 24,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  modalButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    borderRadius: 8,
+    minWidth: 120,
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.background,
+    textAlign: 'center',
   },
 });
