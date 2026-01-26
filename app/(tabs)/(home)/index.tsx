@@ -28,6 +28,8 @@ interface Coin {
   title: string;
   country: string;
   year: number;
+  unit?: string;
+  agency?: string;
   user: {
     id: string;
     username: string;
@@ -244,69 +246,94 @@ export default function HomeScreen() {
     router.push('/add-coin');
   };
 
-  const renderCoin = ({ item }: { item: Coin }) => (
-    <TouchableOpacity
-      style={styles.coinCard}
-      onPress={() => {
-        console.log('HomeScreen: User tapped on coin:', item.id);
-        router.push(`/coin-detail?id=${item.id}`);
-      }}
-    >
-      <View style={styles.userInfo}>
-        <View style={styles.avatar}>
-          <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={20} color={colors.textSecondary} />
+  const handleSearchCoins = () => {
+    console.log('HomeScreen: User tapped Search Coins button');
+    router.push('/search-coins');
+  };
+
+  const handleSearchUsers = () => {
+    console.log('HomeScreen: User tapped Search Users button');
+    router.push('/search-users');
+  };
+
+  const renderCoin = ({ item }: { item: Coin }) => {
+    const agencyText = item.agency || '';
+    const unitText = item.unit || '';
+    const titleText = item.title || '';
+    
+    return (
+      <TouchableOpacity
+        style={styles.coinCard}
+        onPress={() => {
+          console.log('HomeScreen: User tapped on coin:', item.id);
+          router.push(`/coin-detail?id=${item.id}`);
+        }}
+      >
+        <View style={styles.userInfo}>
+          <View style={styles.avatar}>
+            <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={20} color={colors.textSecondary} />
+          </View>
+          <View>
+            <Text style={styles.displayName}>{item.user.displayName}</Text>
+            <Text style={styles.username}>@{item.user.username}</Text>
+          </View>
         </View>
-        <View>
-          <Text style={styles.displayName}>{item.user.displayName}</Text>
-          <Text style={styles.username}>@{item.user.username}</Text>
+
+        {item.images && item.images.length > 0 ? (
+          <Image source={{ uri: item.images[0].url }} style={styles.coinImage} />
+        ) : (
+          <View style={[styles.coinImage, styles.imagePlaceholder]}>
+            <IconSymbol ios_icon_name="photo" android_material_icon_name="image" size={48} color={colors.textSecondary} />
+          </View>
+        )}
+
+        <View style={styles.coinInfo}>
+          <Text style={styles.coinTitle}>{titleText}</Text>
+          
+          <View style={styles.coinMetaRow}>
+            {agencyText ? (
+              <Text style={styles.coinMeta}>{agencyText}</Text>
+            ) : null}
+            {agencyText && unitText ? (
+              <Text style={styles.coinMetaSeparator}>•</Text>
+            ) : null}
+            {unitText ? (
+              <Text style={styles.coinMeta}>{unitText}</Text>
+            ) : null}
+          </View>
         </View>
-      </View>
 
-      {item.images && item.images.length > 0 ? (
-        <Image source={{ uri: item.images[0].url }} style={styles.coinImage} />
-      ) : (
-        <View style={[styles.coinImage, styles.imagePlaceholder]}>
-          <IconSymbol ios_icon_name="photo" android_material_icon_name="image" size={48} color={colors.textSecondary} />
+        <View style={styles.actions}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              handleLike(item.id);
+            }}
+          >
+            <IconSymbol
+              ios_icon_name={item.isLiked ? 'heart.fill' : 'heart'}
+              android_material_icon_name={item.isLiked ? 'favorite' : 'favorite-border'}
+              size={24}
+              color={item.isLiked ? colors.error : colors.text}
+            />
+            <Text style={styles.actionText}>{item.likeCount || 0}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              handleComment(item.id);
+            }}
+          >
+            <IconSymbol ios_icon_name="bubble.left" android_material_icon_name="chat-bubble-outline" size={24} color={colors.text} />
+            <Text style={styles.actionText}>{item.commentCount || 0}</Text>
+          </TouchableOpacity>
         </View>
-      )}
-
-      <View style={styles.coinInfo}>
-        <Text style={styles.coinTitle}>{item.title}</Text>
-        <Text style={styles.coinMeta}>
-          {item.country} • {item.year}
-        </Text>
-      </View>
-
-      <View style={styles.actions}>
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={(e) => {
-            e.stopPropagation();
-            handleLike(item.id);
-          }}
-        >
-          <IconSymbol
-            ios_icon_name={item.isLiked ? 'heart.fill' : 'heart'}
-            android_material_icon_name={item.isLiked ? 'favorite' : 'favorite-border'}
-            size={24}
-            color={item.isLiked ? colors.error : colors.text}
-          />
-          <Text style={styles.actionText}>{item.likeCount || 0}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={(e) => {
-            e.stopPropagation();
-            handleComment(item.id);
-          }}
-        >
-          <IconSymbol ios_icon_name="bubble.left" android_material_icon_name="chat-bubble-outline" size={24} color={colors.text} />
-          <Text style={styles.actionText}>{item.commentCount || 0}</Text>
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   if (loading) {
     return (
@@ -326,9 +353,17 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>🪙 CoinHub</Text>
-        <TouchableOpacity onPress={handleAddCoin} style={styles.addButton}>
-          <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add-circle" size={28} color={colors.primary} />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity onPress={handleSearchCoins} style={styles.headerButton}>
+            <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleSearchUsers} style={styles.headerButton}>
+            <IconSymbol ios_icon_name="person.2" android_material_icon_name="group" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleAddCoin} style={styles.headerButton}>
+            <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add-circle" size={28} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <FlatList
@@ -432,7 +467,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: colors.text,
   },
-  addButton: {
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerButton: {
     padding: 4,
   },
   loadingContainer: {
@@ -492,9 +532,19 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 4,
   },
+  coinMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
   coinMeta: {
     fontSize: 14,
     color: colors.textSecondary,
+  },
+  coinMetaSeparator: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginHorizontal: 6,
   },
   actions: {
     flexDirection: 'row',

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,50 +15,52 @@ import {
 import Constants from 'expo-constants';
 import { colors } from '@/styles/commonStyles';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { authClient } from '@/lib/auth';
 import { Stack, useRouter } from 'expo-router';
-import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 
-interface SearchUser {
+interface SearchCoin {
   id: string;
-  username: string;
-  displayName: string;
-  avatarUrl?: string;
-  isFollowing?: boolean;
+  title: string;
+  country: string;
+  year: number;
+  unit?: string;
+  organization?: string;
+  agency?: string;
+  deployment?: string;
+  manufacturer?: string;
+  condition?: string;
+  imageUrl?: string;
+  user: {
+    id: string;
+    username: string;
+    displayName: string;
+  };
+  likeCount: number;
+  openToTrade: boolean;
 }
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'http://localhost:3000';
 
-export default function SearchUsersScreen() {
+export default function SearchCoinsScreen() {
   const router = useRouter();
-  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
-  const [users, setUsers] = useState<SearchUser[]>([]);
+  const [coins, setCoins] = useState<SearchCoin[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [followingStates, setFollowingStates] = useState<{ [key: string]: boolean }>({});
-  const [processingFollow, setProcessingFollow] = useState<{ [key: string]: boolean }>({});
   
   // Filter states
   const [showFilters, setShowFilters] = useState(false);
-  const [agencyFilter, setAgencyFilter] = useState('');
   const [countryFilter, setCountryFilter] = useState('');
   const [unitFilter, setUnitFilter] = useState('');
+  const [agencyFilter, setAgencyFilter] = useState('');
+  const [deploymentFilter, setDeploymentFilter] = useState('');
+  const [manufacturerFilter, setManufacturerFilter] = useState('');
+  const [openToTradeOnly, setOpenToTradeOnly] = useState(false);
 
-  useEffect(() => {
-    console.log('SearchUsersScreen: Component mounted');
-  }, []);
-
-  const searchUsers = useCallback(async () => {
-    if (searchQuery.trim().length < 2 && !agencyFilter.trim() && !countryFilter.trim() && !unitFilter.trim()) {
-      setError('Please enter at least 2 characters or select a filter');
-      return;
-    }
-
+  const searchCoins = useCallback(async () => {
     setLoading(true);
     setError(null);
-    console.log('SearchUsersScreen: Fetching users from API');
+    console.log('SearchCoinsScreen: Searching coins with filters');
 
     try {
       const params = new URLSearchParams();
@@ -66,158 +68,133 @@ export default function SearchUsersScreen() {
       if (searchQuery.trim()) {
         params.append('q', searchQuery.trim());
       }
-      if (agencyFilter.trim()) {
-        params.append('agency', agencyFilter.trim());
-      }
       if (countryFilter.trim()) {
         params.append('country', countryFilter.trim());
       }
       if (unitFilter.trim()) {
         params.append('unit', unitFilter.trim());
       }
+      if (agencyFilter.trim()) {
+        params.append('agency', agencyFilter.trim());
+      }
+      if (deploymentFilter.trim()) {
+        params.append('deployment', deploymentFilter.trim());
+      }
+      if (manufacturerFilter.trim()) {
+        params.append('manufacturer', manufacturerFilter.trim());
+      }
+      if (openToTradeOnly) {
+        params.append('openToTrade', 'true');
+      }
 
-      const url = `${API_URL}/api/search/users?${params.toString()}`;
-      console.log('SearchUsersScreen: Fetching from:', url);
+      const url = `${API_URL}/api/search/coins?${params.toString()}`;
+      console.log('SearchCoinsScreen: Fetching from:', url);
 
-      const response = await authClient.$fetch(url);
-      console.log('SearchUsersScreen: Search results received:', response);
+      const response = await fetch(url);
+      console.log('SearchCoinsScreen: Response status:', response.status);
 
-      if (Array.isArray(response)) {
-        setUsers(response);
-        
-        // Check follow status for each user
-        const followStates: { [key: string]: boolean } = {};
-        await Promise.all(
-          response.map(async (searchUser: SearchUser) => {
-            try {
-              const followStatus = await authClient.$fetch(`${API_URL}/api/users/${searchUser.id}/is-following`);
-              followStates[searchUser.id] = followStatus.isFollowing;
-            } catch (err) {
-              console.error('SearchUsersScreen: Error checking follow status for user:', searchUser.id, err);
-              followStates[searchUser.id] = false;
-            }
-          })
-        );
-        setFollowingStates(followStates);
+      if (response.ok) {
+        const data = await response.json();
+        console.log('SearchCoinsScreen: Found', data.length, 'coins');
+        setCoins(data);
       } else {
-        setUsers([]);
+        const errorText = await response.text();
+        console.error('SearchCoinsScreen: Search failed:', errorText);
+        setError('Failed to search coins');
+        setCoins([]);
       }
     } catch (err: any) {
-      console.error('SearchUsersScreen: Error searching users:', err);
-      setError(err.message || 'Failed to search users');
-      setUsers([]);
+      console.error('SearchCoinsScreen: Error searching coins:', err);
+      setError(err.message || 'Failed to search coins');
+      setCoins([]);
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, agencyFilter, countryFilter, unitFilter]);
+  }, [searchQuery, countryFilter, unitFilter, agencyFilter, deploymentFilter, manufacturerFilter, openToTradeOnly]);
 
   const handleSearch = () => {
-    console.log('SearchUsersScreen: User initiated search');
-    searchUsers();
+    console.log('SearchCoinsScreen: User initiated search');
+    searchCoins();
   };
 
   const handleClearFilters = () => {
-    console.log('SearchUsersScreen: Clearing all filters');
+    console.log('SearchCoinsScreen: Clearing all filters');
     setSearchQuery('');
-    setAgencyFilter('');
     setCountryFilter('');
     setUnitFilter('');
-    setUsers([]);
+    setAgencyFilter('');
+    setDeploymentFilter('');
+    setManufacturerFilter('');
+    setOpenToTradeOnly(false);
+    setCoins([]);
     setError(null);
   };
 
-  const handleFollowToggle = async (userId: string) => {
-    console.log('SearchUsersScreen: Toggle follow for user:', userId);
+  const handleCoinPress = (coinId: string) => {
+    console.log('SearchCoinsScreen: Navigating to coin:', coinId);
+    router.push(`/coin-detail?id=${coinId}`);
+  };
+
+  const renderCoinCard = ({ item }: { item: SearchCoin }) => {
+    const agencyText = item.agency || '';
+    const unitText = item.unit || '';
+    const titleText = item.title || '';
     
-    if (processingFollow[userId]) {
-      console.log('SearchUsersScreen: Already processing follow for user:', userId);
-      return;
-    }
-
-    setProcessingFollow({ ...processingFollow, [userId]: true });
-    const isCurrentlyFollowing = followingStates[userId];
-
-    try {
-      if (isCurrentlyFollowing) {
-        // Unfollow
-        console.log('SearchUsersScreen: Unfollowing user:', userId);
-        await authClient.$fetch(`${API_URL}/api/users/${userId}/follow`, {
-          method: 'DELETE',
-        });
-        setFollowingStates({ ...followingStates, [userId]: false });
-        console.log('SearchUsersScreen: Successfully unfollowed user:', userId);
-      } else {
-        // Follow
-        console.log('SearchUsersScreen: Following user:', userId);
-        await authClient.$fetch(`${API_URL}/api/users/${userId}/follow`, {
-          method: 'POST',
-          body: JSON.stringify({}),
-        });
-        setFollowingStates({ ...followingStates, [userId]: true });
-        console.log('SearchUsersScreen: Successfully followed user:', userId);
-      }
-    } catch (err: any) {
-      console.error('SearchUsersScreen: Error toggling follow:', err);
-    } finally {
-      setProcessingFollow({ ...processingFollow, [userId]: false });
-    }
-  };
-
-  const handleUserPress = (userId: string, username: string) => {
-    console.log('SearchUsersScreen: Navigating to user profile:', username);
-    if (userId === user?.id) {
-      console.log('SearchUsersScreen: Navigating to own profile');
-      router.push('/(tabs)/profile');
-    } else {
-      console.log('SearchUsersScreen: Navigating to user profile with username:', username);
-      router.push(`/user-profile?username=${encodeURIComponent(username)}`);
-    }
-  };
-
-  const renderUserCard = ({ item }: { item: SearchUser }) => {
-    const isFollowing = followingStates[item.id] || false;
-    const isProcessing = processingFollow[item.id] || false;
-    const isOwnProfile = user?.id === item.id;
-
     return (
       <TouchableOpacity
-        style={styles.userCard}
-        onPress={() => handleUserPress(item.id, item.username)}
+        style={styles.coinCard}
+        onPress={() => handleCoinPress(item.id)}
         activeOpacity={0.7}
       >
-        {item.avatarUrl ? (
-          <Image source={{ uri: item.avatarUrl }} style={styles.avatar} />
+        {item.imageUrl ? (
+          <Image source={{ uri: item.imageUrl }} style={styles.coinImage} />
         ) : (
-          <View style={styles.avatar}>
+          <View style={[styles.coinImage, styles.imagePlaceholder]}>
             <IconSymbol
-              ios_icon_name="person.fill"
-              android_material_icon_name="person"
-              size={30}
+              ios_icon_name="photo"
+              android_material_icon_name="image"
+              size={40}
               color={colors.textSecondary}
             />
           </View>
         )}
         
-        <View style={styles.userInfo}>
-          <Text style={styles.displayName}>{item.displayName}</Text>
-          <Text style={styles.username}>@{item.username}</Text>
-        </View>
-
-        {!isOwnProfile && (
-          <TouchableOpacity
-            style={[styles.followButton, isFollowing && styles.followingButton]}
-            onPress={() => handleFollowToggle(item.id)}
-            disabled={isProcessing}
-          >
-            {isProcessing ? (
-              <ActivityIndicator size="small" color={isFollowing ? colors.text : '#FFFFFF'} />
-            ) : (
-              <Text style={[styles.followButtonText, isFollowing && styles.followingButtonText]}>
-                {isFollowing ? 'Following' : 'Follow'}
+        <View style={styles.coinInfo}>
+          <Text style={styles.coinTitle} numberOfLines={1}>
+            {titleText}
+          </Text>
+          
+          <View style={styles.coinMetaRow}>
+            {agencyText ? (
+              <Text style={styles.coinMeta} numberOfLines={1}>
+                {agencyText}
               </Text>
+            ) : null}
+            {agencyText && unitText ? (
+              <Text style={styles.coinMetaSeparator}>•</Text>
+            ) : null}
+            {unitText ? (
+              <Text style={styles.coinMeta} numberOfLines={1}>
+                {unitText}
+              </Text>
+            ) : null}
+          </View>
+          
+          <Text style={styles.coinCountry} numberOfLines={1}>
+            {item.country}
+          </Text>
+          
+          <View style={styles.coinFooter}>
+            <Text style={styles.coinOwner} numberOfLines={1}>
+              @{item.user.username}
+            </Text>
+            {item.openToTrade && (
+              <View style={styles.tradeBadge}>
+                <Text style={styles.tradeBadgeText}>Open to Trade</Text>
+              </View>
             )}
-          </TouchableOpacity>
-        )}
+          </View>
+        </View>
       </TouchableOpacity>
     );
   };
@@ -239,7 +216,8 @@ export default function SearchUsersScreen() {
       );
     }
 
-    const hasFilters = searchQuery.trim().length > 0 || agencyFilter.trim() || countryFilter.trim() || unitFilter.trim();
+    const hasFilters = searchQuery.trim() || countryFilter.trim() || unitFilter.trim() || 
+                       agencyFilter.trim() || deploymentFilter.trim() || manufacturerFilter.trim() || openToTradeOnly;
 
     if (!hasFilters) {
       return (
@@ -250,9 +228,9 @@ export default function SearchUsersScreen() {
             size={64}
             color={colors.textSecondary}
           />
-          <Text style={styles.emptyTitle}>Search for Users</Text>
+          <Text style={styles.emptyTitle}>Search for Coins</Text>
           <Text style={styles.emptyText}>
-            Find collectors by username, name, or filter by their coin collections (agency, country, unit)
+            Search by title, country, unit, agency, deployment, or manufacturer
           </Text>
         </View>
       );
@@ -261,14 +239,14 @@ export default function SearchUsersScreen() {
     return (
       <View style={styles.emptyContainer}>
         <IconSymbol
-          ios_icon_name="person-off"
-          android_material_icon_name="person-off"
+          ios_icon_name="tray"
+          android_material_icon_name="inbox"
           size={64}
           color={colors.textSecondary}
         />
-        <Text style={styles.emptyTitle}>No Users Found</Text>
+        <Text style={styles.emptyTitle}>No Coins Found</Text>
         <Text style={styles.emptyText}>
-          No users match your search. Try different filters.
+          No coins match your search criteria. Try different filters.
         </Text>
       </View>
     );
@@ -279,7 +257,7 @@ export default function SearchUsersScreen() {
       <Stack.Screen
         options={{
           headerShown: true,
-          title: 'Search Users',
+          title: 'Search Coins',
           headerStyle: {
             backgroundColor: colors.background,
           },
@@ -298,7 +276,7 @@ export default function SearchUsersScreen() {
           />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search by username or name..."
+            placeholder="Search coins..."
             placeholderTextColor={colors.textSecondary}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -335,31 +313,64 @@ export default function SearchUsersScreen() {
 
       {showFilters && (
         <ScrollView style={styles.filtersContainer} horizontal={false}>
-          <Text style={styles.filterSectionTitle}>Find users by their coin collections:</Text>
+          <View style={styles.filterRow}>
+            <TextInput
+              style={styles.filterInput}
+              placeholder="Country"
+              placeholderTextColor={colors.textSecondary}
+              value={countryFilter}
+              onChangeText={setCountryFilter}
+            />
+            <TextInput
+              style={styles.filterInput}
+              placeholder="Unit"
+              placeholderTextColor={colors.textSecondary}
+              value={unitFilter}
+              onChangeText={setUnitFilter}
+            />
+          </View>
+          
+          <View style={styles.filterRow}>
+            <TextInput
+              style={styles.filterInput}
+              placeholder="Agency"
+              placeholderTextColor={colors.textSecondary}
+              value={agencyFilter}
+              onChangeText={setAgencyFilter}
+            />
+            <TextInput
+              style={styles.filterInput}
+              placeholder="Deployment"
+              placeholderTextColor={colors.textSecondary}
+              value={deploymentFilter}
+              onChangeText={setDeploymentFilter}
+            />
+          </View>
           
           <TextInput
-            style={styles.filterInput}
-            placeholder="Agency (e.g., FBI, CIA)"
+            style={[styles.filterInput, styles.fullWidthInput]}
+            placeholder="Manufacturer"
             placeholderTextColor={colors.textSecondary}
-            value={agencyFilter}
-            onChangeText={setAgencyFilter}
+            value={manufacturerFilter}
+            onChangeText={setManufacturerFilter}
           />
           
-          <TextInput
-            style={styles.filterInput}
-            placeholder="Country (e.g., USA, UK)"
-            placeholderTextColor={colors.textSecondary}
-            value={countryFilter}
-            onChangeText={setCountryFilter}
-          />
-          
-          <TextInput
-            style={styles.filterInput}
-            placeholder="Unit (e.g., SWAT, Navy SEALs)"
-            placeholderTextColor={colors.textSecondary}
-            value={unitFilter}
-            onChangeText={setUnitFilter}
-          />
+          <TouchableOpacity
+            style={styles.checkboxRow}
+            onPress={() => setOpenToTradeOnly(!openToTradeOnly)}
+          >
+            <View style={[styles.checkbox, openToTradeOnly && styles.checkboxChecked]}>
+              {openToTradeOnly && (
+                <IconSymbol
+                  ios_icon_name="checkmark"
+                  android_material_icon_name="check"
+                  size={16}
+                  color={colors.background}
+                />
+              )}
+            </View>
+            <Text style={styles.checkboxLabel}>Open to Trade Only</Text>
+          </TouchableOpacity>
           
           <View style={styles.filterActions}>
             <TouchableOpacity style={styles.clearButton} onPress={handleClearFilters}>
@@ -373,10 +384,10 @@ export default function SearchUsersScreen() {
       )}
 
       <FlatList
-        data={users}
-        renderItem={renderUserCard}
+        data={coins}
+        renderItem={renderCoinCard}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={users.length === 0 ? { flex: 1 } : { paddingVertical: 8 }}
+        contentContainerStyle={coins.length === 0 ? { flex: 1 } : { paddingVertical: 8 }}
         ListEmptyComponent={renderEmptyState}
         showsVerticalScrollIndicator={false}
       />
@@ -430,13 +441,13 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     maxHeight: 300,
   },
-  filterSectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
+  filterRow: {
+    flexDirection: 'row',
+    gap: 12,
     marginBottom: 12,
   },
   filterInput: {
+    flex: 1,
     backgroundColor: colors.background,
     borderRadius: 8,
     paddingHorizontal: 12,
@@ -445,12 +456,36 @@ const styles = StyleSheet.create({
     color: colors.text,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  fullWidthInput: {
     marginBottom: 12,
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: colors.border,
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  checkboxLabel: {
+    fontSize: 14,
+    color: colors.text,
   },
   filterActions: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 4,
   },
   clearButton: {
     flex: 1,
@@ -477,14 +512,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.background,
   },
-  userCard: {
+  coinCard: {
     flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
     backgroundColor: colors.card,
     marginHorizontal: 16,
     marginVertical: 6,
     borderRadius: 12,
+    overflow: 'hidden',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -500,46 +534,66 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+  coinImage: {
+    width: 100,
+    height: 100,
+  },
+  imagePlaceholder: {
     backgroundColor: colors.border,
-    marginRight: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  userInfo: {
+  coinInfo: {
     flex: 1,
+    padding: 12,
+    justifyContent: 'space-between',
   },
-  displayName: {
+  coinTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: 2,
+    marginBottom: 4,
   },
-  username: {
-    fontSize: 14,
+  coinMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+    flexWrap: 'wrap',
+  },
+  coinMeta: {
+    fontSize: 13,
     color: colors.textSecondary,
   },
-  followButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: colors.primary,
-    minWidth: 90,
+  coinMetaSeparator: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginHorizontal: 6,
+  },
+  coinCountry: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 8,
+  },
+  coinFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
-  followingButton: {
-    backgroundColor: colors.border,
+  coinOwner: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    flex: 1,
   },
-  followButtonText: {
-    fontSize: 14,
+  tradeBadge: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  tradeBadgeText: {
+    fontSize: 10,
     fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  followingButtonText: {
-    color: colors.text,
+    color: colors.background,
   },
   emptyContainer: {
     flex: 1,

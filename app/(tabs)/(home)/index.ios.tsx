@@ -32,6 +32,8 @@ interface Coin {
   title: string;
   country: string;
   year: number;
+  unit?: string;
+  agency?: string;
   user: {
     id: string;
     username: string;
@@ -292,6 +294,16 @@ export default function FeedScreen() {
     router.push('/add-coin');
   };
 
+  const handleSearchCoins = () => {
+    console.log('FeedScreen: User tapped Search Coins button');
+    router.push('/search-coins');
+  };
+
+  const handleSearchUsers = () => {
+    console.log('FeedScreen: User tapped Search Users button');
+    router.push('/search-users');
+  };
+
   const handleUserPress = (userId: string, username: string) => {
     console.log('FeedScreen: User tapped on user profile:', username);
     router.push(`/user-profile?username=${username}`);
@@ -385,9 +397,18 @@ export default function FeedScreen() {
           <Text style={styles.tradeCoinTitle} numberOfLines={1}>
             {item.title}
           </Text>
-          <Text style={styles.tradeCoinMeta}>
-            {item.country} • {item.year}
-          </Text>
+          
+          <View style={styles.tradeCoinMetaRow}>
+            {item.agency ? (
+              <Text style={styles.tradeCoinMeta} numberOfLines={1}>{item.agency}</Text>
+            ) : null}
+            {item.agency && item.unit ? (
+              <Text style={styles.tradeCoinMetaSeparator}>•</Text>
+            ) : null}
+            {item.unit ? (
+              <Text style={styles.tradeCoinMeta} numberOfLines={1}>{item.unit}</Text>
+            ) : null}
+          </View>
 
           {/* User Info */}
           <TouchableOpacity
@@ -507,9 +528,18 @@ export default function FeedScreen() {
         {/* Coin Info */}
         <View style={styles.coinInfo}>
           <Text style={styles.coinTitle}>{item.title}</Text>
-          <Text style={styles.coinMeta}>
-            {item.country} • {item.year}
-          </Text>
+          
+          <View style={styles.coinMetaRow}>
+            {item.agency ? (
+              <Text style={styles.coinMeta}>{item.agency}</Text>
+            ) : null}
+            {item.agency && item.unit ? (
+              <Text style={styles.coinMetaSeparator}>•</Text>
+            ) : null}
+            {item.unit ? (
+              <Text style={styles.coinMeta}>{item.unit}</Text>
+            ) : null}
+          </View>
         </View>
 
         {/* Actions */}
@@ -568,14 +598,17 @@ export default function FeedScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>🪙 CoinHub</Text>
-        <TouchableOpacity onPress={handleAddCoin} style={styles.addButton}>
-          <IconSymbol
-            ios_icon_name="plus.circle.fill"
-            android_material_icon_name="add-circle"
-            size={28}
-            color={colors.primary}
-          />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity onPress={handleSearchCoins} style={styles.headerButton}>
+            <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleSearchUsers} style={styles.headerButton}>
+            <IconSymbol ios_icon_name="person.2" android_material_icon_name="group" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleAddCoin} style={styles.headerButton}>
+            <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add-circle" size={28} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <FlatList
@@ -701,7 +734,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: colors.text,
   },
-  addButton: {
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerButton: {
     padding: 4,
   },
   loadingContainer: {
@@ -777,10 +815,20 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 4,
   },
+  tradeCoinMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    flexWrap: 'wrap',
+  },
   tradeCoinMeta: {
     fontSize: 12,
     color: colors.textSecondary,
-    marginBottom: 8,
+  },
+  tradeCoinMetaSeparator: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginHorizontal: 4,
   },
   tradeCoinUser: {
     flexDirection: 'row',
@@ -876,9 +924,19 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 4,
   },
+  coinMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
   coinMeta: {
     fontSize: 14,
     color: colors.textSecondary,
+  },
+  coinMetaSeparator: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginHorizontal: 6,
   },
   actions: {
     flexDirection: 'row',
