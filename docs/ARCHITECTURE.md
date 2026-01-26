@@ -1,263 +1,377 @@
 
 # 🏗️ CoinHub Architecture
 
-## Current Setup (with Supabase)
+## Current Architecture (After Supabase Connection)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     FRONTEND (Expo App)                      │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐            │
-│  │   React    │  │   Expo     │  │  Better    │            │
-│  │  Native    │  │   Router   │  │   Auth     │            │
-│  └────────────┘  └────────────┘  └────────────┘            │
-│         │                │                │                  │
-│         └────────────────┴────────────────┘                  │
-│                          │                                   │
-│                          ▼                                   │
-│                  ┌──────────────┐                           │
-│                  │  utils/api.ts │                           │
-│                  │ (API Client)  │                           │
-│                  └──────────────┘                           │
-└──────────────────────────│──────────────────────────────────┘
-                           │
-                           │ HTTP Requests
-                           │ (Bearer Token Auth)
-                           ▼
+│                         USERS                                │
+│  (iOS, Android, Web - using Expo app)                       │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     │ HTTP/HTTPS Requests
+                     │ (REST API calls)
+                     ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                  BACKEND (Fastify Server)                    │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐            │
-│  │  Fastify   │  │  Drizzle   │  │  Better    │            │
-│  │   Routes   │  │    ORM     │  │   Auth     │            │
-│  └────────────┘  └────────────┘  └────────────┘            │
-│         │                │                │                  │
-│         └────────────────┴────────────────┘                  │
-│                          │                                   │
-│                          │ SQL Queries                       │
-│                          ▼                                   │
+│                    FRONTEND (Expo)                           │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  React Native Components                              │  │
+│  │  - Screens (Feed, Profile, Trades, etc.)            │  │
+│  │  - Components (Buttons, Cards, etc.)                 │  │
+│  │  - Navigation (Expo Router)                          │  │
+│  └──────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  State Management                                     │  │
+│  │  - AuthContext (user session)                        │  │
+│  │  - Local state (useState, useEffect)                 │  │
+│  └──────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  API Client (utils/api.ts)                           │  │
+│  │  - authenticatedFetch()                              │  │
+│  │  - Handles auth headers                              │  │
+│  └──────────────────────────────────────────────────────┘  │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     │ API Calls
+                     │ (GET /api/coins, POST /api/trades, etc.)
+                     ↓
+┌─────────────────────────────────────────────────────────────┐
+│                   BACKEND (Fastify)                          │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  API Routes                                           │  │
+│  │  - /api/auth/* (login, signup, etc.)                │  │
+│  │  - /api/coins/* (CRUD operations)                   │  │
+│  │  - /api/trades/* (trading system)                   │  │
+│  │  - /api/profiles/* (user profiles)                  │  │
+│  │  - /api/feed (coin feed)                            │  │
+│  │  - And more...                                       │  │
+│  └──────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  Business Logic                                       │  │
+│  │  - Authentication (Better Auth)                      │  │
+│  │  - Authorization (ownership checks)                  │  │
+│  │  - Validation (input validation)                     │  │
+│  │  - Trade workflows                                   │  │
+│  │  - Rating calculations                               │  │
+│  └──────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  Database Layer (Drizzle ORM)                        │  │
+│  │  - Schema definitions                                 │  │
+│  │  - Query builder                                      │  │
+│  │  - Migrations                                         │  │
+│  └──────────────────────────────────────────────────────┘  │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     │ SQL Queries
+                     │ (SELECT, INSERT, UPDATE, DELETE)
+                     ↓
+┌─────────────────────────────────────────────────────────────┐
+│                  DATABASE (Supabase)                         │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  PostgreSQL Database                                  │  │
+│  │  ┌────────────────────────────────────────────────┐ │  │
+│  │  │  Tables:                                        │ │  │
+│  │  │  - user (Better Auth users)                    │ │  │
+│  │  │  - session (Better Auth sessions)              │ │  │
+│  │  │  - users (CoinHub profiles)                    │ │  │
+│  │  │  - coins (coin collection data)                │ │  │
+│  │  │  - trades (trading system)                     │ │  │
+│  │  │  - trade_offers (trade proposals)              │ │  │
+│  │  │  - trade_messages (trade chat)                 │ │  │
+│  │  │  - trade_ratings (user ratings)                │ │  │
+│  │  │  - comments (coin comments)                    │ │  │
+│  │  │  - likes (coin likes)                          │ │  │
+│  │  │  - follows (user follows)                      │ │  │
+│  │  │  - notifications (user notifications)          │ │  │
+│  │  │  - reports (moderation)                        │ │  │
+│  │  │  - invite_codes (invite system)                │ │  │
+│  │  │  - coin_images (image metadata)                │ │  │
+│  │  └────────────────────────────────────────────────┘ │  │
+│  └──────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  Supabase Features                                    │  │
+│  │  - Automatic backups                                  │  │
+│  │  - Connection pooling                                 │  │
+│  │  - Performance monitoring                             │  │
+│  │  - Table Editor (view/edit data)                     │  │
+│  │  - SQL Editor (run queries)                          │  │
+│  └──────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
-                           │
-                           │ PostgreSQL Protocol
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    SUPABASE (Database)                       │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │              PostgreSQL Database                        │ │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ │ │
-│  │  │  users   │ │ profiles │ │  coins   │ │  trades  │ │ │
-│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ │ │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ │ │
-│  │  │ comments │ │  likes   │ │ follows  │ │  reports │ │ │
-│  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ │ │
-│  └────────────────────────────────────────────────────────┘ │
-│                                                              │
-│  Features:                                                   │
-│  ✓ Automatic backups                                        │
-│  ✓ Real-time subscriptions (not used yet)                   │
-│  ✓ Connection pooling                                       │
-│  ✓ Table Editor UI                                          │
-│  ✓ SQL Editor                                               │
-└─────────────────────────────────────────────────────────────┘
 ```
 
-## Data Flow Example: Creating a Coin
+## Data Flow Example: Adding a Coin
 
 ```
-1. User taps "Add Coin" button
-   └─> app/add-coin.tsx
+1. USER ACTION
+   User taps "Add Coin" button
+   ↓
 
-2. User fills form and submits
-   └─> Calls authenticatedUpload()
-       └─> utils/api.ts
+2. FRONTEND
+   - Validates form data
+   - Calls: authenticatedFetch('/api/coins', { method: 'POST', body: coinData })
+   ↓
 
-3. API client adds Bearer token
-   └─> POST /api/coins/upload
-       └─> backend/src/routes/coins.ts
+3. BACKEND
+   - Receives POST /api/coins request
+   - Validates auth token (Better Auth)
+   - Validates coin data
+   - Calls: db.insert(coins).values({ ...coinData, userId })
+   ↓
 
-4. Backend validates auth token
-   └─> Extracts user ID from session
-       └─> backend/src/utils/auth-utils.ts
+4. DRIZZLE ORM
+   - Converts to SQL: INSERT INTO coins (title, country, year, ...) VALUES (...)
+   - Sends to Supabase
+   ↓
 
-5. Backend saves to database
-   └─> Drizzle ORM generates SQL
-       └─> INSERT INTO coins (...)
-           └─> Supabase PostgreSQL
+5. SUPABASE
+   - Executes SQL query
+   - Stores coin in database
+   - Returns success
+   ↓
 
-6. Response sent back to frontend
-   └─> Coin data returned
-       └─> UI updates with new coin
+6. BACKEND
+   - Receives success from database
+   - Returns coin data to frontend
+   ↓
+
+7. FRONTEND
+   - Receives coin data
+   - Updates UI
+   - Shows success message
+   ↓
+
+8. USER
+   - Sees new coin in their collection
 ```
 
 ## Authentication Flow
 
 ```
-1. User enters email/password
-   └─> app/auth.tsx
-
-2. Frontend calls Better Auth
-   └─> lib/auth.ts
-       └─> authClient.signIn.email()
-
-3. Better Auth creates session
-   └─> Stores in Supabase 'session' table
-       └─> Returns session token
-
-4. Token stored locally
-   └─> SecureStore (mobile)
-   └─> localStorage (web)
-
-5. All API requests include token
-   └─> Authorization: Bearer <token>
-       └─> Backend validates token
-           └─> Extracts user ID
-               └─> Allows/denies request
+1. USER SIGNS UP
+   ↓
+2. FRONTEND
+   - Calls: POST /api/auth/signup
+   ↓
+3. BACKEND (Better Auth)
+   - Hashes password
+   - Creates user in database
+   - Creates session
+   - Returns session token
+   ↓
+4. FRONTEND
+   - Stores session token
+   - Redirects to profile setup
+   ↓
+5. USER CREATES PROFILE
+   ↓
+6. FRONTEND
+   - Calls: POST /api/profiles
+   ↓
+7. BACKEND
+   - Validates session token
+   - Creates profile in database
+   - Returns profile data
+   ↓
+8. FRONTEND
+   - Stores user data
+   - Redirects to feed
 ```
+
+## Trade Flow
+
+```
+1. USER A proposes trade
+   ↓
+2. BACKEND creates trade record
+   ↓
+3. USER B receives notification
+   ↓
+4. USER B accepts/rejects/counters
+   ↓
+5. If accepted:
+   - Trade status → "accepted"
+   - Both users exchange addresses
+   - Users mark items as shipped
+   - Users mark items as received
+   - Users rate each other
+   ↓
+6. Trade complete!
+```
+
+## Technology Stack
+
+### Frontend
+- **Framework**: React Native (via Expo)
+- **Routing**: Expo Router (file-based)
+- **State**: React Context + useState/useEffect
+- **Styling**: StyleSheet (React Native)
+- **Auth**: Better Auth client
+- **HTTP**: Fetch API (via utils/api.ts)
+
+### Backend
+- **Framework**: Fastify (Node.js)
+- **Language**: TypeScript
+- **ORM**: Drizzle ORM
+- **Auth**: Better Auth
+- **Validation**: Zod
+- **Storage**: Specular (for images)
+
+### Database
+- **Type**: PostgreSQL
+- **Host**: Supabase
+- **ORM**: Drizzle
+- **Migrations**: Drizzle Kit
 
 ## File Structure
 
 ```
-CoinHub/
+coinhub/
 ├── app/                          # Frontend screens
 │   ├── (tabs)/                   # Tab navigation
-│   │   ├── (home)/              # Home feed
-│   │   ├── profile.tsx          # User profile
-│   │   └── trades.tsx           # Trades inbox
-│   ├── auth.tsx                 # Login/signup
-│   ├── coin-detail.tsx          # Coin details
-│   ├── trade-detail.tsx         # Trade conversation
+│   │   ├── (home)/              # Feed screen
+│   │   ├── profile.tsx          # Profile screen
+│   │   └── trades.tsx           # Trades screen
+│   ├── coin-detail.tsx          # Coin detail screen
+│   ├── trade-detail.tsx         # Trade detail screen
 │   └── ...
 ├── components/                   # Reusable components
 ├── contexts/                     # React contexts
-│   └── AuthContext.tsx          # Auth state management
-├── lib/                         # Libraries
-│   └── auth.ts                  # Better Auth client
-├── utils/                       # Utilities
+│   └── AuthContext.tsx          # Auth state
+├── utils/                        # Utilities
 │   └── api.ts                   # API client
-├── backend/                     # Backend server
+├── backend/                      # Backend server
 │   ├── src/
-│   │   ├── routes/              # API endpoints
-│   │   │   ├── auth.ts         # Auth endpoints
-│   │   │   ├── coins.ts        # Coin endpoints
-│   │   │   ├── trades.ts       # Trade endpoints
+│   │   ├── routes/              # API routes
+│   │   │   ├── auth.ts          # Auth endpoints
+│   │   │   ├── coins.ts         # Coin endpoints
+│   │   │   ├── trades.ts        # Trade endpoints
 │   │   │   └── ...
-│   │   ├── db/                  # Database
-│   │   │   ├── schema.ts       # App tables
-│   │   │   └── auth-schema.ts  # Auth tables
-│   │   └── index.ts            # Server entry
-│   └── .env                     # Environment variables
-└── docs/                        # Documentation
-    ├── SUPABASE_QUICK_START.md # This guide!
-    └── ...
+│   │   ├── db/
+│   │   │   ├── schema.ts        # Database schema
+│   │   │   └── migrate.ts       # Migration runner
+│   │   └── index.ts             # Server entry point
+│   ├── .env                     # Environment variables (YOU CREATE THIS)
+│   └── package.json
+└── docs/                         # Documentation
 ```
 
-## Key Components
+## Environment Variables
 
-### Frontend
-- **Expo Router**: File-based navigation
-- **Better Auth Client**: Authentication
-- **API Client**: HTTP requests with auth
-- **React Context**: Global state (user, auth)
-
-### Backend
-- **Fastify**: Web framework
-- **Drizzle ORM**: Database queries
-- **Better Auth**: Session management
-- **Multipart**: File uploads
-
-### Database (Supabase)
-- **PostgreSQL**: Relational database
-- **Tables**: Users, coins, trades, etc.
-- **Indexes**: Fast queries
-- **Backups**: Automatic
-
-## What Changed with Supabase?
-
-### Before (Local Database)
-```
-Backend → PGlite (local SQLite-like DB)
+### Backend (.env)
+```env
+DATABASE_URL=postgresql://...     # Supabase connection string
+NODE_ENV=development              # Environment
+FRONTEND_URL=http://localhost:3000 # Frontend URL
+EMAIL_PROVIDER=console            # Email provider
+EMAIL_FROM=noreply@coinhub.app   # Email sender
+STORAGE_API_BASE_URL=...         # Storage URL
 ```
 
-### After (Supabase)
-```
-Backend → Supabase PostgreSQL (cloud)
-```
+## API Endpoints
 
-### What Stayed the Same?
-- ✅ All frontend code
-- ✅ All backend code
-- ✅ All API endpoints
-- ✅ Authentication system
-- ✅ File uploads
+### Authentication
+- `POST /api/auth/signup` - Create account
+- `POST /api/auth/login` - Log in
+- `POST /api/auth/logout` - Log out
+- `GET /api/auth/session` - Get current session
 
-### What Changed?
-- ✅ Database location (now in cloud)
-- ✅ One environment variable (DATABASE_URL)
+### Profiles
+- `GET /api/profiles/me` - Get my profile
+- `GET /api/profiles/:username` - Get user profile
+- `PUT /api/profiles/me` - Update my profile
 
-## Benefits of This Architecture
+### Coins
+- `GET /api/coins` - Get my coins
+- `GET /api/coins/:id` - Get coin detail
+- `POST /api/coins` - Create coin
+- `PUT /api/coins/:id` - Update coin
+- `DELETE /api/coins/:id` - Delete coin
 
-### Separation of Concerns
-- Frontend: UI and user interaction
-- Backend: Business logic and validation
-- Database: Data storage and queries
+### Trades
+- `GET /api/trades` - Get my trades
+- `GET /api/trades/:id` - Get trade detail
+- `POST /api/trades` - Create trade
+- `POST /api/trades/:id/offers` - Make offer
+- `PUT /api/trades/:id/offers/:offerId/accept` - Accept offer
+- `POST /api/trades/:id/shipping/address` - Submit address
+- `POST /api/trades/:id/ratings` - Rate trade partner
 
-### Security
-- Backend validates all requests
-- Database credentials never exposed to frontend
-- Row-level security possible with Supabase
+### Feed
+- `GET /api/feed` - Get public coin feed
+- `GET /api/feed/trade` - Get tradeable coins
 
-### Scalability
-- Backend can be deployed separately
-- Database can scale independently
-- Frontend can be static (CDN)
+### Social
+- `POST /api/likes` - Like a coin
+- `DELETE /api/likes/:id` - Unlike a coin
+- `POST /api/comments` - Comment on coin
+- `POST /api/follows` - Follow user
+- `DELETE /api/follows/:id` - Unfollow user
 
-### Flexibility
-- Can switch databases easily (just change DATABASE_URL)
-- Can add real-time features later (Supabase subscriptions)
-- Can migrate to full Supabase if needed
+## Security
 
-## Alternative: Full Supabase Architecture
+### Authentication
+- Better Auth handles password hashing
+- Sessions stored in database
+- Tokens sent via HTTP headers
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     FRONTEND (Expo App)                      │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐            │
-│  │   React    │  │   Expo     │  │  Supabase  │            │
-│  │  Native    │  │   Router   │  │   Client   │            │
-│  └────────────┘  └────────────┘  └────────────┘            │
-│         │                │                │                  │
-│         └────────────────┴────────────────┘                  │
-│                          │                                   │
-│                          │ Direct queries                    │
-│                          ▼                                   │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           │ HTTPS + PostgREST
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                         SUPABASE                             │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐            │
-│  │ PostgreSQL │  │ Supabase   │  │  Storage   │            │
-│  │  Database  │  │    Auth    │  │  (Files)   │            │
-│  └────────────┘  └────────────┘  └────────────┘            │
-└─────────────────────────────────────────────────────────────┘
+### Authorization
+- All endpoints check user ownership
+- Can only edit/delete own content
+- Trade endpoints verify both parties
 
-No backend server needed!
-```
+### Data Validation
+- Zod schemas validate all inputs
+- SQL injection prevented by Drizzle ORM
+- XSS prevented by React Native
 
-See `SUPABASE_FULL_MIGRATION.md` for details.
+## Scalability
 
-## Recommendation
+### Current Setup (Development)
+- Backend runs locally
+- Database in Supabase cloud
+- Good for: Development, beta testing
 
-**For CoinHub, stick with current architecture** because:
-1. ✅ Backend already built and working
-2. ✅ Complex trade logic easier to maintain in backend
-3. ✅ Moderation features need server-side validation
-4. ✅ Minimal changes to connect to Supabase
-5. ✅ Can always migrate to full Supabase later
+### Production Setup (Future)
+- Backend deployed to cloud (Vercel, Railway, etc.)
+- Database in Supabase cloud
+- CDN for images
+- Good for: Thousands of users
 
-## Questions?
+## Monitoring
 
-- **"Do I need to change my frontend code?"** No! Just update backend .env
-- **"Will my app work offline?"** No, it needs internet (same as before)
-- **"Can I use Supabase real-time?"** Yes, but requires code changes
-- **"Is my data secure?"** Yes, backend validates all requests
-- **"Can I see my data?"** Yes, in Supabase Table Editor
+### Supabase Dashboard
+- View all data
+- Run SQL queries
+- Monitor performance
+- Check logs
+
+### Backend Logs
+- Request/response logging
+- Error tracking
+- Performance metrics
+
+## Backup & Recovery
+
+### Automatic Backups
+- Supabase backs up daily
+- 7-day retention (free tier)
+- Point-in-time recovery (paid tier)
+
+### Manual Backups
+- Export via Supabase dashboard
+- Export via pg_dump command
+- Export to SQL, CSV, or JSON
+
+## Summary
+
+**Architecture**: Three-tier (Frontend, Backend, Database)
+
+**Frontend**: React Native (Expo) - User interface
+
+**Backend**: Fastify (Node.js) - Business logic & API
+
+**Database**: PostgreSQL (Supabase) - Data storage
+
+**Connection**: Backend connects to Supabase via DATABASE_URL
+
+**Result**: Scalable, secure, production-ready app! 🚀
