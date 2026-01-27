@@ -396,6 +396,8 @@ export default function FeedScreen() {
     const agencyText = item.agency || '';
     const unitText = item.unit || '';
     const titleText = item.title || '';
+    const userAvatarUrl = item.user.avatarUrl || item.user.avatar_url;
+    const hasAvatar = !!userAvatarUrl;
     
     return (
       <TouchableOpacity
@@ -410,7 +412,14 @@ export default function FeedScreen() {
           }}
         >
           <View style={styles.avatar}>
-            <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={20} color={colors.textSecondary} />
+            {hasAvatar ? (
+              <Image 
+                source={{ uri: userAvatarUrl }} 
+                style={styles.avatarImage}
+              />
+            ) : (
+              <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={20} color={colors.textSecondary} />
+            )}
           </View>
           <View>
             <Text style={styles.displayName}>{item.user.displayName}</Text>
@@ -767,6 +776,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
   },
   displayName: {
     fontSize: 16,
