@@ -18,7 +18,6 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { authenticatedFetch } from '@/utils/api';
 import Constants from 'expo-constants';
-import * as IAP from 'react-native-iap';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 
@@ -35,62 +34,16 @@ interface SubscriptionStatus {
   };
 }
 
-interface Product {
-  productId: string;
-  title: string;
-  description: string;
-  price: string;
-  currency: string;
-  localizedPrice: string;
-}
-
 export default function SubscriptionScreen() {
   const { user } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [subscribing, setSubscribing] = useState(false);
-  const [restoring, setRestoring] = useState(false);
   const [status, setStatus] = useState<SubscriptionStatus | null>(null);
-  const [product, setProduct] = useState<Product | null>(null);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [showErrorModal, setShowErrorModal] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [showInfoModal, setShowInfoModal] = useState(false);
 
   useEffect(() => {
-    initializeIAP();
     fetchSubscriptionStatus();
-
-    return () => {
-      IAP.endConnection();
-    };
   }, []);
-
-  const initializeIAP = async () => {
-    console.log('SubscriptionScreen: Initializing IAP');
-    try {
-      await IAP.initConnection();
-      console.log('SubscriptionScreen: IAP connection initialized');
-
-      const products = await IAP.getSubscriptions({ skus: [PRODUCT_ID] });
-      console.log('SubscriptionScreen: Products fetched:', products);
-
-      if (products && products.length > 0) {
-        const productData = products[0];
-        setProduct({
-          productId: productData.productId,
-          title: productData.title || 'Premium Subscription',
-          description: productData.description || 'Unlimited coins and trades',
-          price: productData.price || '$2.99',
-          currency: productData.currency || 'USD',
-          localizedPrice: productData.localizedPrice || '$2.99',
-        });
-      } else {
-        console.warn('SubscriptionScreen: No products found for ID:', PRODUCT_ID);
-      }
-    } catch (error) {
-      console.error('SubscriptionScreen: Error initializing IAP:', error);
-    }
-  };
 
   const fetchSubscriptionStatus = async () => {
     console.log('SubscriptionScreen: Fetching subscription status');
@@ -111,110 +64,9 @@ export default function SubscriptionScreen() {
     }
   };
 
-  const handleSubscribe = async () => {
+  const handleSubscribe = () => {
     console.log('SubscriptionScreen: User tapped subscribe button');
-    setSubscribing(true);
-
-    try {
-      console.log('SubscriptionScreen: Requesting purchase for product:', PRODUCT_ID);
-      const purchase = await IAP.requestSubscription({ sku: PRODUCT_ID });
-      console.log('SubscriptionScreen: Purchase response:', purchase);
-
-      if (purchase) {
-        const receipt = purchase.transactionReceipt;
-        const platformName = Platform.OS === 'ios' ? 'ios' : 'android';
-
-        console.log('SubscriptionScreen: Validating receipt with backend');
-        const response = await authenticatedFetch(`${API_URL}/api/subscription/activate`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            receipt,
-            platform: platformName,
-            productId: PRODUCT_ID,
-          }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          console.log('SubscriptionScreen: Subscription activated:', data);
-
-          await IAP.finishTransaction({ purchase, isConsumable: false });
-          console.log('SubscriptionScreen: Transaction finished');
-
-          setShowSuccessModal(true);
-          await fetchSubscriptionStatus();
-        } else {
-          const errorData = await response.json();
-          console.error('SubscriptionScreen: Failed to activate subscription:', errorData);
-          setErrorMessage(errorData.error || 'Failed to activate subscription');
-          setShowErrorModal(true);
-        }
-      }
-    } catch (error: any) {
-      console.error('SubscriptionScreen: Error during purchase:', error);
-      if (error.code === 'E_USER_CANCELLED') {
-        console.log('SubscriptionScreen: User cancelled purchase');
-      } else {
-        setErrorMessage(error.message || 'An error occurred during purchase');
-        setShowErrorModal(true);
-      }
-    } finally {
-      setSubscribing(false);
-    }
-  };
-
-  const handleRestorePurchases = async () => {
-    console.log('SubscriptionScreen: User tapped restore purchases');
-    setRestoring(true);
-
-    try {
-      console.log('SubscriptionScreen: Getting purchase history');
-      const purchases = await IAP.getPurchaseHistory();
-      console.log('SubscriptionScreen: Purchase history:', purchases);
-
-      if (purchases && purchases.length > 0) {
-        const latestPurchase = purchases[0];
-        const receipt = latestPurchase.transactionReceipt;
-        const platformName = Platform.OS === 'ios' ? 'ios' : 'android';
-
-        console.log('SubscriptionScreen: Restoring subscription with backend');
-        const response = await authenticatedFetch(`${API_URL}/api/subscription/restore`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            receipt,
-            platform: platformName,
-          }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          console.log('SubscriptionScreen: Subscription restored:', data);
-          setShowSuccessModal(true);
-          await fetchSubscriptionStatus();
-        } else {
-          const errorData = await response.json();
-          console.error('SubscriptionScreen: Failed to restore subscription:', errorData);
-          setErrorMessage(errorData.error || 'No purchases found to restore');
-          setShowErrorModal(true);
-        }
-      } else {
-        console.log('SubscriptionScreen: No purchases found to restore');
-        setErrorMessage('No purchases found to restore');
-        setShowErrorModal(true);
-      }
-    } catch (error: any) {
-      console.error('SubscriptionScreen: Error restoring purchases:', error);
-      setErrorMessage(error.message || 'Failed to restore purchases');
-      setShowErrorModal(true);
-    } finally {
-      setRestoring(false);
-    }
+    setShowInfoModal(true);
   };
 
   const handleManageSubscription = () => {
@@ -258,7 +110,6 @@ export default function SubscriptionScreen() {
   const coinsLimitText = status.limits.maxCoins ? `${status.limits.maxCoins}` : 'Unlimited';
   const tradesUsedText = `${status.tradesInitiatedThisMonth}`;
   const tradesLimitText = status.limits.maxTrades ? `${status.limits.maxTrades}` : 'Unlimited';
-  const displayPrice = product?.localizedPrice || '$2.99';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -382,45 +233,24 @@ export default function SubscriptionScreen() {
         </View>
 
         <View style={styles.pricingCard}>
-          <Text style={styles.pricingAmount}>{displayPrice}</Text>
+          <Text style={styles.pricingAmount}>$2.99</Text>
           <Text style={styles.pricingPeriod}>per month</Text>
           <Text style={styles.pricingNote}>Cancel anytime</Text>
         </View>
 
         {!isPremium ? (
-          <>
-            <TouchableOpacity
-              style={[styles.subscribeButton, subscribing && styles.subscribeButtonDisabled]}
-              onPress={handleSubscribe}
-              disabled={subscribing}
-            >
-              {subscribing ? (
-                <ActivityIndicator color={colors.background} />
-              ) : (
-                <>
-                  <IconSymbol
-                    ios_icon_name="star.fill"
-                    android_material_icon_name="star"
-                    size={20}
-                    color={colors.background}
-                  />
-                  <Text style={styles.subscribeButtonText}>Upgrade to Premium</Text>
-                </>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.restoreButton, restoring && styles.restoreButtonDisabled]}
-              onPress={handleRestorePurchases}
-              disabled={restoring}
-            >
-              {restoring ? (
-                <ActivityIndicator color={colors.primary} />
-              ) : (
-                <Text style={styles.restoreButtonText}>Restore Purchases</Text>
-              )}
-            </TouchableOpacity>
-          </>
+          <TouchableOpacity
+            style={styles.subscribeButton}
+            onPress={handleSubscribe}
+          >
+            <IconSymbol
+              ios_icon_name="star.fill"
+              android_material_icon_name="star"
+              size={20}
+              color={colors.background}
+            />
+            <Text style={styles.subscribeButtonText}>Upgrade to Premium</Text>
+          </TouchableOpacity>
         ) : (
           <TouchableOpacity
             style={styles.manageButton}
@@ -447,57 +277,28 @@ export default function SubscriptionScreen() {
       </ScrollView>
 
       <Modal
-        visible={showSuccessModal}
+        visible={showInfoModal}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowSuccessModal(false)}
+        onRequestClose={() => setShowInfoModal(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <IconSymbol
-              ios_icon_name="checkmark.circle.fill"
-              android_material_icon_name="check-circle"
+              ios_icon_name="info.circle.fill"
+              android_material_icon_name="info"
               size={64}
-              color={colors.success}
+              color={colors.primary}
             />
-            <Text style={styles.modalTitle}>Welcome to Premium!</Text>
+            <Text style={styles.modalTitle}>In-App Purchases</Text>
             <Text style={styles.modalMessage}>
-              You now have unlimited access to all features
+              In-app purchases are available in the production build of the app. To test subscriptions, please build the app with EAS Build or use a production release.
             </Text>
             <TouchableOpacity
               style={styles.modalButton}
-              onPress={() => {
-                setShowSuccessModal(false);
-                router.back();
-              }}
+              onPress={() => setShowInfoModal(false)}
             >
               <Text style={styles.modalButtonText}>Got it</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={showErrorModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowErrorModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <IconSymbol
-              ios_icon_name="exclamationmark.triangle"
-              android_material_icon_name="warning"
-              size={64}
-              color={colors.error}
-            />
-            <Text style={styles.modalTitle}>Error</Text>
-            <Text style={styles.modalMessage}>{errorMessage}</Text>
-            <TouchableOpacity
-              style={styles.modalButton}
-              onPress={() => setShowErrorModal(false)}
-            >
-              <Text style={styles.modalButtonText}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -708,31 +509,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 8,
   },
-  subscribeButtonDisabled: {
-    opacity: 0.6,
-  },
   subscribeButtonText: {
     fontSize: 18,
     fontWeight: 'bold',
     color: colors.background,
-  },
-  restoreButton: {
-    margin: 16,
-    marginTop: 0,
-    padding: 16,
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-  },
-  restoreButtonDisabled: {
-    opacity: 0.6,
-  },
-  restoreButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.primary,
   },
   manageButton: {
     flexDirection: 'row',
@@ -799,6 +579,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: 24,
+    lineHeight: 20,
   },
   modalButton: {
     paddingHorizontal: 32,
