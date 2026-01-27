@@ -52,7 +52,7 @@ try {
 // This must be registered as a plugin BEFORE app.run()
 try {
   const trustedOrigins: (string | RegExp)[] = [
-    // Development
+    // Development web
     'http://localhost:3000',
     'http://localhost:8081',
     'http://localhost:8082',
@@ -60,13 +60,22 @@ try {
     'http://127.0.0.1:8081',
 
     // Expo Go mobile app
+    'exp://localhost:8081',
     'exp://',
     'exps://',
 
     // Production backend
     'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev',
 
-    // Mobile app origins
+    // iOS app schemes
+    'coinhub://',
+    'CoinHub://',
+    'com.coinhub.app://',
+
+    // Android app schemes (common patterns)
+    'android-app://',
+
+    // Hybrid mobile app origins
     'capacitor://',
     'ionic://',
 
