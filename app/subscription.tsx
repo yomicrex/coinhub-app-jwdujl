@@ -8,6 +8,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Modal,
+  Platform,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
@@ -16,8 +18,11 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { authenticatedFetch } from '@/utils/api';
 import Constants from 'expo-constants';
+import * as IAP from 'react-native-iap';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
+
+const PRODUCT_ID = 'coinhub_premium_monthly';
 
 interface SubscriptionStatus {
   tier: 'free' | 'premium';
@@ -30,19 +35,62 @@ interface SubscriptionStatus {
   };
 }
 
+interface Product {
+  productId: string;
+  title: string;
+  description: string;
+  price: string;
+  currency: string;
+  localizedPrice: string;
+}
+
 export default function SubscriptionScreen() {
   const { user } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [subscribing, setSubscribing] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const [status, setStatus] = useState<SubscriptionStatus | null>(null);
+  const [product, setProduct] = useState<Product | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
+    initializeIAP();
     fetchSubscriptionStatus();
+
+    return () => {
+      IAP.endConnection();
+    };
   }, []);
+
+  const initializeIAP = async () => {
+    console.log('SubscriptionScreen: Initializing IAP');
+    try {
+      await IAP.initConnection();
+      console.log('SubscriptionScreen: IAP connection initialized');
+
+      const products = await IAP.getSubscriptions({ skus: [PRODUCT_ID] });
+      console.log('SubscriptionScreen: Products fetched:', products);
+
+      if (products && products.length > 0) {
+        const productData = products[0];
+        setProduct({
+          productId: productData.productId,
+          title: productData.title || 'Premium Subscription',
+          description: productData.description || 'Unlimited coins and trades',
+          price: productData.price || '$2.99',
+          currency: productData.currency || 'USD',
+          localizedPrice: productData.localizedPrice || '$2.99',
+        });
+      } else {
+        console.warn('SubscriptionScreen: No products found for ID:', PRODUCT_ID);
+      }
+    } catch (error) {
+      console.error('SubscriptionScreen: Error initializing IAP:', error);
+    }
+  };
 
   const fetchSubscriptionStatus = async () => {
     console.log('SubscriptionScreen: Fetching subscription status');
@@ -66,66 +114,115 @@ export default function SubscriptionScreen() {
   const handleSubscribe = async () => {
     console.log('SubscriptionScreen: User tapped subscribe button');
     setSubscribing(true);
-    
-    try {
-      // TODO: Backend Integration - POST /api/subscription/activate with { receipt: string }
-      // For now, we'll activate without payment verification
-      const response = await authenticatedFetch(`${API_URL}/api/subscription/activate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ receipt: 'demo-receipt' }),
-      });
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log('SubscriptionScreen: Subscription activated:', data);
-        setShowSuccessModal(true);
-        await fetchSubscriptionStatus();
+    try {
+      console.log('SubscriptionScreen: Requesting purchase for product:', PRODUCT_ID);
+      const purchase = await IAP.requestSubscription({ sku: PRODUCT_ID });
+      console.log('SubscriptionScreen: Purchase response:', purchase);
+
+      if (purchase) {
+        const receipt = purchase.transactionReceipt;
+        const platformName = Platform.OS === 'ios' ? 'ios' : 'android';
+
+        console.log('SubscriptionScreen: Validating receipt with backend');
+        const response = await authenticatedFetch(`${API_URL}/api/subscription/activate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            receipt,
+            platform: platformName,
+            productId: PRODUCT_ID,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log('SubscriptionScreen: Subscription activated:', data);
+
+          await IAP.finishTransaction({ purchase, isConsumable: false });
+          console.log('SubscriptionScreen: Transaction finished');
+
+          setShowSuccessModal(true);
+          await fetchSubscriptionStatus();
+        } else {
+          const errorData = await response.json();
+          console.error('SubscriptionScreen: Failed to activate subscription:', errorData);
+          setErrorMessage(errorData.error || 'Failed to activate subscription');
+          setShowErrorModal(true);
+        }
+      }
+    } catch (error: any) {
+      console.error('SubscriptionScreen: Error during purchase:', error);
+      if (error.code === 'E_USER_CANCELLED') {
+        console.log('SubscriptionScreen: User cancelled purchase');
       } else {
-        const errorData = await response.json();
-        console.error('SubscriptionScreen: Failed to activate subscription:', errorData);
-        setErrorMessage(errorData.error || 'Failed to activate subscription');
+        setErrorMessage(error.message || 'An error occurred during purchase');
         setShowErrorModal(true);
       }
-    } catch (error) {
-      console.error('SubscriptionScreen: Error activating subscription:', error);
-      setErrorMessage('An error occurred. Please try again.');
-      setShowErrorModal(true);
     } finally {
       setSubscribing(false);
     }
   };
 
-  const handleCancelSubscription = async () => {
-    console.log('SubscriptionScreen: User tapped cancel subscription button');
-    setSubscribing(true);
-    
-    try {
-      const response = await authenticatedFetch(`${API_URL}/api/subscription/cancel`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
-      });
+  const handleRestorePurchases = async () => {
+    console.log('SubscriptionScreen: User tapped restore purchases');
+    setRestoring(true);
 
-      if (response.ok) {
-        console.log('SubscriptionScreen: Subscription cancelled');
-        await fetchSubscriptionStatus();
+    try {
+      console.log('SubscriptionScreen: Getting purchase history');
+      const purchases = await IAP.getPurchaseHistory();
+      console.log('SubscriptionScreen: Purchase history:', purchases);
+
+      if (purchases && purchases.length > 0) {
+        const latestPurchase = purchases[0];
+        const receipt = latestPurchase.transactionReceipt;
+        const platformName = Platform.OS === 'ios' ? 'ios' : 'android';
+
+        console.log('SubscriptionScreen: Restoring subscription with backend');
+        const response = await authenticatedFetch(`${API_URL}/api/subscription/restore`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            receipt,
+            platform: platformName,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log('SubscriptionScreen: Subscription restored:', data);
+          setShowSuccessModal(true);
+          await fetchSubscriptionStatus();
+        } else {
+          const errorData = await response.json();
+          console.error('SubscriptionScreen: Failed to restore subscription:', errorData);
+          setErrorMessage(errorData.error || 'No purchases found to restore');
+          setShowErrorModal(true);
+        }
       } else {
-        const errorData = await response.json();
-        console.error('SubscriptionScreen: Failed to cancel subscription:', errorData);
-        setErrorMessage(errorData.error || 'Failed to cancel subscription');
+        console.log('SubscriptionScreen: No purchases found to restore');
+        setErrorMessage('No purchases found to restore');
         setShowErrorModal(true);
       }
-    } catch (error) {
-      console.error('SubscriptionScreen: Error cancelling subscription:', error);
-      setErrorMessage('An error occurred. Please try again.');
+    } catch (error: any) {
+      console.error('SubscriptionScreen: Error restoring purchases:', error);
+      setErrorMessage(error.message || 'Failed to restore purchases');
       setShowErrorModal(true);
     } finally {
-      setSubscribing(false);
+      setRestoring(false);
+    }
+  };
+
+  const handleManageSubscription = () => {
+    console.log('SubscriptionScreen: User tapped manage subscription');
+    if (Platform.OS === 'ios') {
+      Linking.openURL('https://apps.apple.com/account/subscriptions');
+    } else {
+      Linking.openURL('https://play.google.com/store/account/subscriptions');
     }
   };
 
@@ -161,13 +258,13 @@ export default function SubscriptionScreen() {
   const coinsLimitText = status.limits.maxCoins ? `${status.limits.maxCoins}` : 'Unlimited';
   const tradesUsedText = `${status.tradesInitiatedThisMonth}`;
   const tradesLimitText = status.limits.maxTrades ? `${status.limits.maxTrades}` : 'Unlimited';
+  const displayPrice = product?.localizedPrice || '$2.99';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Stack.Screen options={{ title: 'Subscription', headerShown: true }} />
       
       <ScrollView>
-        {/* Current Status Card */}
         <View style={styles.statusCard}>
           <View style={styles.statusHeader}>
             <View style={styles.statusBadge}>
@@ -190,7 +287,6 @@ export default function SubscriptionScreen() {
               : 'Upgrade to Premium for unlimited coins and trades'}
           </Text>
 
-          {/* Usage Stats */}
           <View style={styles.usageSection}>
             <Text style={styles.usageSectionTitle}>This Month</Text>
             
@@ -230,7 +326,6 @@ export default function SubscriptionScreen() {
           </View>
         </View>
 
-        {/* Premium Features */}
         <View style={styles.featuresSection}>
           <Text style={styles.featuresSectionTitle}>Premium Features</Text>
           
@@ -286,60 +381,71 @@ export default function SubscriptionScreen() {
           </View>
         </View>
 
-        {/* Pricing */}
         <View style={styles.pricingCard}>
-          <Text style={styles.pricingAmount}>$2.99</Text>
+          <Text style={styles.pricingAmount}>{displayPrice}</Text>
           <Text style={styles.pricingPeriod}>per month</Text>
           <Text style={styles.pricingNote}>Cancel anytime</Text>
         </View>
 
-        {/* Action Button */}
         {!isPremium ? (
-          <TouchableOpacity
-            style={[styles.subscribeButton, subscribing && styles.subscribeButtonDisabled]}
-            onPress={handleSubscribe}
-            disabled={subscribing}
-          >
-            {subscribing ? (
-              <ActivityIndicator color={colors.background} />
-            ) : (
-              <>
-                <IconSymbol
-                  ios_icon_name="star.fill"
-                  android_material_icon_name="star"
-                  size={20}
-                  color={colors.background}
-                />
-                <Text style={styles.subscribeButtonText}>Upgrade to Premium</Text>
-              </>
-            )}
-          </TouchableOpacity>
+          <>
+            <TouchableOpacity
+              style={[styles.subscribeButton, subscribing && styles.subscribeButtonDisabled]}
+              onPress={handleSubscribe}
+              disabled={subscribing}
+            >
+              {subscribing ? (
+                <ActivityIndicator color={colors.background} />
+              ) : (
+                <>
+                  <IconSymbol
+                    ios_icon_name="star.fill"
+                    android_material_icon_name="star"
+                    size={20}
+                    color={colors.background}
+                  />
+                  <Text style={styles.subscribeButtonText}>Upgrade to Premium</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.restoreButton, restoring && styles.restoreButtonDisabled]}
+              onPress={handleRestorePurchases}
+              disabled={restoring}
+            >
+              {restoring ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : (
+                <Text style={styles.restoreButtonText}>Restore Purchases</Text>
+              )}
+            </TouchableOpacity>
+          </>
         ) : (
           <TouchableOpacity
-            style={[styles.cancelButton, subscribing && styles.cancelButtonDisabled]}
-            onPress={handleCancelSubscription}
-            disabled={subscribing}
+            style={styles.manageButton}
+            onPress={handleManageSubscription}
           >
-            {subscribing ? (
-              <ActivityIndicator color={colors.error} />
-            ) : (
-              <Text style={styles.cancelButtonText}>Cancel Subscription</Text>
-            )}
+            <IconSymbol
+              ios_icon_name="gear"
+              android_material_icon_name="settings"
+              size={20}
+              color={colors.primary}
+            />
+            <Text style={styles.manageButtonText}>Manage Subscription</Text>
           </TouchableOpacity>
         )}
 
-        {/* Free Tier Info */}
         {!isPremium && (
           <View style={styles.freeTierInfo}>
             <Text style={styles.freeTierTitle}>Free Tier Limits</Text>
-            <Text style={styles.freeTierText}>• {status.limits.maxCoins || 25} coin uploads per month</Text>
-            <Text style={styles.freeTierText}>• {status.limits.maxTrades || 1} trade initiation{(status.limits.maxTrades || 1) === 1 ? '' : 's'} per month</Text>
-            <Text style={styles.freeTierText}>• Limits reset on the 1st of each month</Text>
+            <Text style={styles.freeTierText}>• {status.limits.maxCoins || 25} coin uploads total</Text>
+            <Text style={styles.freeTierText}>• {status.limits.maxTrades || 1} trade per month</Text>
+            <Text style={styles.freeTierText}>• Trade limit resets on the 1st of each month</Text>
           </View>
         )}
       </ScrollView>
 
-      {/* Success Modal */}
       <Modal
         visible={showSuccessModal}
         transparent
@@ -371,7 +477,6 @@ export default function SubscriptionScreen() {
         </View>
       </Modal>
 
-      {/* Error Modal */}
       <Modal
         visible={showErrorModal}
         transparent
@@ -611,23 +716,41 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: colors.background,
   },
-  cancelButton: {
+  restoreButton: {
     margin: 16,
     marginTop: 0,
     padding: 16,
     backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.error,
+    borderColor: colors.border,
     alignItems: 'center',
   },
-  cancelButtonDisabled: {
+  restoreButtonDisabled: {
     opacity: 0.6,
   },
-  cancelButtonText: {
+  restoreButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.error,
+    color: colors.primary,
+  },
+  manageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    margin: 16,
+    marginTop: 0,
+    padding: 16,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    gap: 8,
+  },
+  manageButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.primary,
   },
   freeTierInfo: {
     margin: 16,

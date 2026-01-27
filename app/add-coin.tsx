@@ -15,34 +15,38 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { IconSymbol } from '@/components/IconSymbol';
 import * as ImagePicker from 'expo-image-picker';
-import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
+import { IconSymbol } from '@/components/IconSymbol';
 import { authenticatedFetch, authenticatedUpload } from '@/utils/api';
 import Constants from 'expo-constants';
+import { colors } from '@/styles/commonStyles';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 
 export default function AddCoinScreen() {
+  const { user } = useAuth();
+  const router = useRouter();
   const [title, setTitle] = useState('');
-  const [agency, setAgency] = useState('');
-  const [unit, setUnit] = useState('');
-  const [coinNumber, setCoinNumber] = useState('');
-  const [deployment, setDeployment] = useState('');
   const [country, setCountry] = useState('');
   const [year, setYear] = useState('');
+  const [unit, setUnit] = useState('');
+  const [organization, setOrganization] = useState('');
+  const [agency, setAgency] = useState('');
+  const [deployment, setDeployment] = useState('');
+  const [coinNumber, setCoinNumber] = useState('');
+  const [mintMark, setMintMark] = useState('');
+  const [condition, setCondition] = useState('');
+  const [description, setDescription] = useState('');
   const [version, setVersion] = useState('');
   const [manufacturer, setManufacturer] = useState('');
-  const [description, setDescription] = useState('');
+  const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [tradeStatus, setTradeStatus] = useState<'not_for_trade' | 'open_to_trade'>('not_for_trade');
   const [images, setImages] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [checkingLimit, setCheckingLimit] = useState(true);
   const [canUpload, setCanUpload] = useState(true);
-  const [limitMessage, setLimitMessage] = useState('');
-  const router = useRouter();
-  const { user } = useAuth();
+  const [uploadLimit, setUploadLimit] = useState<{ coinsUploadedThisMonth: number; limit: number | null } | null>(null);
 
   useEffect(() => {
     checkUploadLimit();
@@ -53,18 +57,20 @@ export default function AddCoinScreen() {
     setCheckingLimit(true);
     try {
       const response = await authenticatedFetch(`${API_URL}/api/subscription/can-upload-coin`);
-
       if (response.ok) {
         const data = await response.json();
         console.log('AddCoinScreen: Upload limit check result:', data);
         setCanUpload(data.canUpload);
+        setUploadLimit({
+          coinsUploadedThisMonth: data.coinsUploadedThisMonth,
+          limit: data.limit,
+        });
+
         if (!data.canUpload) {
-          const limitText = data.limit ? `${data.limit}` : 'unlimited';
-          const message = `You've reached your monthly limit of ${limitText} coin uploads. ${data.reason || 'Upgrade to Premium for unlimited uploads.'}`;
-          setLimitMessage(message);
+          console.log('AddCoinScreen: User has reached upload limit');
         }
       } else {
-        console.error('AddCoinScreen: Failed to check upload limit, status:', response.status);
+        console.error('AddCoinScreen: Failed to check upload limit');
       }
     } catch (error) {
       console.error('AddCoinScreen: Error checking upload limit:', error);
@@ -76,183 +82,91 @@ export default function AddCoinScreen() {
   const pickImages = async () => {
     console.log('AddCoinScreen: User tapped pick images');
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
+      mediaTypes: 'images',
       allowsMultipleSelection: true,
       quality: 0.8,
     });
 
-    if (!result.canceled) {
-      const newImages = result.assets.map(asset => asset.uri);
-      console.log('AddCoinScreen: Selected', newImages.length, 'images');
+    if (!result.canceled && result.assets) {
+      const newImages = result.assets.map((asset) => asset.uri);
       setImages([...images, ...newImages]);
+      console.log('AddCoinScreen: Images selected:', newImages.length);
     }
   };
 
   const takePhoto = async () => {
     console.log('AddCoinScreen: User tapped take photo');
     const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: 'images',
       quality: 0.8,
     });
 
-    if (!result.canceled) {
-      console.log('AddCoinScreen: Photo taken');
+    if (!result.canceled && result.assets && result.assets[0]) {
       setImages([...images, result.assets[0].uri]);
+      console.log('AddCoinScreen: Photo taken');
     }
   };
 
   const removeImage = (index: number) => {
-    console.log('AddCoinScreen: Removing image at index', index);
+    console.log('AddCoinScreen: Removing image at index:', index);
     setImages(images.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async () => {
-    console.log('AddCoinScreen: User tapped save button');
-    
-    // Check upload limit first
-    if (!canUpload) {
-      console.log('AddCoinScreen: Upload limit reached');
-      Alert.alert(
-        'Upload Limit Reached',
-        limitMessage,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Upgrade to Premium', 
-            onPress: () => router.push('/subscription')
-          }
-        ]
-      );
-      return;
-    }
-    
-    // Validate required fields
-    if (!agency || !country || !year) {
-      console.log('AddCoinScreen: Missing required fields');
-      Alert.alert('Error', 'Please fill in Agency, Country, and Year (all are required)');
+    console.log('AddCoinScreen: User tapped submit button');
+
+    if (!title.trim() || !country.trim() || !year.trim()) {
+      Alert.alert('Missing Information', 'Please fill in title, country, and year');
       return;
     }
 
     if (images.length === 0) {
-      console.log('AddCoinScreen: No images selected');
-      Alert.alert('Error', 'Please add at least one image');
+      Alert.alert('No Images', 'Please add at least one image of your coin');
       return;
     }
 
-    // Verify user is logged in
-    if (!user) {
-      console.error('AddCoinScreen: No user found');
-      Alert.alert('Error', 'You must be logged in to add a coin');
-      router.push('/auth');
-      return;
-    }
-
-    console.log('AddCoinScreen: User is logged in:', user.id);
-    console.log('AddCoinScreen: Creating coin with data:', { 
-      title, 
-      agency, 
-      unit, 
-      coinNumber, 
-      deployment, 
-      country, 
-      year, 
-      version, 
-      manufacturer, 
-      description, 
-      tradeStatus 
-    });
-    
-    setLoading(true);
+    setUploading(true);
 
     try {
-      // Create coin with all fields
-      const coinData = {
-        title: title || `${agency} Coin`,
-        agency,
-        unit: unit || undefined,
-        coinNumber: coinNumber || undefined,
-        deployment: deployment || undefined,
-        country,
-        year: parseInt(year),
-        version: version || undefined,
-        manufacturer: manufacturer || undefined,
-        description: description || undefined,
-        visibility: 'public',
-        tradeStatus,
-      };
+      const formData = new FormData();
+      formData.append('title', title.trim());
+      formData.append('country', country.trim());
+      formData.append('year', year.trim());
+      if (unit.trim()) formData.append('unit', unit.trim());
+      if (organization.trim()) formData.append('organization', organization.trim());
+      if (agency.trim()) formData.append('agency', agency.trim());
+      if (deployment.trim()) formData.append('deployment', deployment.trim());
+      if (coinNumber.trim()) formData.append('coinNumber', coinNumber.trim());
+      if (mintMark.trim()) formData.append('mintMark', mintMark.trim());
+      if (condition.trim()) formData.append('condition', condition.trim());
+      if (description.trim()) formData.append('description', description.trim());
+      if (version.trim()) formData.append('version', version.trim());
+      if (manufacturer.trim()) formData.append('manufacturer', manufacturer.trim());
+      formData.append('visibility', visibility);
+      formData.append('tradeStatus', tradeStatus);
 
-      console.log('AddCoinScreen: Sending coin data to backend:', coinData);
+      images.forEach((imageUri, index) => {
+        const filename = imageUri.split('/').pop() || `image_${index}.jpg`;
+        const match = /\.(\w+)$/.exec(filename);
+        const type = match ? `image/${match[1]}` : 'image/jpeg';
 
-      const coinResponse = await authenticatedFetch('/api/coins', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(coinData),
+        formData.append('images', {
+          uri: imageUri,
+          name: filename,
+          type,
+        } as any);
       });
 
-      console.log('AddCoinScreen: Coin creation response status:', coinResponse.status);
+      console.log('AddCoinScreen: Uploading coin data');
+      const response = await authenticatedUpload(`${API_URL}/api/coins`, {
+        method: 'POST',
+        body: formData,
+      });
 
-      if (!coinResponse.ok) {
-        const errorText = await coinResponse.text();
-        console.error('AddCoinScreen: Failed to create coin, status:', coinResponse.status, 'error:', errorText);
-        
-        if (coinResponse.status === 401) {
-          Alert.alert('Authentication Error', 'Your session has expired. Please sign in again.');
-          router.push('/auth');
-          return;
-        }
-        
-        throw new Error(`Failed to create coin: ${errorText}`);
-      }
+      if (response.ok) {
+        const data = await response.json();
+        console.log('AddCoinScreen: Coin created successfully:', data);
 
-      const responseData = await coinResponse.json();
-      const coin = responseData.coin || responseData;
-      console.log('AddCoinScreen: Coin created with ID:', coin.id);
-
-      // Upload images
-      let uploadedCount = 0;
-      let failedCount = 0;
-      
-      for (let i = 0; i < images.length; i++) {
-        console.log('AddCoinScreen: Uploading image', i + 1, 'of', images.length);
-        
-        try {
-          const formData = new FormData();
-          const uri = images[i];
-          const filename = uri.split('/').pop() || 'image.jpg';
-          const match = /\.(\w+)$/.exec(filename);
-          const type = match ? `image/${match[1]}` : 'image/jpeg';
-
-          formData.append('image', {
-            uri,
-            name: filename,
-            type,
-          } as any);
-
-          formData.append('orderIndex', i.toString());
-
-          const imageResponse = await authenticatedUpload(`/api/coins/${coin.id}/images`, formData);
-
-          console.log('AddCoinScreen: Image', i + 1, 'upload response status:', imageResponse.status);
-
-          if (!imageResponse.ok) {
-            const errorText = await imageResponse.text();
-            console.error('AddCoinScreen: Failed to upload image', i + 1, 'error:', errorText);
-            failedCount++;
-          } else {
-            console.log('AddCoinScreen: Image', i + 1, 'uploaded successfully');
-            uploadedCount++;
-          }
-        } catch (error) {
-          console.error('AddCoinScreen: Error uploading image', i + 1, ':', error);
-          failedCount++;
-        }
-      }
-
-      console.log('AddCoinScreen: Upload complete -', uploadedCount, 'succeeded,', failedCount, 'failed');
-
-      // Track the coin upload
-      try {
         await authenticatedFetch(`${API_URL}/api/subscription/track-coin-upload`, {
           method: 'POST',
           headers: {
@@ -261,271 +175,324 @@ export default function AddCoinScreen() {
           body: JSON.stringify({}),
         });
         console.log('AddCoinScreen: Coin upload tracked');
-      } catch (error) {
-        console.error('AddCoinScreen: Error tracking coin upload:', error);
-      }
 
-      if (uploadedCount > 0) {
-        const message = failedCount > 0 
-          ? `Coin added! ${uploadedCount} image(s) uploaded successfully, ${failedCount} failed.`
-          : 'Coin added successfully!';
-        
-        Alert.alert('Success', message, [
-          { text: 'OK', onPress: () => router.back() },
+        Alert.alert('Success', 'Your coin has been added!', [
+          {
+            text: 'OK',
+            onPress: () => router.back(),
+          },
         ]);
       } else {
-        Alert.alert(
-          'Partial Success',
-          'Coin was created but all images failed to upload. You can edit the coin to add images later.',
-          [{ text: 'OK', onPress: () => router.back() }]
-        );
+        const errorData = await response.json();
+        console.error('AddCoinScreen: Failed to create coin:', errorData);
+        Alert.alert('Error', errorData.error || 'Failed to add coin');
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('AddCoinScreen: Error creating coin:', error);
-      Alert.alert('Error', error.message || 'Failed to create coin');
+      Alert.alert('Error', 'An error occurred while adding your coin');
     } finally {
-      setLoading(false);
+      setUploading(false);
     }
   };
 
-  return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: 'Add Coin',
-          headerBackTitle: 'Cancel',
-          headerRight: () => (
-            <TouchableOpacity onPress={handleSubmit} disabled={loading}>
-              {loading ? (
-                <ActivityIndicator color={colors.primary} />
-              ) : (
-                <Text style={styles.saveButton}>Save</Text>
-              )}
-            </TouchableOpacity>
-          ),
-        }}
-      />
+  if (checkingLimit) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <Stack.Screen options={{ title: 'Add Coin', headerShown: true }} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Checking upload limit...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardAvoid}
-        keyboardVerticalOffset={100}
-      >
-        <ScrollView 
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-        >
-        {checkingLimit && (
-          <View style={styles.checkingBanner}>
-            <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={styles.checkingText}>Checking upload limit...</Text>
-          </View>
-        )}
+  if (!canUpload && uploadLimit) {
+    const limitText = uploadLimit.limit ? `${uploadLimit.limit}` : 'unlimited';
+    const uploadedText = `${uploadLimit.coinsUploadedThisMonth}`;
 
-        {!checkingLimit && !canUpload && (
-          <View style={styles.limitBanner}>
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <Stack.Screen options={{ title: 'Add Coin', headerShown: true }} />
+        <View style={styles.limitReachedContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="warning"
+            size={64}
+            color={colors.error}
+          />
+          <Text style={styles.limitReachedTitle}>Upload Limit Reached</Text>
+          <Text style={styles.limitReachedText}>
+            You have uploaded {uploadedText} of {limitText} coins this month.
+          </Text>
+          <Text style={styles.limitReachedSubtext}>
+            Upgrade to Premium for unlimited coin uploads!
+          </Text>
+          <TouchableOpacity
+            style={styles.upgradeButton}
+            onPress={() => router.push('/subscription')}
+          >
             <IconSymbol
-              ios_icon_name="exclamationmark.triangle.fill"
-              android_material_icon_name="warning"
+              ios_icon_name="star.fill"
+              android_material_icon_name="star"
               size={20}
-              color={colors.error}
+              color={colors.background}
             />
-            <View style={styles.limitBannerContent}>
-              <Text style={styles.limitBannerText}>{limitMessage}</Text>
-              <TouchableOpacity onPress={() => router.push('/subscription')}>
-                <Text style={styles.upgradeLinkText}>Upgrade to Premium →</Text>
+            <Text style={styles.upgradeButtonText}>Upgrade to Premium</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.backButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <Stack.Screen options={{ title: 'Add Coin', headerShown: true }} />
+      
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <ScrollView style={styles.scrollView}>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Images *</Text>
+            <View style={styles.imageGrid}>
+              {images.map((uri, index) => (
+                <View key={index} style={styles.imageContainer}>
+                  <Image source={{ uri }} style={styles.image} />
+                  <TouchableOpacity
+                    style={styles.removeImageButton}
+                    onPress={() => removeImage(index)}
+                  >
+                    <IconSymbol
+                      ios_icon_name="xmark.circle.fill"
+                      android_material_icon_name="cancel"
+                      size={24}
+                      color={colors.error}
+                    />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity style={styles.addImageButton} onPress={pickImages}>
+                <IconSymbol
+                  ios_icon_name="photo"
+                  android_material_icon_name="photo"
+                  size={32}
+                  color={colors.textSecondary}
+                />
+                <Text style={styles.addImageText}>Add Photos</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.addImageButton} onPress={takePhoto}>
+                <IconSymbol
+                  ios_icon_name="camera"
+                  android_material_icon_name="camera"
+                  size={32}
+                  color={colors.textSecondary}
+                />
+                <Text style={styles.addImageText}>Take Photo</Text>
               </TouchableOpacity>
             </View>
           </View>
-        )}
 
-        <View style={styles.section}>
-          <Text style={styles.label}>Images *</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
-            {images.map((uri, index) => (
-              <View key={index} style={styles.imageContainer}>
-                <Image source={{ uri }} style={styles.image} />
-                <TouchableOpacity
-                  style={styles.removeButton}
-                  onPress={() => removeImage(index)}
-                >
-                  <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="cancel" size={24} color={colors.error} />
-                </TouchableOpacity>
-              </View>
-            ))}
-            <TouchableOpacity style={styles.addImageButton} onPress={pickImages}>
-              <IconSymbol ios_icon_name="photo" android_material_icon_name="photo-library" size={32} color={colors.textSecondary} />
-              <Text style={styles.addImageText}>Add Photos</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.addImageButton} onPress={takePhoto}>
-              <IconSymbol ios_icon_name="camera" android_material_icon_name="camera-alt" size={32} color={colors.textSecondary} />
-              <Text style={styles.addImageText}>Take Photo</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.label}>Agency * (Required)</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g., U.S. Navy, U.S. Army, FBI"
-            placeholderTextColor={colors.textSecondary}
-            value={agency}
-            onChangeText={setAgency}
-          />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.label}>Unit</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g., 1st Battalion, 5th Regiment"
-            placeholderTextColor={colors.textSecondary}
-            value={unit}
-            onChangeText={setUnit}
-          />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.label}>Coin Number</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g., #123, Serial 456"
-            placeholderTextColor={colors.textSecondary}
-            value={coinNumber}
-            onChangeText={setCoinNumber}
-          />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.label}>Deployment</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g., Operation Desert Storm, Afghanistan 2010"
-            placeholderTextColor={colors.textSecondary}
-            value={deployment}
-            onChangeText={setDeployment}
-          />
-        </View>
-
-        <View style={styles.row}>
-          <View style={[styles.section, styles.flex]}>
-            <Text style={styles.label}>Country * (Required)</Text>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Basic Information</Text>
             <TextInput
               style={styles.input}
-              placeholder="USA"
+              placeholder="Title *"
+              placeholderTextColor={colors.textSecondary}
+              value={title}
+              onChangeText={setTitle}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Country *"
               placeholderTextColor={colors.textSecondary}
               value={country}
               onChangeText={setCountry}
             />
-          </View>
-
-          <View style={[styles.section, styles.flex]}>
-            <Text style={styles.label}>Year * (Required)</Text>
             <TextInput
               style={styles.input}
-              placeholder="2024"
+              placeholder="Year *"
               placeholderTextColor={colors.textSecondary}
               value={year}
               onChangeText={setYear}
-              keyboardType="number-pad"
+              keyboardType="numeric"
             />
           </View>
-        </View>
 
-        <View style={styles.section}>
-          <Text style={styles.label}>Version</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g., Limited Edition, Version 2.0"
-            placeholderTextColor={colors.textSecondary}
-            value={version}
-            onChangeText={setVersion}
-          />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.label}>Manufacturer</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g., Northwest Territorial Mint"
-            placeholderTextColor={colors.textSecondary}
-            value={manufacturer}
-            onChangeText={setManufacturer}
-          />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.label}>Additional Information</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            placeholder="Tell us more about this coin..."
-            placeholderTextColor={colors.textSecondary}
-            value={description}
-            onChangeText={setDescription}
-            multiline
-            numberOfLines={4}
-          />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.label}>Trade Status</Text>
-          <View style={styles.tradeOptions}>
-            <TouchableOpacity
-              style={[
-                styles.tradeOption,
-                tradeStatus === 'not_for_trade' && styles.tradeOptionActive,
-              ]}
-              onPress={() => {
-                console.log('AddCoinScreen: Set trade status to not_for_trade');
-                setTradeStatus('not_for_trade');
-              }}
-            >
-              <IconSymbol
-                ios_icon_name="lock.fill"
-                android_material_icon_name="lock"
-                size={20}
-                color={tradeStatus === 'not_for_trade' ? colors.primary : colors.textSecondary}
-              />
-              <Text
-                style={[
-                  styles.tradeOptionText,
-                  tradeStatus === 'not_for_trade' && styles.tradeOptionTextActive,
-                ]}
-              >
-                Not for Trade
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.tradeOption,
-                tradeStatus === 'open_to_trade' && styles.tradeOptionActive,
-              ]}
-              onPress={() => {
-                console.log('AddCoinScreen: Set trade status to open_to_trade');
-                setTradeStatus('open_to_trade');
-              }}
-            >
-              <IconSymbol
-                ios_icon_name="arrow.2.squarepath"
-                android_material_icon_name="sync"
-                size={20}
-                color={tradeStatus === 'open_to_trade' ? colors.success : colors.textSecondary}
-              />
-              <Text
-                style={[
-                  styles.tradeOptionText,
-                  tradeStatus === 'open_to_trade' && styles.tradeOptionTextActive,
-                ]}
-              >
-                Open to Trade
-              </Text>
-            </TouchableOpacity>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Additional Details</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Unit"
+              placeholderTextColor={colors.textSecondary}
+              value={unit}
+              onChangeText={setUnit}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Organization"
+              placeholderTextColor={colors.textSecondary}
+              value={organization}
+              onChangeText={setOrganization}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Agency"
+              placeholderTextColor={colors.textSecondary}
+              value={agency}
+              onChangeText={setAgency}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Deployment"
+              placeholderTextColor={colors.textSecondary}
+              value={deployment}
+              onChangeText={setDeployment}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Coin Number"
+              placeholderTextColor={colors.textSecondary}
+              value={coinNumber}
+              onChangeText={setCoinNumber}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Mint Mark"
+              placeholderTextColor={colors.textSecondary}
+              value={mintMark}
+              onChangeText={setMintMark}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Condition"
+              placeholderTextColor={colors.textSecondary}
+              value={condition}
+              onChangeText={setCondition}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Version"
+              placeholderTextColor={colors.textSecondary}
+              value={version}
+              onChangeText={setVersion}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Manufacturer"
+              placeholderTextColor={colors.textSecondary}
+              value={manufacturer}
+              onChangeText={setManufacturer}
+            />
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              placeholder="Description"
+              placeholderTextColor={colors.textSecondary}
+              value={description}
+              onChangeText={setDescription}
+              multiline
+              numberOfLines={4}
+            />
           </View>
-        </View>
-      </ScrollView>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Privacy & Trading</Text>
+            <View style={styles.toggleRow}>
+              <Text style={styles.toggleLabel}>Visibility</Text>
+              <View style={styles.toggleButtons}>
+                <TouchableOpacity
+                  style={[
+                    styles.toggleButton,
+                    visibility === 'public' && styles.toggleButtonActive,
+                  ]}
+                  onPress={() => setVisibility('public')}
+                >
+                  <Text
+                    style={[
+                      styles.toggleButtonText,
+                      visibility === 'public' && styles.toggleButtonTextActive,
+                    ]}
+                  >
+                    Public
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.toggleButton,
+                    visibility === 'private' && styles.toggleButtonActive,
+                  ]}
+                  onPress={() => setVisibility('private')}
+                >
+                  <Text
+                    style={[
+                      styles.toggleButtonText,
+                      visibility === 'private' && styles.toggleButtonTextActive,
+                    ]}
+                  >
+                    Private
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.toggleRow}>
+              <Text style={styles.toggleLabel}>Trade Status</Text>
+              <View style={styles.toggleButtons}>
+                <TouchableOpacity
+                  style={[
+                    styles.toggleButton,
+                    tradeStatus === 'not_for_trade' && styles.toggleButtonActive,
+                  ]}
+                  onPress={() => setTradeStatus('not_for_trade')}
+                >
+                  <Text
+                    style={[
+                      styles.toggleButtonText,
+                      tradeStatus === 'not_for_trade' && styles.toggleButtonTextActive,
+                    ]}
+                  >
+                    Not for Trade
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.toggleButton,
+                    tradeStatus === 'open_to_trade' && styles.toggleButtonActive,
+                  ]}
+                  onPress={() => setTradeStatus('open_to_trade')}
+                >
+                  <Text
+                    style={[
+                      styles.toggleButtonText,
+                      tradeStatus === 'open_to_trade' && styles.toggleButtonTextActive,
+                    ]}
+                  >
+                    Open to Trade
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.submitButton, uploading && styles.submitButtonDisabled]}
+            onPress={handleSubmit}
+            disabled={uploading}
+          >
+            {uploading ? (
+              <ActivityIndicator color={colors.background} />
+            ) : (
+              <Text style={styles.submitButtonText}>Add Coin</Text>
+            )}
+          </TouchableOpacity>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -536,146 +503,173 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  keyboardAvoid: {
+  loadingContainer: {
     flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  content: {
-    padding: 16,
-    paddingBottom: 40,
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: colors.textSecondary,
   },
-  section: {
-    marginBottom: 20,
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  flex: {
+  limitReachedContainer: {
     flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
   },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
+  limitReachedTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
     color: colors.text,
+    marginTop: 16,
     marginBottom: 8,
   },
-  input: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    color: colors.text,
+  limitReachedText: {
     fontSize: 16,
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: 8,
   },
-  textArea: {
-    height: 100,
-    textAlignVertical: 'top',
+  limitReachedSubtext: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 24,
   },
-  imageScroll: {
-    marginTop: 8,
+  upgradeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+    gap: 8,
+    marginBottom: 12,
+  },
+  upgradeButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.background,
+  },
+  backButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+  },
+  backButtonText: {
+    fontSize: 16,
+    color: colors.primary,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  section: {
+    padding: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  imageGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
   },
   imageContainer: {
-    marginRight: 12,
-    position: 'relative',
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    overflow: 'hidden',
   },
   image: {
-    width: 120,
-    height: 120,
-    borderRadius: 8,
-    backgroundColor: colors.border,
+    width: '100%',
+    height: '100%',
   },
-  removeButton: {
+  removeImageButton: {
     position: 'absolute',
-    top: -8,
-    right: -8,
+    top: 4,
+    right: 4,
   },
   addImageButton: {
-    width: 120,
-    height: 120,
+    width: 100,
+    height: 100,
     borderRadius: 8,
     borderWidth: 2,
     borderColor: colors.border,
     borderStyle: 'dashed',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
   },
   addImageText: {
     fontSize: 12,
     color: colors.textSecondary,
     marginTop: 4,
   },
-  saveButton: {
-    color: colors.primary,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  tradeOptions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  tradeOption: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: colors.border,
+  input: {
     backgroundColor: colors.surface,
-  },
-  tradeOptionActive: {
-    borderColor: colors.primary,
-    backgroundColor: `${colors.primary}10`,
-  },
-  tradeOptionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginLeft: 8,
-  },
-  tradeOptionTextActive: {
-    color: colors.text,
-  },
-  checkingBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    backgroundColor: colors.surface,
-    borderRadius: 8,
-    marginBottom: 16,
-    gap: 12,
-  },
-  checkingText: {
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  limitBanner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    padding: 12,
-    backgroundColor: `${colors.error}15`,
-    borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.error,
+    borderColor: colors.border,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: colors.text,
+    marginBottom: 12,
+  },
+  textArea: {
+    height: 100,
+    textAlignVertical: 'top',
+  },
+  toggleRow: {
     marginBottom: 16,
-    gap: 12,
   },
-  limitBannerContent: {
-    flex: 1,
-  },
-  limitBannerText: {
+  toggleLabel: {
     fontSize: 14,
     color: colors.text,
     marginBottom: 8,
   },
-  upgradeLinkText: {
+  toggleButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  toggleButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+  },
+  toggleButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  toggleButtonText: {
     fontSize: 14,
+    color: colors.text,
+  },
+  toggleButtonTextActive: {
+    color: colors.background,
     fontWeight: '600',
-    color: colors.primary,
+  },
+  submitButton: {
+    margin: 16,
+    padding: 16,
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  submitButtonDisabled: {
+    opacity: 0.6,
+  },
+  submitButtonText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.background,
   },
 });
