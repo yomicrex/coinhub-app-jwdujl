@@ -183,6 +183,100 @@ export function registerCoinsRoutes(app: App) {
   });
 
   /**
+   * GET /api/coins/trade-feed
+   * Get coins available for trade (trade_status = 'open_to_trade')
+   * Public endpoint - no authentication required
+   * Returns coins in feed format ordered by creation date
+   */
+  app.fastify.get('/api/coins/trade-feed', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.info({}, 'Fetching trade feed coins');
+
+    try {
+      // Get coins marked as open_to_trade, public visibility, not temporary trade coins
+      const coins = await app.db.query.coins.findMany({
+        where: and(
+          eq(schema.coins.tradeStatus, 'open_to_trade'),
+          eq(schema.coins.visibility, 'public'),
+          eq(schema.coins.isTemporaryTradeCoin, false)
+        ),
+        with: {
+          user: { columns: { id: true, username: true, displayName: true, avatarUrl: true } },
+          images: { orderBy: (img) => img.orderIndex },
+          likes: { columns: { userId: true } },
+          comments: { columns: { id: true } },
+        },
+        orderBy: (coin) => coin.createdAt,
+        limit: 20,
+      });
+
+      app.logger.info({ count: coins.length }, 'Trade feed coins fetched');
+
+      // Generate signed URLs for images and avatars
+      const coinsWithUrls = await Promise.all(
+        coins.map(async (coin) => {
+          // Generate signed URLs for coin images
+          const imagesWithUrls = await Promise.all(
+            coin.images.map(async (img) => {
+              try {
+                const { url } = await app.storage.getSignedUrl(img.url);
+                return {
+                  url,
+                  orderIndex: img.orderIndex,
+                };
+              } catch (urlError) {
+                app.logger.warn({ err: urlError, imageId: img.id }, 'Failed to generate signed URL');
+                return {
+                  url: null,
+                  orderIndex: img.orderIndex,
+                };
+              }
+            })
+          );
+
+          // Generate signed URL for user avatar
+          let userAvatarUrl = coin.user.avatarUrl;
+          if (userAvatarUrl) {
+            try {
+              const { url } = await app.storage.getSignedUrl(userAvatarUrl);
+              userAvatarUrl = url;
+            } catch (urlError) {
+              app.logger.warn({ err: urlError, userId: coin.user.id }, 'Failed to generate avatar signed URL');
+              userAvatarUrl = null;
+            }
+          }
+
+          return {
+            id: coin.id,
+            title: coin.title,
+            country: coin.country,
+            year: coin.year,
+            unit: coin.unit,
+            agency: coin.agency,
+            images: imagesWithUrls,
+            user: {
+              id: coin.user.id,
+              username: coin.user.username,
+              displayName: coin.user.displayName,
+              avatarUrl: userAvatarUrl,
+            },
+            likeCount: coin.likes.length,
+            commentCount: coin.comments.length,
+            tradeStatus: coin.tradeStatus,
+            createdAt: coin.createdAt,
+          };
+        })
+      );
+
+      return {
+        coins: coinsWithUrls,
+      };
+    } catch (error) {
+      app.logger.error({ err: error }, 'Failed to fetch trade feed');
+      throw error;
+    }
+  });
+
+  /**
    * GET /api/coins/:id
    * Get a single coin with full details
    */
