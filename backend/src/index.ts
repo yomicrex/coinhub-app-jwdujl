@@ -48,6 +48,79 @@ try {
   throw error;
 }
 
+// Configure CORS for Better Auth to accept requests from mobile apps and development
+// This must be registered as a plugin BEFORE app.run()
+try {
+  const trustedOrigins: (string | RegExp)[] = [
+    // Development
+    'http://localhost:3000',
+    'http://localhost:8081',
+    'http://localhost:8082',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:8081',
+
+    // Expo Go mobile app
+    'exp://',
+    'exps://',
+
+    // Production backend
+    'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev',
+
+    // Mobile app origins
+    'capacitor://',
+    'ionic://',
+
+    // Allow any origin containing 'localhost' or '127.0.0.1'
+    /localhost/,
+    /127\.0\.0\.1/,
+  ];
+
+  // Add custom origins from environment variable if provided
+  if (process.env.TRUSTED_ORIGINS) {
+    const customOrigins = process.env.TRUSTED_ORIGINS.split(',').map((o) => o.trim());
+    trustedOrigins.push(...customOrigins);
+    app.logger.info({ customOrigins }, 'Added custom trusted origins from environment');
+  }
+
+  // Register CORS middleware for Better Auth endpoints
+  await app.fastify.register(async (fastifyInstance) => {
+    fastifyInstance.addHook('onRequest', async (request, reply) => {
+      const origin = request.headers.origin || request.headers.referer;
+
+      if (!origin) {
+        return; // No origin header, skip CORS check
+      }
+
+      // Check if origin is trusted
+      const isTrusted = trustedOrigins.some((trustedOrigin) => {
+        if (trustedOrigin instanceof RegExp) {
+          return trustedOrigin.test(origin);
+        }
+        return origin.startsWith(trustedOrigin);
+      });
+
+      if (isTrusted) {
+        reply.header('Access-Control-Allow-Origin', origin);
+        reply.header('Access-Control-Allow-Credentials', 'true');
+        reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+        reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      }
+
+      if (request.method === 'OPTIONS') {
+        return reply.status(200).send();
+      }
+    });
+  });
+
+  app.logger.info(
+    { originCount: trustedOrigins.length },
+    'CORS configured for trusted origins'
+  );
+} catch (error) {
+  app.logger.error({ err: error }, 'Failed to configure CORS');
+  throw error;
+}
+
 // Initialize storage system for file uploads
 try {
   app.logger.info('Initializing storage system');
