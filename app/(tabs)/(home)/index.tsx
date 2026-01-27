@@ -107,13 +107,11 @@ export default function HomeScreen() {
       return;
     }
     
-    // Find the coin to get its current like state
     const coin = coins.find(c => c.id === coinId);
     if (!coin) return;
     
     const wasLiked = coin.isLiked || false;
     
-    // Optimistically update UI
     setCoins(prevCoins => 
       prevCoins.map(c => 
         c.id === coinId 
@@ -130,12 +128,10 @@ export default function HomeScreen() {
       const method = wasLiked ? 'DELETE' : 'POST';
       console.log('HomeScreen: Sending', method, 'request to /api/coins/' + coinId + '/like');
       
-      // FIXED: Don't set Content-Type for DELETE requests to avoid empty body error
       const fetchOptions: RequestInit = {
         method,
       };
       
-      // Only add headers and body for POST requests
       if (method === 'POST') {
         fetchOptions.headers = {
           'Content-Type': 'application/json',
@@ -155,7 +151,6 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('HomeScreen: Error liking coin:', error);
       
-      // Revert optimistic update
       setCoins(prevCoins => 
         prevCoins.map(c => 
           c.id === coinId 
@@ -181,7 +176,6 @@ export default function HomeScreen() {
       return;
     }
     
-    // FIXED: Open comment modal instead of navigating
     setSelectedCoinId(coinId);
     setShowCommentModal(true);
   };
@@ -211,7 +205,6 @@ export default function HomeScreen() {
 
       console.log('HomeScreen: Comment submitted successfully');
       
-      // Update comment count optimistically
       setCoins(prevCoins => 
         prevCoins.map(c => 
           c.id === selectedCoinId 
@@ -220,7 +213,6 @@ export default function HomeScreen() {
         )
       );
       
-      // Close modal and reset
       setShowCommentModal(false);
       setCommentText('');
       setSelectedCoinId(null);
@@ -355,13 +347,13 @@ export default function HomeScreen() {
         <Text style={styles.headerTitle}>🪙 CoinHub</Text>
         <View style={styles.headerActions}>
           <TouchableOpacity onPress={handleSearchCoins} style={styles.headerButton}>
-            <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={24} color={colors.text} />
+            <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={24} color="#FFD700" />
           </TouchableOpacity>
           <TouchableOpacity onPress={handleSearchUsers} style={styles.headerButton}>
-            <IconSymbol ios_icon_name="person.2" android_material_icon_name="group" size={24} color={colors.text} />
+            <IconSymbol ios_icon_name="person.2" android_material_icon_name="group" size={24} color="#FFD700" />
           </TouchableOpacity>
           <TouchableOpacity onPress={handleAddCoin} style={styles.headerButton}>
-            <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add-circle" size={28} color={colors.primary} />
+            <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add-circle" size={28} color="#FFD700" />
           </TouchableOpacity>
         </View>
       </View>
@@ -386,7 +378,6 @@ export default function HomeScreen() {
         contentContainerStyle={coins.length === 0 ? styles.emptyList : undefined}
       />
 
-      {/* Comment Modal */}
       <Modal
         visible={showCommentModal}
         animationType="slide"

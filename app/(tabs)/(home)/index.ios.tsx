@@ -1,12 +1,10 @@
 
-import { useAuth } from '@/contexts/AuthContext';
-import { IconSymbol } from '@/components/IconSymbol';
-import { useRouter } from 'expo-router';
-import { colors } from '@/styles/commonStyles';
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { authenticatedFetch, API_URL } from '@/utils/api';
+import { IconSymbol } from '@/components/IconSymbol';
 import {
   View,
   Text,
@@ -26,6 +24,8 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { colors } from '@/styles/commonStyles';
 
 interface Coin {
   id: string;
@@ -53,8 +53,6 @@ interface Coin {
   isLiked?: boolean;
 }
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
 export default function FeedScreen() {
   const { user } = useAuth();
   const router = useRouter();
@@ -62,7 +60,7 @@ export default function FeedScreen() {
   const [tradeCoins, setTradeCoins] = useState<Coin[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [imageScrollPositions, setImageScrollPositions] = useState<{ [key: string]: number }>({});
+  const [activeImageIndices, setActiveImageIndices] = useState<{ [key: string]: number }>({});
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [selectedCoinId, setSelectedCoinId] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
@@ -75,14 +73,12 @@ export default function FeedScreen() {
         credentials: 'include',
       });
 
-      console.log('FeedScreen: Feed response status:', response.status);
-
       if (response.ok) {
         const data = await response.json();
         console.log('FeedScreen: Fetched', data.coins?.length || 0, 'coins');
         setCoins(data.coins || []);
       } else {
-        console.error('FeedScreen: Failed to fetch coins, status:', response.status);
+        console.error('FeedScreen: Failed to fetch coins');
         setCoins([]);
       }
     } catch (error) {
@@ -94,38 +90,25 @@ export default function FeedScreen() {
   }, []);
 
   const fetchTradeCoins = useCallback(async () => {
-    console.log('FeedScreen: Fetching coins up for trade');
+    console.log('FeedScreen: Fetching trade coins');
     try {
-      const response = await fetch(`${API_URL}/api/coins/feed/trade`, {
+      const response = await fetch(`${API_URL}/api/coins/trade-feed`, {
         credentials: 'include',
       });
-
-      console.log('FeedScreen: Trade feed response status:', response.status);
 
       if (response.ok) {
         const data = await response.json();
         console.log('FeedScreen: Fetched', data.coins?.length || 0, 'trade coins');
-        
-        // Filter out user's own coins as an extra safety measure
-        const filteredCoins = (data.coins || []).filter((coin: Coin) => {
-          const isOwnCoin = user && coin.user.id === user.id;
-          if (isOwnCoin) {
-            console.log('FeedScreen: Filtering out user\'s own coin:', coin.id, coin.title);
-          }
-          return !isOwnCoin;
-        });
-        
-        console.log('FeedScreen: After filtering own coins:', filteredCoins.length, 'trade coins remaining');
-        setTradeCoins(filteredCoins);
+        setTradeCoins(data.coins || []);
       } else {
-        console.error('FeedScreen: Failed to fetch trade coins, status:', response.status);
+        console.error('FeedScreen: Failed to fetch trade coins');
         setTradeCoins([]);
       }
     } catch (error) {
       console.error('FeedScreen: Error fetching trade coins:', error);
       setTradeCoins([]);
     }
-  }, [user]);
+  }, []);
 
   useEffect(() => {
     console.log('FeedScreen: Component mounted, user:', user?.username);
@@ -133,12 +116,12 @@ export default function FeedScreen() {
     fetchTradeCoins();
   }, [fetchCoins, fetchTradeCoins, user?.username]);
 
-  const onRefresh = useCallback(async () => {
+  const onRefresh = async () => {
     console.log('FeedScreen: User pulled to refresh');
     setRefreshing(true);
     await Promise.all([fetchCoins(), fetchTradeCoins()]);
     setRefreshing(false);
-  }, [fetchCoins, fetchTradeCoins]);
+  };
 
   const handleLike = async (coinId: string) => {
     console.log('FeedScreen: User tapped like button for coin:', coinId);
@@ -149,21 +132,18 @@ export default function FeedScreen() {
       return;
     }
     
-    // Find the coin to get its current like state
     const coin = coins.find(c => c.id === coinId);
     if (!coin) return;
     
     const wasLiked = coin.isLiked || false;
     
-    // Optimistically update UI
     setCoins(prevCoins => 
       prevCoins.map(c => 
         c.id === coinId 
           ? { 
               ...c, 
               isLiked: !wasLiked,
-              likeCount: wasLiked ? (c.likeCount || c.like_count || 1) - 1 : (c.likeCount || c.like_count || 0) + 1,
-              like_count: wasLiked ? (c.likeCount || c.like_count || 1) - 1 : (c.likeCount || c.like_count || 0) + 1
+              likeCount: wasLiked ? (c.likeCount || 1) - 1 : (c.likeCount || 0) + 1
             }
           : c
       )
@@ -171,14 +151,10 @@ export default function FeedScreen() {
     
     try {
       const method = wasLiked ? 'DELETE' : 'POST';
-      console.log('FeedScreen: Sending', method, 'request to /api/coins/' + coinId + '/like');
-      
-      // Don't set Content-Type for DELETE requests to avoid empty body error
       const fetchOptions: RequestInit = {
         method,
       };
       
-      // Only add headers and body for POST requests
       if (method === 'POST') {
         fetchOptions.headers = {
           'Content-Type': 'application/json',
@@ -189,24 +165,18 @@ export default function FeedScreen() {
       const response = await authenticatedFetch(`/api/coins/${coinId}/like`, fetchOptions);
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('FeedScreen: Failed to like coin, status:', response.status, 'error:', errorText);
         throw new Error('Failed to toggle like');
       }
-      
-      console.log('FeedScreen: Like toggled successfully');
     } catch (error) {
       console.error('FeedScreen: Error liking coin:', error);
       
-      // Revert optimistic update
       setCoins(prevCoins => 
         prevCoins.map(c => 
           c.id === coinId 
             ? { 
                 ...c, 
                 isLiked: wasLiked,
-                likeCount: wasLiked ? (c.likeCount || c.like_count || 0) + 1 : (c.likeCount || c.like_count || 1) - 1,
-                like_count: wasLiked ? (c.likeCount || c.like_count || 0) + 1 : (c.likeCount || c.like_count || 1) - 1
+                likeCount: wasLiked ? (c.likeCount || 0) + 1 : (c.likeCount || 1) - 1
               }
             : c
         )
@@ -225,7 +195,6 @@ export default function FeedScreen() {
       return;
     }
     
-    // Open comment modal
     setSelectedCoinId(coinId);
     setShowCommentModal(true);
   };
@@ -248,27 +217,19 @@ export default function FeedScreen() {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('FeedScreen: Failed to submit comment, status:', response.status, 'error:', errorText);
         throw new Error('Failed to submit comment');
       }
 
       console.log('FeedScreen: Comment submitted successfully');
       
-      // Update comment count optimistically
       setCoins(prevCoins => 
         prevCoins.map(c => 
           c.id === selectedCoinId 
-            ? { 
-                ...c, 
-                commentCount: (c.commentCount || c.comment_count || 0) + 1,
-                comment_count: (c.commentCount || c.comment_count || 0) + 1
-              }
+            ? { ...c, commentCount: (c.commentCount || 0) + 1 }
             : c
         )
       );
       
-      // Close modal and reset
       setShowCommentModal(false);
       setCommentText('');
       setSelectedCoinId(null);
@@ -315,7 +276,7 @@ export default function FeedScreen() {
   };
 
   const handleProposeTrade = (coinId: string) => {
-    console.log('FeedScreen: User tapped Propose Trade for coin:', coinId);
+    console.log('FeedScreen: User tapped propose trade for coin:', coinId);
     
     if (!user) {
       console.log('FeedScreen: User not logged in, redirecting to auth');
@@ -323,33 +284,34 @@ export default function FeedScreen() {
       return;
     }
     
-    // Navigate to coin detail screen where user can propose trade
-    console.log('FeedScreen: Navigating to coin detail for trade proposal:', coinId);
     router.push(`/coin-detail?id=${coinId}`);
   };
 
   const handleImageScroll = (coinId: string, event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const scrollPosition = event.nativeEvent.contentOffset.x;
-    const imageIndex = Math.round(scrollPosition / SCREEN_WIDTH);
-    setImageScrollPositions(prev => ({ ...prev, [coinId]: imageIndex }));
+    const imageWidth = Dimensions.get('window').width;
+    const index = Math.round(scrollPosition / imageWidth);
+    
+    setActiveImageIndices(prev => ({
+      ...prev,
+      [coinId]: index,
+    }));
   };
 
   const renderTradeCoinCard = (item: Coin) => {
-    const likeCount = item.likeCount ?? item.like_count ?? 0;
-    const commentCount = item.commentCount ?? item.comment_count ?? 0;
-    const avatarUrl = item.user.avatarUrl || item.user.avatar_url;
-    const currentImageIndex = imageScrollPositions[item.id] || 0;
-    const isOwnCoin = user && item.user.id === user.id;
-
+    const images = item.images || [];
+    const activeIndex = activeImageIndices[item.id] || 0;
+    const agencyText = item.agency || '';
+    const unitText = item.unit || '';
+    const titleText = item.title || '';
+    
     return (
       <TouchableOpacity
-        key={item.id}
         style={styles.tradeCoinCard}
         onPress={() => handleCoinPress(item.id)}
         activeOpacity={0.9}
       >
-        {/* Images */}
-        {item.images && item.images.length > 0 ? (
+        {images.length > 0 ? (
           <View>
             <ScrollView
               horizontal
@@ -358,23 +320,22 @@ export default function FeedScreen() {
               onScroll={(e) => handleImageScroll(item.id, e)}
               scrollEventThrottle={16}
             >
-              {item.images.map((img, index) => (
+              {images.map((img, idx) => (
                 <Image
-                  key={index}
+                  key={idx}
                   source={{ uri: img.url }}
                   style={styles.tradeCoinImage}
-                  resizeMode="cover"
                 />
               ))}
             </ScrollView>
-            {item.images.length > 1 && (
-              <View style={styles.imageIndicatorContainer}>
-                {item.images.map((_, index) => (
+            {images.length > 1 && (
+              <View style={styles.imageIndicators}>
+                {images.map((_, idx) => (
                   <View
-                    key={index}
+                    key={idx}
                     style={[
                       styles.imageIndicator,
-                      currentImageIndex === index && styles.imageIndicatorActive,
+                      idx === activeIndex && styles.imageIndicatorActive,
                     ]}
                   />
                 ))}
@@ -383,109 +344,55 @@ export default function FeedScreen() {
           </View>
         ) : (
           <View style={[styles.tradeCoinImage, styles.imagePlaceholder]}>
-            <IconSymbol
-              ios_icon_name="photo"
-              android_material_icon_name="image"
-              size={48}
-              color={colors.textSecondary}
-            />
+            <IconSymbol ios_icon_name="photo" android_material_icon_name="image" size={48} color={colors.textSecondary} />
           </View>
         )}
-
-        {/* Coin Info */}
+        
         <View style={styles.tradeCoinInfo}>
           <Text style={styles.tradeCoinTitle} numberOfLines={1}>
-            {item.title}
+            {titleText}
           </Text>
           
           <View style={styles.tradeCoinMetaRow}>
-            {item.agency ? (
-              <Text style={styles.tradeCoinMeta} numberOfLines={1}>{item.agency}</Text>
+            {agencyText ? (
+              <Text style={styles.tradeCoinMeta} numberOfLines={1}>
+                {agencyText}
+              </Text>
             ) : null}
-            {item.agency && item.unit ? (
+            {agencyText && unitText ? (
               <Text style={styles.tradeCoinMetaSeparator}>•</Text>
             ) : null}
-            {item.unit ? (
-              <Text style={styles.tradeCoinMeta} numberOfLines={1}>{item.unit}</Text>
+            {unitText ? (
+              <Text style={styles.tradeCoinMeta} numberOfLines={1}>
+                {unitText}
+              </Text>
             ) : null}
           </View>
-
-          {/* User Info */}
+          
           <TouchableOpacity
-            style={styles.tradeCoinUser}
+            style={styles.tradeButton}
             onPress={(e) => {
               e.stopPropagation();
-              handleUserPress(item.user.id, item.user.username);
+              handleProposeTrade(item.id);
             }}
           >
-            {avatarUrl ? (
-              <Image source={{ uri: avatarUrl }} style={styles.tradeCoinAvatar} />
-            ) : (
-              <View style={[styles.tradeCoinAvatar, styles.avatarPlaceholder]}>
-                <IconSymbol
-                  ios_icon_name="person.fill"
-                  android_material_icon_name="person"
-                  size={12}
-                  color={colors.textSecondary}
-                />
-              </View>
-            )}
-            <Text style={styles.tradeCoinUsername} numberOfLines={1}>
-              @{item.user.username}
-            </Text>
+            <Text style={styles.tradeButtonText}>Propose Trade</Text>
           </TouchableOpacity>
-
-          {/* Actions */}
-          <View style={styles.tradeCoinActions}>
-            <View style={styles.tradeCoinStats}>
-              <View style={styles.tradeCoinStat}>
-                <IconSymbol
-                  ios_icon_name="heart.fill"
-                  android_material_icon_name="favorite"
-                  size={14}
-                  color={colors.textSecondary}
-                />
-                <Text style={styles.tradeCoinStatText}>{likeCount}</Text>
-              </View>
-              <View style={styles.tradeCoinStat}>
-                <IconSymbol
-                  ios_icon_name="bubble.left.fill"
-                  android_material_icon_name="chat-bubble"
-                  size={14}
-                  color={colors.textSecondary}
-                />
-                <Text style={styles.tradeCoinStatText}>{commentCount}</Text>
-              </View>
-            </View>
-            {!isOwnCoin && (
-              <TouchableOpacity
-                style={styles.tradeButton}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  handleProposeTrade(item.id);
-                }}
-              >
-                <Text style={styles.tradeButtonText}>Trade</Text>
-              </TouchableOpacity>
-            )}
-          </View>
         </View>
       </TouchableOpacity>
     );
   };
 
   const renderCoinCard = ({ item }: { item: Coin }) => {
-    const likeCount = item.likeCount ?? item.like_count ?? 0;
-    const commentCount = item.commentCount ?? item.comment_count ?? 0;
-    const avatarUrl = item.user.avatarUrl || item.user.avatar_url;
-
+    const agencyText = item.agency || '';
+    const unitText = item.unit || '';
+    const titleText = item.title || '';
+    
     return (
       <TouchableOpacity
         style={styles.coinCard}
         onPress={() => handleCoinPress(item.id)}
-        activeOpacity={0.9}
       >
-        {/* User Info */}
         <TouchableOpacity
           style={styles.userInfo}
           onPress={(e) => {
@@ -493,56 +400,39 @@ export default function FeedScreen() {
             handleUserPress(item.user.id, item.user.username);
           }}
         >
-          {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-          ) : (
-            <View style={[styles.avatar, styles.avatarPlaceholder]}>
-              <IconSymbol
-                ios_icon_name="person.fill"
-                android_material_icon_name="person"
-                size={20}
-                color={colors.textSecondary}
-              />
-            </View>
-          )}
+          <View style={styles.avatar}>
+            <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={20} color={colors.textSecondary} />
+          </View>
           <View>
             <Text style={styles.displayName}>{item.user.displayName}</Text>
             <Text style={styles.username}>@{item.user.username}</Text>
           </View>
         </TouchableOpacity>
 
-        {/* Coin Image */}
         {item.images && item.images.length > 0 ? (
-          <Image source={{ uri: item.images[0].url }} style={styles.coinImage} resizeMode="cover" />
+          <Image source={{ uri: item.images[0].url }} style={styles.coinImage} />
         ) : (
           <View style={[styles.coinImage, styles.imagePlaceholder]}>
-            <IconSymbol
-              ios_icon_name="photo"
-              android_material_icon_name="image"
-              size={48}
-              color={colors.textSecondary}
-            />
+            <IconSymbol ios_icon_name="photo" android_material_icon_name="image" size={48} color={colors.textSecondary} />
           </View>
         )}
 
-        {/* Coin Info */}
         <View style={styles.coinInfo}>
-          <Text style={styles.coinTitle}>{item.title}</Text>
+          <Text style={styles.coinTitle}>{titleText}</Text>
           
           <View style={styles.coinMetaRow}>
-            {item.agency ? (
-              <Text style={styles.coinMeta}>{item.agency}</Text>
+            {agencyText ? (
+              <Text style={styles.coinMeta}>{agencyText}</Text>
             ) : null}
-            {item.agency && item.unit ? (
+            {agencyText && unitText ? (
               <Text style={styles.coinMetaSeparator}>•</Text>
             ) : null}
-            {item.unit ? (
-              <Text style={styles.coinMeta}>{item.unit}</Text>
+            {unitText ? (
+              <Text style={styles.coinMeta}>{unitText}</Text>
             ) : null}
           </View>
         </View>
 
-        {/* Actions */}
         <View style={styles.actions}>
           <TouchableOpacity
             style={styles.actionButton}
@@ -557,23 +447,18 @@ export default function FeedScreen() {
               size={24}
               color={item.isLiked ? colors.error : colors.text}
             />
-            <Text style={styles.actionText}>{likeCount}</Text>
+            <Text style={styles.actionText}>{item.likeCount || 0}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
+          <TouchableOpacity 
             style={styles.actionButton}
             onPress={(e) => {
               e.stopPropagation();
               handleComment(item.id);
             }}
           >
-            <IconSymbol
-              ios_icon_name="bubble.left"
-              android_material_icon_name="chat-bubble-outline"
-              size={24}
-              color={colors.text}
-            />
-            <Text style={styles.actionText}>{commentCount}</Text>
+            <IconSymbol ios_icon_name="bubble.left" android_material_icon_name="chat-bubble-outline" size={24} color={colors.text} />
+            <Text style={styles.actionText}>{item.commentCount || 0}</Text>
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
@@ -600,13 +485,13 @@ export default function FeedScreen() {
         <Text style={styles.headerTitle}>🪙 CoinHub</Text>
         <View style={styles.headerActions}>
           <TouchableOpacity onPress={handleSearchCoins} style={styles.headerButton}>
-            <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={24} color={colors.text} />
+            <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={24} color="#FFD700" />
           </TouchableOpacity>
           <TouchableOpacity onPress={handleSearchUsers} style={styles.headerButton}>
-            <IconSymbol ios_icon_name="person.2" android_material_icon_name="group" size={24} color={colors.text} />
+            <IconSymbol ios_icon_name="person.2" android_material_icon_name="group" size={24} color="#FFD700" />
           </TouchableOpacity>
           <TouchableOpacity onPress={handleAddCoin} style={styles.headerButton}>
-            <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add-circle" size={28} color={colors.primary} />
+            <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add-circle" size={28} color="#FFD700" />
           </TouchableOpacity>
         </View>
       </View>
@@ -621,25 +506,24 @@ export default function FeedScreen() {
         ListHeaderComponent={
           tradeCoins.length > 0 ? (
             <View style={styles.tradeSection}>
-              <Text style={styles.tradeSectionTitle}>🔄 Available for Trade</Text>
+              <Text style={styles.tradeSectionTitle}>Open to Trade</Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.tradeCoinsContainer}
+                contentContainerStyle={styles.tradeScrollContent}
               >
-                {tradeCoins.map((coin) => renderTradeCoinCard(coin))}
+                {tradeCoins.map((coin) => (
+                  <React.Fragment key={coin.id}>
+                    {renderTradeCoinCard(coin)}
+                  </React.Fragment>
+                ))}
               </ScrollView>
             </View>
           ) : null
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <IconSymbol
-              ios_icon_name="tray"
-              android_material_icon_name="inbox"
-              size={64}
-              color={colors.textSecondary}
-            />
+            <IconSymbol ios_icon_name="tray" android_material_icon_name="inbox" size={64} color={colors.textSecondary} />
             <Text style={styles.emptyText}>No coins yet</Text>
             <Text style={styles.emptySubtext}>Be the first to share a coin!</Text>
             <TouchableOpacity style={styles.emptyButton} onPress={handleAddCoin}>
@@ -650,7 +534,6 @@ export default function FeedScreen() {
         contentContainerStyle={coins.length === 0 ? styles.emptyList : undefined}
       />
 
-      {/* Comment Modal */}
       <Modal
         visible={showCommentModal}
         animationType="slide"
@@ -694,10 +577,7 @@ export default function FeedScreen() {
               autoFocus
             />
             <TouchableOpacity
-              style={[
-                styles.submitButton,
-                (!commentText.trim() || submittingComment) && styles.submitButtonDisabled,
-              ]}
+              style={[styles.submitButton, (!commentText.trim() || submittingComment) && styles.submitButtonDisabled]}
               onPress={handleSubmitComment}
               disabled={!commentText.trim() || submittingComment}
             >
@@ -765,46 +645,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 12,
   },
-  tradeCoinsContainer: {
+  tradeScrollContent: {
     paddingHorizontal: 12,
   },
   tradeCoinCard: {
     width: 200,
+    marginHorizontal: 4,
     backgroundColor: colors.card,
     borderRadius: 12,
-    marginHorizontal: 4,
     overflow: 'hidden',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
   },
   tradeCoinImage: {
     width: 200,
     height: 200,
   },
-  imageIndicatorContainer: {
+  imageIndicators: {
     position: 'absolute',
     bottom: 8,
     left: 0,
     right: 0,
     flexDirection: 'row',
     justifyContent: 'center',
-    alignItems: 'center',
+    gap: 4,
   },
   imageIndicator: {
     width: 6,
     height: 6,
     borderRadius: 3,
     backgroundColor: 'rgba(255, 255, 255, 0.5)',
-    marginHorizontal: 3,
   },
   imageIndicatorActive: {
-    backgroundColor: '#FFFFFF',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    backgroundColor: '#FFD700',
   },
   tradeCoinInfo: {
     padding: 12,
@@ -830,50 +701,17 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginHorizontal: 4,
   },
-  tradeCoinUser: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  tradeCoinAvatar: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    marginRight: 6,
-  },
-  tradeCoinUsername: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    flex: 1,
-  },
-  tradeCoinActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  tradeCoinStats: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  tradeCoinStat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  tradeCoinStatText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-  },
   tradeButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 16,
+    backgroundColor: '#FFD700',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: 'center',
   },
   tradeButtonText: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
-    color: colors.background,
+    color: '#000',
   },
   coinCard: {
     backgroundColor: colors.surface,
@@ -890,12 +728,10 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    marginRight: 12,
-  },
-  avatarPlaceholder: {
     backgroundColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 12,
   },
   displayName: {
     fontSize: 16,

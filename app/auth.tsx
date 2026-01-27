@@ -107,6 +107,8 @@ export default function AuthScreen() {
     );
   }
 
+  const subtitleText = isSignUp ? 'Create an account to get started' : 'Sign in to continue';
+
   // Show login/signup form
   return (
     <ImageBackground
@@ -127,9 +129,8 @@ export default function AuthScreen() {
             <View style={styles.topSpacer} />
             
             <View style={styles.header}>
-              <Text style={styles.title}>CoinHub</Text>
               <Text style={styles.subtitle}>
-                {isSignUp ? 'Create an account to get started' : 'Sign in to continue'}
+                {subtitleText}
               </Text>
             </View>
 
@@ -202,7 +203,7 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
   },
   container: {
     flex: 1,
@@ -216,7 +217,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   topSpacer: {
-    height: height * 0.25,
+    height: height * 0.5,
   },
   loadingContainer: {
     flex: 1,
@@ -231,17 +232,7 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginBottom: 32,
-  },
-  title: {
-    fontSize: 48,
-    fontWeight: 'bold',
-    color: '#FFD700',
-    marginBottom: 8,
-    textShadowColor: 'rgba(0, 0, 0, 0.75)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 10,
-    letterSpacing: 2,
+    marginBottom: 24,
   },
   subtitle: {
     fontSize: 16,
