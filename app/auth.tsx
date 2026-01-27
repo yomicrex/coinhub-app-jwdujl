@@ -115,12 +115,17 @@ export default function AuthScreen() {
       resizeMode="cover"
     >
       <View style={styles.overlay} />
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['bottom']}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardView}
         >
-          <ScrollView contentContainerStyle={styles.scrollContent}>
+          <ScrollView 
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.topSpacer} />
+            
             <View style={styles.header}>
               <Text style={styles.title}>CoinHub</Text>
               <Text style={styles.subtitle}>
@@ -197,7 +202,7 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
   },
   container: {
     flex: 1,
@@ -207,8 +212,11 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
-    padding: 24,
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+  },
+  topSpacer: {
+    height: height * 0.35,
   },
   loadingContainer: {
     flex: 1,
@@ -223,7 +231,7 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 24,
   },
   title: {
     fontSize: 48,
