@@ -222,7 +222,8 @@ export function registerCoinsRoutes(app: App) {
       const conditions: any[] = [
         eq(schema.coins.tradeStatus, 'open_to_trade'),
         eq(schema.coins.visibility, 'public'),
-        eq(schema.coins.isTemporaryTradeCoin, false)
+        eq(schema.coins.isTemporaryTradeCoin, false),
+        eq(schema.coins.isArchived, false)
       ];
 
       // If user is authenticated, exclude their own coins
@@ -231,7 +232,7 @@ export function registerCoinsRoutes(app: App) {
         app.logger.debug({ userId: currentUserId }, 'Filtering out user\'s own coins from trade feed');
       }
 
-      // Get coins marked as open_to_trade, public visibility, not temporary trade coins
+      // Get coins marked as open_to_trade, public visibility, not temporary trade coins, not archived
       const coins = await app.db.query.coins.findMany({
         where: and(...conditions),
         with: {
@@ -838,13 +839,15 @@ export function registerCoinsRoutes(app: App) {
 
       const isOwnProfile = currentUserId === id;
 
-      // If viewing own profile, show all coins except temporary trade coins; otherwise show only public non-temporary coins
+      // If viewing own profile, show all coins except temporary trade coins (including archived);
+      // otherwise show only public, non-archived, non-temporary coins
       const whereClause = isOwnProfile
         ? and(eq(schema.coins.userId, id), eq(schema.coins.isTemporaryTradeCoin, false))
         : and(
             eq(schema.coins.userId, id),
             eq(schema.coins.visibility, 'public'),
-            eq(schema.coins.isTemporaryTradeCoin, false)
+            eq(schema.coins.isTemporaryTradeCoin, false),
+            eq(schema.coins.isArchived, false)
           );
 
       const coins = await app.db.query.coins.findMany({

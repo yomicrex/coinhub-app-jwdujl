@@ -42,7 +42,7 @@ export function registerSearchRoutes(app: App) {
     );
 
     try {
-      const conditions: any[] = [eq(schema.coins.visibility, 'public')];
+      const conditions: any[] = [eq(schema.coins.visibility, 'public'), eq(schema.coins.isArchived, false)];
 
       // Text search on title and description
       if (q) {
@@ -276,7 +276,7 @@ export function registerSearchRoutes(app: App) {
     app.logger.info({ q, country, limit, offset }, 'Running advanced search');
 
     try {
-      const conditions: any[] = [eq(schema.coins.visibility, 'public')];
+      const conditions: any[] = [eq(schema.coins.visibility, 'public'), eq(schema.coins.isArchived, false)];
 
       // Text search
       if (q) {
@@ -336,7 +336,7 @@ export function registerSearchRoutes(app: App) {
 
       // Get aggregated facets for filtering
       const allCoins = await app.db.query.coins.findMany({
-        where: and(...conditions.slice(0, 1)), // Just public coins
+        where: and(...conditions.slice(0, 2)), // Just public, non-archived coins
       });
 
       const countries = [...new Set(allCoins.map((c) => c.country))];

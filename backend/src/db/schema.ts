@@ -111,6 +111,7 @@ export const coins = pgTable(
       .default('not_for_trade')
       .notNull(),
     isTemporaryTradeCoin: boolean('is_temporary_trade_coin').default(false).notNull(),
+    isArchived: boolean('is_archived').default(false).notNull(),
     likeCount: integer('like_count').default(0).notNull(),
     commentCount: integer('comment_count').default(0).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -400,6 +401,37 @@ export const tradeRatings = pgTable(
   ]
 );
 
+/**
+ * Subscription Receipts Table
+ * Stores validated in-app purchase receipts for subscription management
+ */
+export const subscriptionReceipts = pgTable(
+  'subscription_receipts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    platform: text('platform', { enum: ['ios', 'android'] }).notNull(),
+    productId: text('product_id').notNull(), // coinhub_premium_monthly
+    transactionId: text('transaction_id').notNull(), // Bundle ID:Transaction ID
+    originalTransactionId: text('original_transaction_id'), // For subscription renewals
+    purchaseDate: timestamp('purchase_date').notNull(),
+    expiresDate: timestamp('expires_date').notNull(),
+    receipt: text('receipt').notNull(), // Encrypted receipt data
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_receipt_transaction_id').on(table.transactionId),
+    index('idx_receipt_user_id').on(table.userId),
+    index('idx_receipt_platform').on(table.platform),
+    index('idx_receipt_is_active').on(table.isActive),
+    index('idx_receipt_expires_date').on(table.expiresDate),
+  ]
+);
+
 // ===== RELATIONS =====
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -593,6 +625,13 @@ export const userMonthlyStats = pgTable(
 export const userMonthlyStatsRelations = relations(userMonthlyStats, ({ one }) => ({
   user: one(users, {
     fields: [userMonthlyStats.userId],
+    references: [users.id],
+  }),
+}));
+
+export const subscriptionReceiptsRelations = relations(subscriptionReceipts, ({ one }) => ({
+  user: one(users, {
+    fields: [subscriptionReceipts.userId],
     references: [users.id],
   }),
 }));
