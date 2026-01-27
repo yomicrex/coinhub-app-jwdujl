@@ -1,12 +1,10 @@
 
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { IconSymbol } from '@/components/IconSymbol';
 import { useRouter } from 'expo-router';
-import { colors } from '@/styles/commonStyles';
-import React, { useState, useCallback } from 'react';
 import Constants from 'expo-constants';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { authenticatedFetch } from '@/utils/api';
+import { authenticatedFetch, API_URL } from '@/utils/api';
+import { IconSymbol } from '@/components/IconSymbol';
 import {
   View,
   Text,
@@ -16,12 +14,18 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
+  Dimensions,
+  ScrollView,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Alert,
   TextInput,
   Modal,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { colors } from '@/styles/commonStyles';
 
 interface Coin {
   id: string;
@@ -34,75 +38,96 @@ interface Coin {
     id: string;
     username: string;
     displayName: string;
+    avatar_url?: string;
     avatarUrl?: string;
   };
-  images: { url: string }[];
+  images: { url: string; order_index?: number; orderIndex?: number }[];
+  like_count?: number;
   likeCount?: number;
+  comment_count?: number;
   commentCount?: number;
+  trade_status?: string;
   tradeStatus?: string;
+  created_at?: string;
+  createdAt?: string;
   isLiked?: boolean;
 }
 
-const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
-
-export default function HomeScreen() {
+export default function FeedScreen() {
   const { user } = useAuth();
   const router = useRouter();
   const [coins, setCoins] = useState<Coin[]>([]);
+  const [tradeCoins, setTradeCoins] = useState<Coin[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [activeImageIndices, setActiveImageIndices] = useState<{ [key: string]: number }>({});
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [selectedCoinId, setSelectedCoinId] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
 
   const fetchCoins = useCallback(async () => {
-    console.log('HomeScreen: Fetching public coins feed from /api/coins/feed');
+    console.log('FeedScreen: Fetching public coins feed');
     try {
       const response = await fetch(`${API_URL}/api/coins/feed`, {
         credentials: 'include',
       });
 
-      console.log('HomeScreen: Feed response status:', response.status);
-
       if (response.ok) {
         const data = await response.json();
-        console.log('HomeScreen: Fetched', data.coins?.length || 0, 'coins');
-        console.log('HomeScreen: Coins data:', JSON.stringify(data.coins?.slice(0, 2), null, 2));
+        console.log('FeedScreen: Fetched', data.coins?.length || 0, 'coins');
         setCoins(data.coins || []);
       } else {
-        console.error('HomeScreen: Failed to fetch coins, status:', response.status);
-        const errorText = await response.text();
-        console.error('HomeScreen: Error response:', errorText);
+        console.error('FeedScreen: Failed to fetch coins');
         setCoins([]);
       }
     } catch (error) {
-      console.error('HomeScreen: Error fetching coins:', error);
+      console.error('FeedScreen: Error fetching coins:', error);
       setCoins([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  React.useEffect(() => {
-    console.log('HomeScreen: Component mounted, user:', user?.username);
-    console.log('HomeScreen: Backend URL:', API_URL);
-    console.log('HomeScreen: Starting initial data fetch');
+  const fetchTradeCoins = useCallback(async () => {
+    console.log('FeedScreen: Fetching trade coins');
+    try {
+      const response = await fetch(`${API_URL}/api/coins/trade-feed`, {
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('FeedScreen: Fetched', data.coins?.length || 0, 'trade coins');
+        setTradeCoins(data.coins || []);
+      } else {
+        console.error('FeedScreen: Failed to fetch trade coins');
+        setTradeCoins([]);
+      }
+    } catch (error) {
+      console.error('FeedScreen: Error fetching trade coins:', error);
+      setTradeCoins([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    console.log('FeedScreen: Component mounted, user:', user?.username);
     fetchCoins();
-  }, [fetchCoins, user?.username]);
+    fetchTradeCoins();
+  }, [fetchCoins, fetchTradeCoins, user?.username]);
 
   const onRefresh = async () => {
-    console.log('HomeScreen: User pulled to refresh');
+    console.log('FeedScreen: User pulled to refresh');
     setRefreshing(true);
-    await fetchCoins();
+    await Promise.all([fetchCoins(), fetchTradeCoins()]);
     setRefreshing(false);
   };
 
   const handleLike = async (coinId: string) => {
-    console.log('HomeScreen: User tapped like button for coin:', coinId);
+    console.log('FeedScreen: User tapped like button for coin:', coinId);
     
     if (!user) {
-      console.log('HomeScreen: User not logged in, redirecting to auth');
+      console.log('FeedScreen: User not logged in, redirecting to auth');
       router.push('/auth');
       return;
     }
@@ -126,8 +151,6 @@ export default function HomeScreen() {
     
     try {
       const method = wasLiked ? 'DELETE' : 'POST';
-      console.log('HomeScreen: Sending', method, 'request to /api/coins/' + coinId + '/like');
-      
       const fetchOptions: RequestInit = {
         method,
       };
@@ -142,14 +165,10 @@ export default function HomeScreen() {
       const response = await authenticatedFetch(`/api/coins/${coinId}/like`, fetchOptions);
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('HomeScreen: Failed to like coin, status:', response.status, 'error:', errorText);
         throw new Error('Failed to toggle like');
       }
-      
-      console.log('HomeScreen: Like toggled successfully');
     } catch (error) {
-      console.error('HomeScreen: Error liking coin:', error);
+      console.error('FeedScreen: Error liking coin:', error);
       
       setCoins(prevCoins => 
         prevCoins.map(c => 
@@ -168,10 +187,10 @@ export default function HomeScreen() {
   };
 
   const handleComment = (coinId: string) => {
-    console.log('HomeScreen: User tapped comment button for coin:', coinId);
+    console.log('FeedScreen: User tapped comment button for coin:', coinId);
     
     if (!user) {
-      console.log('HomeScreen: User not logged in, redirecting to auth');
+      console.log('FeedScreen: User not logged in, redirecting to auth');
       router.push('/auth');
       return;
     }
@@ -185,7 +204,7 @@ export default function HomeScreen() {
       return;
     }
 
-    console.log('HomeScreen: Submitting comment for coin:', selectedCoinId);
+    console.log('FeedScreen: Submitting comment for coin:', selectedCoinId);
     setSubmittingComment(true);
 
     try {
@@ -198,12 +217,10 @@ export default function HomeScreen() {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('HomeScreen: Failed to submit comment, status:', response.status, 'error:', errorText);
         throw new Error('Failed to submit comment');
       }
 
-      console.log('HomeScreen: Comment submitted successfully');
+      console.log('FeedScreen: Comment submitted successfully');
       
       setCoins(prevCoins => 
         prevCoins.map(c => 
@@ -219,7 +236,7 @@ export default function HomeScreen() {
       
       Alert.alert('Success', 'Comment posted!');
     } catch (error) {
-      console.error('HomeScreen: Error submitting comment:', error);
+      console.error('FeedScreen: Error submitting comment:', error);
       Alert.alert('Error', 'Failed to post comment. Please try again.');
     } finally {
       setSubmittingComment(false);
@@ -227,10 +244,10 @@ export default function HomeScreen() {
   };
 
   const handleAddCoin = () => {
-    console.log('HomeScreen: User tapped Add Coin button');
+    console.log('FeedScreen: User tapped Add Coin button');
     
     if (!user) {
-      console.log('HomeScreen: User not logged in, redirecting to auth');
+      console.log('FeedScreen: User not logged in, redirecting to auth');
       router.push('/auth');
       return;
     }
@@ -239,16 +256,134 @@ export default function HomeScreen() {
   };
 
   const handleSearchCoins = () => {
-    console.log('HomeScreen: User tapped Search Coins button');
+    console.log('FeedScreen: User tapped Search Coins button');
     router.push('/search-coins');
   };
 
   const handleSearchUsers = () => {
-    console.log('HomeScreen: User tapped Search Users button');
+    console.log('FeedScreen: User tapped Search Users button');
     router.push('/search-users');
   };
 
-  const renderCoin = ({ item }: { item: Coin }) => {
+  const handleUserPress = (userId: string, username: string) => {
+    console.log('FeedScreen: User tapped on user profile:', username);
+    router.push(`/user-profile?username=${username}`);
+  };
+
+  const handleCoinPress = (coinId: string) => {
+    console.log('FeedScreen: User tapped on coin:', coinId);
+    router.push(`/coin-detail?id=${coinId}`);
+  };
+
+  const handleProposeTrade = (coinId: string) => {
+    console.log('FeedScreen: User tapped propose trade for coin:', coinId);
+    
+    if (!user) {
+      console.log('FeedScreen: User not logged in, redirecting to auth');
+      router.push('/auth');
+      return;
+    }
+    
+    router.push(`/coin-detail?id=${coinId}`);
+  };
+
+  const handleImageScroll = (coinId: string, event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const scrollPosition = event.nativeEvent.contentOffset.x;
+    const imageWidth = Dimensions.get('window').width;
+    const index = Math.round(scrollPosition / imageWidth);
+    
+    setActiveImageIndices(prev => ({
+      ...prev,
+      [coinId]: index,
+    }));
+  };
+
+  const renderTradeCoinCard = (item: Coin) => {
+    const images = item.images || [];
+    const activeIndex = activeImageIndices[item.id] || 0;
+    const agencyText = item.agency || '';
+    const unitText = item.unit || '';
+    const titleText = item.title || '';
+    
+    return (
+      <TouchableOpacity
+        style={styles.tradeCoinCard}
+        onPress={() => handleCoinPress(item.id)}
+        activeOpacity={0.9}
+      >
+        {images.length > 0 ? (
+          <View>
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onScroll={(e) => handleImageScroll(item.id, e)}
+              scrollEventThrottle={16}
+            >
+              {images.map((img, idx) => (
+                <Image
+                  key={idx}
+                  source={{ uri: img.url }}
+                  style={styles.tradeCoinImage}
+                />
+              ))}
+            </ScrollView>
+            {images.length > 1 && (
+              <View style={styles.imageIndicators}>
+                {images.map((_, idx) => (
+                  <View
+                    key={idx}
+                    style={[
+                      styles.imageIndicator,
+                      idx === activeIndex && styles.imageIndicatorActive,
+                    ]}
+                  />
+                ))}
+              </View>
+            )}
+          </View>
+        ) : (
+          <View style={[styles.tradeCoinImage, styles.imagePlaceholder]}>
+            <IconSymbol ios_icon_name="photo" android_material_icon_name="image" size={48} color={colors.textSecondary} />
+          </View>
+        )}
+        
+        <View style={styles.tradeCoinInfo}>
+          <Text style={styles.tradeCoinTitle} numberOfLines={1}>
+            {titleText}
+          </Text>
+          
+          <View style={styles.tradeCoinMetaRow}>
+            {agencyText ? (
+              <Text style={styles.tradeCoinMeta} numberOfLines={1}>
+                {agencyText}
+              </Text>
+            ) : null}
+            {agencyText && unitText ? (
+              <Text style={styles.tradeCoinMetaSeparator}>•</Text>
+            ) : null}
+            {unitText ? (
+              <Text style={styles.tradeCoinMeta} numberOfLines={1}>
+                {unitText}
+              </Text>
+            ) : null}
+          </View>
+          
+          <TouchableOpacity
+            style={styles.tradeButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              handleProposeTrade(item.id);
+            }}
+          >
+            <Text style={styles.tradeButtonText}>Propose Trade</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderCoinCard = ({ item }: { item: Coin }) => {
     const agencyText = item.agency || '';
     const unitText = item.unit || '';
     const titleText = item.title || '';
@@ -256,12 +391,15 @@ export default function HomeScreen() {
     return (
       <TouchableOpacity
         style={styles.coinCard}
-        onPress={() => {
-          console.log('HomeScreen: User tapped on coin:', item.id);
-          router.push(`/coin-detail?id=${item.id}`);
-        }}
+        onPress={() => handleCoinPress(item.id)}
       >
-        <View style={styles.userInfo}>
+        <TouchableOpacity
+          style={styles.userInfo}
+          onPress={(e) => {
+            e.stopPropagation();
+            handleUserPress(item.user.id, item.user.username);
+          }}
+        >
           <View style={styles.avatar}>
             <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={20} color={colors.textSecondary} />
           </View>
@@ -269,7 +407,7 @@ export default function HomeScreen() {
             <Text style={styles.displayName}>{item.user.displayName}</Text>
             <Text style={styles.username}>@{item.user.username}</Text>
           </View>
-        </View>
+        </TouchableOpacity>
 
         {item.images && item.images.length > 0 ? (
           <Image source={{ uri: item.images[0].url }} style={styles.coinImage} />
@@ -360,10 +498,28 @@ export default function HomeScreen() {
 
       <FlatList
         data={coins}
-        renderItem={renderCoin}
+        renderItem={renderCoinCard}
         keyExtractor={(item) => item.id}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+        }
+        ListHeaderComponent={
+          tradeCoins.length > 0 ? (
+            <View style={styles.tradeSection}>
+              <Text style={styles.tradeSectionTitle}>Open to Trade</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.tradeScrollContent}
+              >
+                {tradeCoins.map((coin) => (
+                  <React.Fragment key={coin.id}>
+                    {renderTradeCoinCard(coin)}
+                  </React.Fragment>
+                ))}
+              </ScrollView>
+            </View>
+          ) : null
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
@@ -475,6 +631,87 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
     color: colors.textSecondary,
+  },
+  tradeSection: {
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  tradeSectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  tradeScrollContent: {
+    paddingHorizontal: 12,
+  },
+  tradeCoinCard: {
+    width: 200,
+    marginHorizontal: 4,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  tradeCoinImage: {
+    width: 200,
+    height: 200,
+  },
+  imageIndicators: {
+    position: 'absolute',
+    bottom: 8,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  imageIndicator: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  imageIndicatorActive: {
+    backgroundColor: '#FFD700',
+  },
+  tradeCoinInfo: {
+    padding: 12,
+  },
+  tradeCoinTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  tradeCoinMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    flexWrap: 'wrap',
+  },
+  tradeCoinMeta: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  tradeCoinMetaSeparator: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginHorizontal: 4,
+  },
+  tradeButton: {
+    backgroundColor: '#FFD700',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  tradeButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#000',
   },
   coinCard: {
     backgroundColor: colors.surface,
