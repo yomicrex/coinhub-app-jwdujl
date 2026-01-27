@@ -1,5 +1,5 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { eq, and, count, or } from 'drizzle-orm';
+import { eq, and, count, or, sql } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import * as authSchema from '../db/auth-schema.js';
 import type { App } from '../index.js';
@@ -186,19 +186,54 @@ export function registerCoinsRoutes(app: App) {
    * GET /api/coins/trade-feed
    * Get coins available for trade (trade_status = 'open_to_trade')
    * Public endpoint - no authentication required
+   * If authenticated, excludes coins owned by the current user
    * Returns coins in feed format ordered by creation date
    */
   app.fastify.get('/api/coins/trade-feed', async (request: FastifyRequest, reply: FastifyReply) => {
     app.logger.info({}, 'Fetching trade feed coins');
 
+    let currentUserId: string | null = null;
+
+    // Try to extract authenticated user ID
     try {
+      const sessionToken = extractSessionToken(request);
+      if (sessionToken) {
+        const sessionRecord = await app.db.query.session.findFirst({
+          where: eq(authSchema.session.token, sessionToken),
+        });
+
+        if (sessionRecord && new Date(sessionRecord.expiresAt) > new Date()) {
+          const userRecord = await app.db.query.user.findFirst({
+            where: eq(authSchema.user.id, sessionRecord.userId),
+          });
+          if (userRecord) {
+            currentUserId = userRecord.id;
+            app.logger.debug({ userId: currentUserId }, 'Trade feed request from authenticated user');
+          }
+        }
+      }
+    } catch (authError) {
+      app.logger.debug({ err: authError }, 'Failed to extract session, proceeding as guest');
+      // Continue as guest user
+    }
+
+    try {
+      // Build where conditions
+      const conditions: any[] = [
+        eq(schema.coins.tradeStatus, 'open_to_trade'),
+        eq(schema.coins.visibility, 'public'),
+        eq(schema.coins.isTemporaryTradeCoin, false)
+      ];
+
+      // If user is authenticated, exclude their own coins
+      if (currentUserId) {
+        conditions.push(sql`${schema.coins.userId} != ${currentUserId}`);
+        app.logger.debug({ userId: currentUserId }, 'Filtering out user\'s own coins from trade feed');
+      }
+
       // Get coins marked as open_to_trade, public visibility, not temporary trade coins
       const coins = await app.db.query.coins.findMany({
-        where: and(
-          eq(schema.coins.tradeStatus, 'open_to_trade'),
-          eq(schema.coins.visibility, 'public'),
-          eq(schema.coins.isTemporaryTradeCoin, false)
-        ),
+        where: and(...conditions),
         with: {
           user: { columns: { id: true, username: true, displayName: true, avatarUrl: true } },
           images: { orderBy: (img) => img.orderIndex },
@@ -209,7 +244,7 @@ export function registerCoinsRoutes(app: App) {
         limit: 20,
       });
 
-      app.logger.info({ count: coins.length }, 'Trade feed coins fetched');
+      app.logger.info({ count: coins.length, isAuthenticated: !!currentUserId }, 'Trade feed coins fetched');
 
       // Generate signed URLs for images and avatars
       const coinsWithUrls = await Promise.all(
