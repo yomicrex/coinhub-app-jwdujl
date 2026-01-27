@@ -55,7 +55,9 @@ export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const router = useRouter();
   const [coins, setCoins] = useState<UserCoin[]>([]);
+  const [tradeCoins, setTradeCoins] = useState<UserCoin[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingTradeCoins, setLoadingTradeCoins] = useState(true);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [profileData, setProfileData] = useState<ProfileData>({});
@@ -93,6 +95,38 @@ export default function ProfileScreen() {
       setLoading(false);
     }
   }, [user?.id, user?.username, user?.email]);
+
+  const fetchUserTradeCoins = useCallback(async () => {
+    if (!user?.id) {
+      console.log('ProfileScreen: No user ID, skipping trade coins fetch');
+      return;
+    }
+
+    console.log('ProfileScreen: Fetching trade coins for user:', user.username);
+    
+    try {
+      const response = await fetch(`${API_URL}/api/users/${user.id}/coins`, {
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const coinsArray = data.coins || data;
+        // Filter for coins that are open to trade
+        const tradeCoinsArray = coinsArray.filter((coin: UserCoin) => 
+          coin.tradeStatus === 'open_to_trade' || coin.trade_status === 'open_to_trade'
+        );
+        console.log('ProfileScreen: Fetched', tradeCoinsArray.length, 'trade coins for user:', user.username);
+        setTradeCoins(tradeCoinsArray);
+      } else {
+        console.error('ProfileScreen: Failed to fetch trade coins, status:', response.status);
+      }
+    } catch (error) {
+      console.error('ProfileScreen: Error fetching trade coins:', error);
+    } finally {
+      setLoadingTradeCoins(false);
+    }
+  }, [user?.id, user?.username]);
 
   const fetchFollowCounts = useCallback(async () => {
     if (!user?.id) {
@@ -182,11 +216,12 @@ export default function ProfileScreen() {
     
     if (user) {
       fetchUserCoins();
+      fetchUserTradeCoins();
       fetchFollowCounts();
       fetchProfileData();
       fetchSubscriptionStatus();
     }
-  }, [user, fetchUserCoins, fetchFollowCounts, fetchProfileData, fetchSubscriptionStatus]);
+  }, [user, fetchUserCoins, fetchUserTradeCoins, fetchFollowCounts, fetchProfileData, fetchSubscriptionStatus]);
 
   const handleLogout = async () => {
     console.log('ProfileScreen: User tapped logout button');
@@ -351,6 +386,50 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Trade Coins Section */}
+        {tradeCoins.length > 0 && (
+          <View style={styles.tradeSection}>
+            <View style={styles.tradeSectionHeader}>
+              <IconSymbol 
+                ios_icon_name="arrow.2.squarepath" 
+                android_material_icon_name="sync" 
+                size={20} 
+                color={colors.primary} 
+              />
+              <Text style={styles.tradeSectionTitle}>Open to Trade</Text>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tradeScrollContent}
+            >
+              {tradeCoins.map((coin) => (
+                <TouchableOpacity
+                  key={coin.id}
+                  style={styles.tradeCoinCard}
+                  onPress={() => router.push(`/coin-detail?id=${coin.id}`)}
+                >
+                  {coin.images && coin.images.length > 0 ? (
+                    <Image source={{ uri: coin.images[0].url }} style={styles.tradeCoinImage} />
+                  ) : (
+                    <View style={[styles.tradeCoinImage, styles.tradeCoinImagePlaceholder]}>
+                      <IconSymbol ios_icon_name="photo" android_material_icon_name="image" size={32} color={colors.textSecondary} />
+                    </View>
+                  )}
+                  <View style={styles.tradeCoinInfo}>
+                    <Text style={styles.tradeCoinTitle} numberOfLines={1}>
+                      {coin.title}
+                    </Text>
+                    <Text style={styles.tradeCoinMeta} numberOfLines={1}>
+                      {coin.country} • {coin.year}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
 
         <View style={styles.coinsSection}>
           <View style={styles.coinsSectionHeader}>
@@ -588,6 +667,58 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.text,
+  },
+  tradeSection: {
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  tradeSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    gap: 8,
+  },
+  tradeSectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  tradeScrollContent: {
+    paddingHorizontal: 12,
+  },
+  tradeCoinCard: {
+    width: 160,
+    marginHorizontal: 4,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  tradeCoinImage: {
+    width: 160,
+    height: 160,
+  },
+  tradeCoinImagePlaceholder: {
+    backgroundColor: colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tradeCoinInfo: {
+    padding: 10,
+  },
+  tradeCoinTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  tradeCoinMeta: {
+    fontSize: 12,
+    color: colors.textSecondary,
   },
   coinsSection: {
     padding: 16,

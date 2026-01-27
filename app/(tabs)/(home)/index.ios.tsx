@@ -101,7 +101,7 @@ export default function FeedScreen() {
         console.log('FeedScreen: Fetched', data.coins?.length || 0, 'trade coins');
         setTradeCoins(data.coins || []);
       } else {
-        console.error('FeedScreen: Failed to fetch trade coins');
+        console.error('FeedScreen: Failed to fetch trade coins, status:', response.status);
         setTradeCoins([]);
       }
     } catch (error) {
@@ -470,6 +470,17 @@ export default function FeedScreen() {
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>🪙 CoinHub</Text>
+          <View style={styles.headerActions}>
+            <TouchableOpacity onPress={handleSearchCoins} style={styles.headerButton}>
+              <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={26} color="#FFD700" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleSearchUsers} style={styles.headerButton}>
+              <IconSymbol ios_icon_name="person.2" android_material_icon_name="group" size={26} color="#FFD700" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleAddCoin} style={styles.headerButton}>
+              <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add-circle" size={30} color="#FFD700" />
+            </TouchableOpacity>
+          </View>
         </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -485,13 +496,13 @@ export default function FeedScreen() {
         <Text style={styles.headerTitle}>🪙 CoinHub</Text>
         <View style={styles.headerActions}>
           <TouchableOpacity onPress={handleSearchCoins} style={styles.headerButton}>
-            <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={24} color="#FFD700" />
+            <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={26} color="#FFD700" />
           </TouchableOpacity>
           <TouchableOpacity onPress={handleSearchUsers} style={styles.headerButton}>
-            <IconSymbol ios_icon_name="person.2" android_material_icon_name="group" size={24} color="#FFD700" />
+            <IconSymbol ios_icon_name="person.2" android_material_icon_name="group" size={26} color="#FFD700" />
           </TouchableOpacity>
           <TouchableOpacity onPress={handleAddCoin} style={styles.headerButton}>
-            <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add-circle" size={28} color="#FFD700" />
+            <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add-circle" size={30} color="#FFD700" />
           </TouchableOpacity>
         </View>
       </View>
@@ -617,10 +628,10 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 16,
   },
   headerButton: {
-    padding: 4,
+    padding: 6,
   },
   loadingContainer: {
     flex: 1,
