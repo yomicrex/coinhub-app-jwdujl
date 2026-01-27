@@ -2,6 +2,7 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { authClient } from '@/lib/auth';
+import { authenticatedFetch, API_URL } from '@/utils/api';
 import {
   View,
   Text,
@@ -16,7 +17,6 @@ import {
 import { useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import React, { useState, useEffect, useCallback } from 'react';
-import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface UserCoin {
@@ -48,8 +48,6 @@ interface SubscriptionStatus {
     maxTrades: number | null;
   };
 }
-
-const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
@@ -190,9 +188,7 @@ export default function ProfileScreen() {
   const fetchSubscriptionStatus = useCallback(async () => {
     console.log('ProfileScreen: Fetching subscription status');
     try {
-      const response = await fetch(`${API_URL}/api/subscription/status`, {
-        credentials: 'include',
-      });
+      const response = await authenticatedFetch('/api/subscription/status');
 
       if (response.ok) {
         const data = await response.json();
