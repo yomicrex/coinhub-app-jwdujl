@@ -100,24 +100,40 @@ export function registerSearchRoutes(app: App) {
         offset,
       });
 
-      // Format response
-      const results = coins.map((coin) => ({
-        id: coin.id,
-        title: coin.title,
-        year: coin.year,
-        country: coin.country,
-        unit: coin.unit,
-        organization: coin.organization,
-        condition: coin.condition,
-        agency: coin.agency,
-        deployment: coin.deployment,
-        manufacturer: coin.manufacturer,
-        imageUrl: coin.images[0]?.url || null,
-        user: coin.user,
-        likeCount: coin.likes.length,
-        openToTrade: coin.tradeStatus === 'open_to_trade',
-        createdAt: coin.createdAt,
-      }));
+      // Format response with signed URLs for images
+      const results = await Promise.all(
+        coins.map(async (coin) => {
+          // Generate signed URL for coin image if it exists
+          let imageUrl: string | null = null;
+          if (coin.images[0]?.url) {
+            try {
+              const { url } = await app.storage.getSignedUrl(coin.images[0].url);
+              imageUrl = url;
+            } catch (urlError) {
+              app.logger.warn({ err: urlError, coinId: coin.id, imageId: coin.images[0].id }, 'Failed to generate signed URL for search result image');
+              imageUrl = null;
+            }
+          }
+
+          return {
+            id: coin.id,
+            title: coin.title,
+            year: coin.year,
+            country: coin.country,
+            unit: coin.unit,
+            organization: coin.organization,
+            condition: coin.condition,
+            agency: coin.agency,
+            deployment: coin.deployment,
+            manufacturer: coin.manufacturer,
+            imageUrl,
+            user: coin.user,
+            likeCount: coin.likes.length,
+            openToTrade: coin.tradeStatus === 'open_to_trade',
+            createdAt: coin.createdAt,
+          };
+        })
+      );
 
       app.logger.info({ count: results.length, limit, offset }, 'Coin search completed');
       return results;
@@ -331,29 +347,45 @@ export function registerSearchRoutes(app: App) {
       const manufacturers = [...new Set(allCoins.map((c) => c.manufacturer).filter(Boolean))];
       const conditions_list = [...new Set(allCoins.map((c) => c.condition).filter(Boolean))];
 
-      // Format results
-      const results = coins.map((coin) => ({
-        id: coin.id,
-        title: coin.title,
-        year: coin.year,
-        country: coin.country,
-        unit: coin.unit,
-        organization: coin.organization,
-        condition: coin.condition,
-        agency: coin.agency,
-        deployment: coin.deployment,
-        manufacturer: coin.manufacturer,
-        imageUrl: coin.images[0]?.url || null,
-        owner: {
-          id: coin.user?.id || '',
-          username: coin.user?.username || '',
-          displayName: coin.user?.displayName || '',
-          avatarUrl: coin.user?.avatarUrl || null,
-        },
-        likeCount: coin.likeCount,
-        openToTrade: coin.tradeStatus === 'open_to_trade',
-        createdAt: coin.createdAt,
-      }));
+      // Format results with signed URLs for images
+      const results = await Promise.all(
+        coins.map(async (coin) => {
+          // Generate signed URL for coin image if it exists
+          let imageUrl: string | null = null;
+          if (coin.images[0]?.url) {
+            try {
+              const { url } = await app.storage.getSignedUrl(coin.images[0].url);
+              imageUrl = url;
+            } catch (urlError) {
+              app.logger.warn({ err: urlError, coinId: coin.id, imageId: coin.images[0].id }, 'Failed to generate signed URL for advanced search result image');
+              imageUrl = null;
+            }
+          }
+
+          return {
+            id: coin.id,
+            title: coin.title,
+            year: coin.year,
+            country: coin.country,
+            unit: coin.unit,
+            organization: coin.organization,
+            condition: coin.condition,
+            agency: coin.agency,
+            deployment: coin.deployment,
+            manufacturer: coin.manufacturer,
+            imageUrl,
+            owner: {
+              id: coin.user?.id || '',
+              username: coin.user?.username || '',
+              displayName: coin.user?.displayName || '',
+              avatarUrl: coin.user?.avatarUrl || null,
+            },
+            likeCount: coin.likeCount,
+            openToTrade: coin.tradeStatus === 'open_to_trade',
+            createdAt: coin.createdAt,
+          };
+        })
+      );
 
       app.logger.info({ count: results.length, facets: { countries: countries.length } }, 'Advanced search completed');
       return {
