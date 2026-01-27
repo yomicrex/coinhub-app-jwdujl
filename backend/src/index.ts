@@ -92,15 +92,41 @@ try {
   }
 
   // Register CORS middleware for Better Auth endpoints
+  // CRITICAL: Native mobile apps (iOS/Android/TestFlight) don't send origin headers
+  // We must allow requests without origin headers to support mobile apps
   await app.fastify.register(async (fastifyInstance) => {
     fastifyInstance.addHook('onRequest', async (request, reply) => {
       const origin = request.headers.origin || request.headers.referer;
+      const userAgent = request.headers['user-agent'] || 'unknown';
 
-      if (!origin) {
-        return; // No origin header, skip CORS check
+      // Log for debugging
+      if (origin) {
+        app.logger.debug(
+          { origin, userAgent, method: request.method, path: request.url },
+          'Request with origin header'
+        );
+      } else {
+        app.logger.debug(
+          { userAgent, method: request.method, path: request.url },
+          'Request without origin header (likely native mobile app)'
+        );
       }
 
-      // Check if origin is trusted
+      // If no origin header, ALLOW the request
+      // This is critical for native mobile apps (iOS/Android/TestFlight)
+      if (!origin) {
+        reply.header('Access-Control-Allow-Origin', '*');
+        reply.header('Access-Control-Allow-Credentials', 'true');
+        reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+        reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+        if (request.method === 'OPTIONS') {
+          return reply.status(200).send();
+        }
+        return;
+      }
+
+      // If origin header is present, validate it against trusted origins
       const isTrusted = trustedOrigins.some((trustedOrigin) => {
         if (trustedOrigin instanceof RegExp) {
           return trustedOrigin.test(origin);
@@ -113,6 +139,9 @@ try {
         reply.header('Access-Control-Allow-Credentials', 'true');
         reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
         reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        app.logger.debug({ origin }, 'Request from trusted origin');
+      } else {
+        app.logger.warn({ origin, trustedOriginCount: trustedOrigins.length }, 'Request from untrusted origin');
       }
 
       if (request.method === 'OPTIONS') {
