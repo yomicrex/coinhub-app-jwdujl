@@ -1,8 +1,10 @@
 
-import Constants from 'expo-constants';
 import { authClient } from '@/lib/auth';
+import ENV from '@/config/env';
 
-const API_URL = Constants.expoConfig?.extra?.backendUrl || 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
+const API_URL = ENV.BACKEND_URL;
+
+console.log('API: Using backend URL:', API_URL);
 
 /**
  * Get the session token from Better Auth

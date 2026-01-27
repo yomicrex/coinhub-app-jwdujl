@@ -3,11 +3,13 @@ import { createAuthClient } from "better-auth/react";
 import { expoClient } from "@better-auth/expo/client";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
-import Constants from "expo-constants";
+import ENV from "@/config/env";
 
-// Read backend URL from app.json configuration
-const API_URL = Constants.expoConfig?.extra?.backendUrl || "https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev";
+const API_URL = ENV.BACKEND_URL;
+const APP_SCHEME = ENV.APP_SCHEME;
+
 console.log("Auth: Using backend URL:", API_URL);
+console.log("Auth: Using app scheme:", APP_SCHEME);
 
 // Platform-specific storage: localStorage for web, SecureStore for native
 const storage = Platform.OS === "web"
@@ -22,8 +24,8 @@ export const authClient = createAuthClient({
   baseURL: `${API_URL}/api/auth`,
   plugins: [
     expoClient({
-      scheme: "coinhub",
-      storagePrefix: "coinhub",
+      scheme: APP_SCHEME,
+      storagePrefix: APP_SCHEME,
       storage,
     }),
   ],
@@ -40,7 +42,7 @@ export async function clearAuthTokens() {
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key && (key.startsWith('coinhub') || key.startsWith('better-auth'))) {
+      if (key && (key.startsWith(APP_SCHEME) || key.startsWith('better-auth'))) {
         keysToRemove.push(key);
       }
     }
@@ -49,7 +51,7 @@ export async function clearAuthTokens() {
   } else {
     // Clear SecureStore items for native
     try {
-      const keys = ['coinhub_session', 'coinhub_token', 'coinhub_user_data', 'coinhub_session_cookie'];
+      const keys = [`${APP_SCHEME}_session`, `${APP_SCHEME}_token`, `${APP_SCHEME}_user_data`, `${APP_SCHEME}_session_cookie`];
       for (const key of keys) {
         try {
           await SecureStore.deleteItemAsync(key);
