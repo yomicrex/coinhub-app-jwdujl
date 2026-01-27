@@ -15,8 +15,7 @@ export default function HomeLayout() {
       <Stack.Screen
         name="index"
         options={{
-          title: 'CoinHub',
-          headerLargeTitle: true,
+          headerShown: false,
         }}
       />
     </Stack>

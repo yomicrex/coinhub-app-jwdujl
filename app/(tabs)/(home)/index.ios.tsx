@@ -92,9 +92,18 @@ export default function FeedScreen() {
   const fetchTradeCoins = useCallback(async () => {
     console.log('FeedScreen: Fetching trade coins');
     try {
-      const response = await fetch(`${API_URL}/api/coins/trade-feed`, {
-        credentials: 'include',
-      });
+      // If user is authenticated, use authenticated fetch to exclude own coins
+      // If not authenticated, use regular fetch to show all trade coins
+      let response;
+      if (user) {
+        console.log('FeedScreen: User authenticated, fetching trade coins with session');
+        response = await authenticatedFetch(`/api/coins/trade-feed`);
+      } else {
+        console.log('FeedScreen: Guest user, fetching all trade coins');
+        response = await fetch(`${API_URL}/api/coins/trade-feed`, {
+          credentials: 'include',
+        });
+      }
 
       if (response.ok) {
         const data = await response.json();
@@ -108,7 +117,7 @@ export default function FeedScreen() {
       console.error('FeedScreen: Error fetching trade coins:', error);
       setTradeCoins([]);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     console.log('FeedScreen: Component mounted, user:', user?.username);
@@ -471,11 +480,9 @@ export default function FeedScreen() {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>🪙 CoinHub</Text>
           <View style={styles.headerActions}>
-            <TouchableOpacity onPress={handleSearchCoins} style={styles.headerButton}>
-              <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={26} color="#FFD700" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleSearchUsers} style={styles.headerButton}>
-              <IconSymbol ios_icon_name="person.2" android_material_icon_name="group" size={26} color="#FFD700" />
+            <TouchableOpacity onPress={handleSearchCoins} style={styles.searchButton}>
+              <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={20} color="#000" />
+              <Text style={styles.searchButtonText}>Search</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={handleAddCoin} style={styles.headerButton}>
               <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add-circle" size={30} color="#FFD700" />
@@ -495,11 +502,9 @@ export default function FeedScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>🪙 CoinHub</Text>
         <View style={styles.headerActions}>
-          <TouchableOpacity onPress={handleSearchCoins} style={styles.headerButton}>
-            <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={26} color="#FFD700" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleSearchUsers} style={styles.headerButton}>
-            <IconSymbol ios_icon_name="person.2" android_material_icon_name="group" size={26} color="#FFD700" />
+          <TouchableOpacity onPress={handleSearchCoins} style={styles.searchButton}>
+            <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={20} color="#000" />
+            <Text style={styles.searchButtonText}>Search</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleAddCoin} style={styles.headerButton}>
             <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add-circle" size={30} color="#FFD700" />
@@ -515,22 +520,25 @@ export default function FeedScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
         ListHeaderComponent={
-          tradeCoins.length > 0 ? (
-            <View style={styles.tradeSection}>
-              <Text style={styles.tradeSectionTitle}>Open to Trade</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.tradeScrollContent}
-              >
-                {tradeCoins.map((coin) => (
-                  <React.Fragment key={coin.id}>
-                    {renderTradeCoinCard(coin)}
-                  </React.Fragment>
-                ))}
-              </ScrollView>
-            </View>
-          ) : null
+          <>
+            {tradeCoins.length > 0 ? (
+              <View style={styles.tradeSection}>
+                <Text style={styles.tradeSectionTitle}>Open to Trade</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.tradeScrollContent}
+                >
+                  {tradeCoins.map((coin) => (
+                    <React.Fragment key={coin.id}>
+                      {renderTradeCoinCard(coin)}
+                    </React.Fragment>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+            <View style={styles.feedDivider} />
+          </>
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
@@ -628,10 +636,24 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 12,
   },
   headerButton: {
     padding: 6,
+  },
+  searchButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFD700',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
+  },
+  searchButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#000',
   },
   loadingContainer: {
     flex: 1,
@@ -645,8 +667,6 @@ const styles = StyleSheet.create({
   },
   tradeSection: {
     paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
     backgroundColor: colors.surface,
   },
   tradeSectionTitle: {
@@ -655,6 +675,10 @@ const styles = StyleSheet.create({
     color: colors.text,
     paddingHorizontal: 16,
     marginBottom: 12,
+  },
+  feedDivider: {
+    height: 8,
+    backgroundColor: colors.background,
   },
   tradeScrollContent: {
     paddingHorizontal: 12,
