@@ -213,10 +213,10 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingBottom: 24,
+    paddingBottom: 40,
   },
   topSpacer: {
-    height: height * 0.35,
+    height: height * 0.25,
   },
   loadingContainer: {
     flex: 1,
@@ -231,7 +231,7 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 32,
   },
   title: {
     fontSize: 48,
