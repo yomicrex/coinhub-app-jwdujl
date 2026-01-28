@@ -12,7 +12,7 @@ const CreateCoinSchema = z.object({
   year: z.number().int().min(1800).max(new Date().getFullYear()),
   unit: z.string().max(100).optional(),
   organization: z.string().max(100).optional(),
-  agency: z.string().min(1).max(100), // Required field for new coins
+  agency: z.string().max(100).optional(),
   deployment: z.string().max(100).optional(),
   coinNumber: z.string().max(100).optional(),
   mintMark: z.string().max(50).optional(),
@@ -174,8 +174,16 @@ export function registerCoinsRoutes(app: App) {
       return fullCoin;
     } catch (error) {
       if (error instanceof z.ZodError) {
-        app.logger.warn({ error: error.issues, userId }, 'Validation error creating coin');
-        return reply.status(400).send({ error: 'Validation failed', details: error.issues });
+        const validationErrors = error.issues.map((issue) => ({
+          field: issue.path.join('.'),
+          message: issue.message,
+          code: issue.code,
+        }));
+        app.logger.warn(
+          { userId, validationErrors, errorCount: error.issues.length },
+          'Validation error creating coin'
+        );
+        return reply.status(400).send({ error: 'Validation failed', details: validationErrors });
       }
       app.logger.error({ err: error, userId }, 'Failed to create coin');
       throw error;
