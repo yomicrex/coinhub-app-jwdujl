@@ -1,8 +1,9 @@
+
 {
   "expo": {
     "name": "CoinHub",
     "slug": "CoinHub",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/final_quest_240x240.png",
     "scheme": "CoinHub",
@@ -15,14 +16,16 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.coinhub.app"
+      "bundleIdentifier": "com.coinhub.app",
+      "buildNumber": "1.0.1"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/final_quest_240x240.png",
         "backgroundColor": "#1a1a1a"
       },
-      "package": "com.coinhub.app"
+      "package": "com.coinhub.app",
+      "versionCode": 2
     },
     "web": {
       "bundler": "metro",
