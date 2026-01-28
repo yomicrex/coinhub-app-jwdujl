@@ -134,10 +134,10 @@ export default function EditCoinScreen() {
   const handleSubmit = async () => {
     console.log('EditCoinScreen: User tapped save button');
     
-    // Validate required fields
-    if (!agency || !country || !year) {
+    // Validate required fields (only title, country, and year are required)
+    if (!title.trim() || !country.trim() || !year.trim()) {
       console.log('EditCoinScreen: Missing required fields');
-      setErrorMessage('Please fill in Agency, Country, and Year (all are required)');
+      setErrorMessage('Please fill in Title, Country, and Year (all are required)');
       setShowErrorModal(true);
       return;
     }
@@ -167,16 +167,16 @@ export default function EditCoinScreen() {
     try {
       // Update coin data
       const coinData = {
-        title: title || `${agency} Coin`,
-        agency,
-        unit: unit || undefined,
-        coinNumber: coinNumber || undefined,
-        deployment: deployment || undefined,
-        country,
-        year: parseInt(year),
-        version: version || undefined,
-        manufacturer: manufacturer || undefined,
-        description: description || undefined,
+        title: title.trim(),
+        agency: agency.trim() || undefined, // FIXED: Agency is now optional
+        unit: unit.trim() || undefined,
+        coinNumber: coinNumber.trim() || undefined,
+        deployment: deployment.trim() || undefined,
+        country: country.trim(),
+        year: parseInt(year.trim(), 10),
+        version: version.trim() || undefined,
+        manufacturer: manufacturer.trim() || undefined,
+        description: description.trim() || undefined,
         visibility: 'public',
         tradeStatus,
       };
@@ -193,9 +193,23 @@ export default function EditCoinScreen() {
       });
 
       if (!coinResponse.ok) {
-        const errorText = await coinResponse.text();
-        console.error('EditCoinScreen: Failed to update coin, status:', coinResponse.status, 'error:', errorText);
-        throw new Error(`Failed to update coin: ${errorText}`);
+        const errorData = await coinResponse.json().catch(() => ({}));
+        console.error('EditCoinScreen: Failed to update coin, status:', coinResponse.status, 'error:', errorData);
+        
+        // Show detailed validation errors if available
+        let errorMessage = 'Failed to update coin';
+        if (errorData.details && Array.isArray(errorData.details)) {
+          const fieldErrors = errorData.details.map((detail: any) => {
+            const fieldName = detail.path?.join('.') || 'Unknown field';
+            const message = detail.message || 'Invalid value';
+            return `${fieldName}: ${message}`;
+          }).join('\n');
+          errorMessage = `Validation errors:\n\n${fieldErrors}`;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        }
+        
+        throw new Error(errorMessage);
       }
 
       console.log('EditCoinScreen: Coin updated successfully');
@@ -213,21 +227,17 @@ export default function EditCoinScreen() {
           console.log('EditCoinScreen: Uploading new image', i + 1, 'of', newImages.length);
           
           try {
-            const formData = new FormData();
             const uri = newImages[i];
             const filename = uri.split('/').pop() || 'image.jpg';
             const match = /\.(\w+)$/.exec(filename);
             const type = match ? `image/${match[1]}` : 'image/jpeg';
 
-            formData.append('image', {
+            const formData = new FormData();
+            formData.append('file', {
               uri,
               name: filename,
               type,
             } as any);
-
-            // Use the index in the full images array for proper ordering
-            const imageIndex = images.indexOf(uri);
-            formData.append('orderIndex', imageIndex.toString());
 
             console.log('EditCoinScreen: Uploading to:', `/api/coins/${id}/images`);
             
@@ -356,7 +366,18 @@ export default function EditCoinScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.label}>Agency * (Required)</Text>
+          <Text style={styles.label}>Title * (Required)</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g., Navy SEAL Team 6 Challenge Coin"
+            placeholderTextColor={colors.textSecondary}
+            value={title}
+            onChangeText={setTitle}
+          />
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.label}>Agency</Text>
           <TextInput
             style={styles.input}
             placeholder="e.g., U.S. Navy, U.S. Army, FBI"

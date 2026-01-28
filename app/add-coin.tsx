@@ -128,45 +128,95 @@ export default function AddCoinScreen() {
     setUploading(true);
 
     try {
-      const formData = new FormData();
-      formData.append('title', title.trim());
-      formData.append('country', country.trim());
-      formData.append('year', year.trim());
-      if (unit.trim()) formData.append('unit', unit.trim());
-      if (organization.trim()) formData.append('organization', organization.trim());
-      if (agency.trim()) formData.append('agency', agency.trim());
-      if (deployment.trim()) formData.append('deployment', deployment.trim());
-      if (coinNumber.trim()) formData.append('coinNumber', coinNumber.trim());
-      if (mintMark.trim()) formData.append('mintMark', mintMark.trim());
-      if (condition.trim()) formData.append('condition', condition.trim());
-      if (description.trim()) formData.append('description', description.trim());
-      if (version.trim()) formData.append('version', version.trim());
-      if (manufacturer.trim()) formData.append('manufacturer', manufacturer.trim());
-      formData.append('visibility', visibility);
-      formData.append('tradeStatus', tradeStatus);
+      // Step 1: Create the coin with JSON data
+      console.log('AddCoinScreen: Creating coin with JSON data');
+      const coinData = {
+        title: title.trim(),
+        country: country.trim(),
+        year: parseInt(year.trim(), 10),
+        unit: unit.trim() || undefined,
+        organization: organization.trim() || undefined,
+        agency: agency.trim() || undefined, // Optional field
+        deployment: deployment.trim() || undefined,
+        coinNumber: coinNumber.trim() || undefined,
+        mintMark: mintMark.trim() || undefined,
+        condition: condition.trim() || undefined,
+        description: description.trim() || undefined,
+        version: version.trim() || undefined,
+        manufacturer: manufacturer.trim() || undefined,
+        visibility,
+        tradeStatus,
+      };
 
-      images.forEach((imageUri, index) => {
-        const filename = imageUri.split('/').pop() || `image_${index}.jpg`;
-        const match = /\.(\w+)$/.exec(filename);
-        const type = match ? `image/${match[1]}` : 'image/jpeg';
-
-        formData.append('images', {
-          uri: imageUri,
-          name: filename,
-          type,
-        } as any);
-      });
-
-      console.log('AddCoinScreen: Uploading coin data');
-      const response = await authenticatedUpload(`${API_URL}/api/coins`, {
+      const createResponse = await authenticatedFetch(`${API_URL}/api/coins`, {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(coinData),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log('AddCoinScreen: Coin created successfully:', data);
+      if (!createResponse.ok) {
+        const errorData = await createResponse.json();
+        console.error('AddCoinScreen: Failed to create coin:', errorData);
+        
+        // Show detailed validation errors if available
+        let errorMessage = 'Failed to add coin';
+        if (errorData.details && Array.isArray(errorData.details)) {
+          const fieldErrors = errorData.details.map((detail: any) => {
+            const fieldName = detail.path?.join('.') || 'Unknown field';
+            const message = detail.message || 'Invalid value';
+            return `${fieldName}: ${message}`;
+          }).join('\n');
+          errorMessage = `Validation errors:\n\n${fieldErrors}`;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        }
+        
+        Alert.alert('Error', errorMessage);
+        return;
+      }
 
+      const createdCoin = await createResponse.json();
+      console.log('AddCoinScreen: Coin created successfully:', createdCoin.id);
+
+      // Step 2: Upload images one by one
+      console.log('AddCoinScreen: Uploading images...');
+      let uploadedCount = 0;
+      for (const imageUri of images) {
+        try {
+          const filename = imageUri.split('/').pop() || `image_${uploadedCount}.jpg`;
+          const match = /\.(\w+)$/.exec(filename);
+          const type = match ? `image/${match[1]}` : 'image/jpeg';
+
+          const formData = new FormData();
+          formData.append('file', {
+            uri: imageUri,
+            name: filename,
+            type,
+          } as any);
+
+          const uploadResponse = await authenticatedUpload(
+            `${API_URL}/api/coins/${createdCoin.id}/images`,
+            formData
+          );
+
+          if (uploadResponse.ok) {
+            uploadedCount++;
+            console.log(`AddCoinScreen: Image ${uploadedCount}/${images.length} uploaded`);
+          } else {
+            const errorData = await uploadResponse.json().catch(() => ({}));
+            console.error('AddCoinScreen: Failed to upload image:', errorData);
+          }
+        } catch (imageError) {
+          console.error('AddCoinScreen: Error uploading image:', imageError);
+        }
+      }
+
+      console.log(`AddCoinScreen: Uploaded ${uploadedCount}/${images.length} images`);
+
+      // Step 3: Track coin upload for subscription
+      try {
         await authenticatedFetch(`${API_URL}/api/subscription/track-coin-upload`, {
           method: 'POST',
           headers: {
@@ -175,18 +225,17 @@ export default function AddCoinScreen() {
           body: JSON.stringify({}),
         });
         console.log('AddCoinScreen: Coin upload tracked');
-
-        Alert.alert('Success', 'Your coin has been added!', [
-          {
-            text: 'OK',
-            onPress: () => router.back(),
-          },
-        ]);
-      } else {
-        const errorData = await response.json();
-        console.error('AddCoinScreen: Failed to create coin:', errorData);
-        Alert.alert('Error', errorData.error || 'Failed to add coin');
+      } catch (trackError) {
+        console.error('AddCoinScreen: Failed to track upload:', trackError);
+        // Non-critical error, continue
       }
+
+      Alert.alert('Success', 'Your coin has been added!', [
+        {
+          text: 'OK',
+          onPress: () => router.back(),
+        },
+      ]);
     } catch (error) {
       console.error('AddCoinScreen: Error creating coin:', error);
       Alert.alert('Error', 'An error occurred while adding your coin');
