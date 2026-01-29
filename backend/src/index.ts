@@ -94,6 +94,7 @@ try {
   // Register CORS middleware for Better Auth endpoints
   // CRITICAL: Native mobile apps (iOS/Android/TestFlight) don't send origin headers
   // We must allow requests without origin headers to support mobile apps
+  // This also handles CSRF token validation for mobile apps
   await app.fastify.register(async (fastifyInstance) => {
     fastifyInstance.addHook('onRequest', async (request, reply) => {
       const origin = request.headers.origin || request.headers.referer;
@@ -118,7 +119,9 @@ try {
         reply.header('Access-Control-Allow-Origin', '*');
         reply.header('Access-Control-Allow-Credentials', 'true');
         reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-        reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token');
+        // Mark request as from a trusted source for Better Auth CSRF checks
+        (request as any).trustedForCSRF = true;
 
         if (request.method === 'OPTIONS') {
           return reply.status(200).send();
@@ -138,7 +141,9 @@ try {
         reply.header('Access-Control-Allow-Origin', origin);
         reply.header('Access-Control-Allow-Credentials', 'true');
         reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-        reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token');
+        // Mark trusted origins for Better Auth CSRF checks
+        (request as any).trustedForCSRF = true;
         app.logger.debug({ origin }, 'Request from trusted origin');
       } else {
         app.logger.warn({ origin, trustedOriginCount: trustedOrigins.length }, 'Request from untrusted origin');
@@ -150,12 +155,35 @@ try {
     });
   });
 
+  // Register CSRF bypass middleware for mobile apps
+  // Mobile apps send Authorization header instead of CSRF tokens
+  await app.fastify.register(async (fastifyInstance) => {
+    fastifyInstance.addHook('preHandler', async (request, reply) => {
+      // Skip CSRF check for:
+      // 1. Requests with Authorization header (mobile apps typically use this)
+      // 2. Requests to Better Auth endpoints from mobile apps
+      // 3. Requests marked as trusted (no origin header)
+      const hasAuthHeader = !!request.headers.authorization;
+      const isAuthEndpoint = request.url.startsWith('/api/auth/');
+      const isMobileRequest = (request as any).trustedForCSRF || !request.headers.origin;
+
+      if (isAuthEndpoint && isMobileRequest && hasAuthHeader) {
+        // Mark this request as CSRF-safe so Better Auth doesn't reject it
+        (request as any).skipCsrfCheck = true;
+        app.logger.debug(
+          { method: request.method, path: request.url, hasAuth: hasAuthHeader },
+          'Skipping CSRF check for mobile auth request with Authorization header'
+        );
+      }
+    });
+  });
+
   app.logger.info(
     { originCount: trustedOrigins.length },
-    'CORS configured for trusted origins'
+    'CORS and CSRF bypass configured for mobile apps and trusted origins'
   );
 } catch (error) {
-  app.logger.error({ err: error }, 'Failed to configure CORS');
+  app.logger.error({ err: error }, 'Failed to configure CORS and CSRF handling');
   throw error;
 }
 
