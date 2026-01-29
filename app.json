@@ -1,8 +1,9 @@
+
 {
   "expo": {
     "name": "CoinHub",
     "slug": "CoinHub",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/final_quest_240x240.png",
     "scheme": "CoinHub",
@@ -16,7 +17,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.coinhub.app",
-      "buildNumber": "1.0.1"
+      "buildNumber": "2"
     },
     "android": {
       "adaptiveIcon": {
