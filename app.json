@@ -2,7 +2,7 @@
   "expo": {
     "name": "CoinHub",
     "slug": "CoinHub",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/images/final_quest_240x240.png",
     "scheme": "CoinHub",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.coinhub.app",
-      "buildNumber": "4"
+      "buildNumber": "5"
     },
     "android": {
       "adaptiveIcon": {
@@ -24,7 +24,7 @@
         "backgroundColor": "#1a1a1a"
       },
       "package": "com.coinhub.app",
-      "versionCode": 4
+      "versionCode": 5
     },
     "web": {
       "bundler": "metro",
