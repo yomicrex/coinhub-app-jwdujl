@@ -10,6 +10,9 @@ const APP_SCHEME = ENV.APP_SCHEME;
 
 console.log("Auth: Using backend URL:", API_URL);
 console.log("Auth: Using app scheme:", APP_SCHEME);
+console.log("Auth: Platform:", Platform.OS);
+console.log("Auth: Is standalone:", ENV.IS_STANDALONE);
+console.log("Auth: Is Expo Go:", ENV.IS_EXPO_GO);
 
 // Platform-specific storage: localStorage for web, SecureStore for native
 const storage = Platform.OS === "web"
@@ -30,7 +33,19 @@ export const authClient = createAuthClient({
     }),
   ],
   fetchOptions: {
-    credentials: "include",
+    // CRITICAL: For native mobile apps (iOS/Android/TestFlight), we must:
+    // 1. NOT send credentials: 'include' (causes CORS issues)
+    // 2. Use Authorization header instead of cookies
+    // 3. NOT send origin header (native apps don't have origins)
+    credentials: Platform.OS === "web" ? "include" : "omit",
+    headers: {
+      // CRITICAL: Don't send origin header for native apps
+      // TestFlight/App Store builds don't have origins
+      ...(Platform.OS !== "web" && {
+        "X-Requested-With": "XMLHttpRequest",
+        "X-Platform": Platform.OS,
+      }),
+    },
   },
 });
 
