@@ -98,7 +98,12 @@ try {
   await app.fastify.register(async (fastifyInstance) => {
     fastifyInstance.addHook('onRequest', async (request, reply) => {
       // Use ONLY origin header - do NOT fall back to referer
-      const origin = request.headers.origin as string | undefined;
+      // Treat the string "null" as no origin (browsers send this for file:// and data: URLs)
+      let origin = request.headers.origin as string | undefined;
+      if (origin === 'null') {
+        origin = undefined;
+      }
+
       const appType = request.headers['x-app-type'] as string | undefined;
       const userAgent = request.headers['user-agent'] || 'unknown';
       const isMobileApp = appType === 'standalone' || appType === 'expo-go';
