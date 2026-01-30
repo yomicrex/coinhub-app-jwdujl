@@ -6,6 +6,7 @@ import ENV from '@/config/env';
 const API_URL = ENV.BACKEND_URL;
 
 console.log('AuthContext: Using backend URL:', API_URL);
+console.log('AuthContext: Platform:', ENV.PLATFORM, 'Standalone:', ENV.IS_STANDALONE, 'Expo Go:', ENV.IS_EXPO_GO);
 
 interface User {
   id: string;
@@ -65,7 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return null;
       }
       
-      console.log('AuthContext: Making /me request with session token');
+      console.log('AuthContext: Making /me request with session token, length:', sessionToken.length);
       
       const queryParams = forceRefresh ? `?_t=${Date.now()}` : '';
       const response = await fetch(`${API_URL}/api/auth/me${queryParams}`, {
@@ -73,8 +74,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${sessionToken}`,
+          'X-Platform': ENV.PLATFORM,
+          'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
         },
-        credentials: 'include',
+        credentials: 'omit',
       });
       
       console.log('AuthContext: /me response status:', response.status);
@@ -86,7 +89,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
           return null;
         }
-        throw new Error(`Failed to fetch user profile: ${response.status}`);
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error('AuthContext: /me error response:', errorText);
+        throw new Error(`Failed to fetch user profile: ${response.status} - ${errorText}`);
       }
       
       const data = await response.json();
@@ -288,8 +293,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${sessionToken}`,
+          'X-Platform': ENV.PLATFORM,
+          'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
         },
-        credentials: 'include',
+        credentials: 'omit',
         body: JSON.stringify({ username, displayName }),
       });
 

@@ -34,17 +34,17 @@ export const authClient = createAuthClient({
   ],
   fetchOptions: {
     // CRITICAL: For native mobile apps (iOS/Android/TestFlight), we must:
-    // 1. NOT send credentials: 'include' (causes CORS issues)
-    // 2. Use Authorization header instead of cookies
+    // 1. Use "omit" for credentials to avoid cookie-based auth issues
+    // 2. Use Authorization header (Bearer token) instead of cookies
     // 3. NOT send origin header (native apps don't have origins)
-    credentials: Platform.OS === "web" ? "include" : "omit",
+    credentials: "omit",
     headers: {
       // CRITICAL: Don't send origin header for native apps
       // TestFlight/App Store builds don't have origins
-      ...(Platform.OS !== "web" && {
-        "X-Requested-With": "XMLHttpRequest",
-        "X-Platform": Platform.OS,
-      }),
+      // Add platform identifier to help backend distinguish mobile requests
+      "X-Requested-With": "XMLHttpRequest",
+      "X-Platform": Platform.OS,
+      "X-App-Type": ENV.IS_STANDALONE ? "standalone" : ENV.IS_EXPO_GO ? "expo-go" : "unknown",
     },
   },
 });

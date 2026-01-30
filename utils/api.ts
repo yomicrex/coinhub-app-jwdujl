@@ -30,7 +30,8 @@ async function getSessionToken(): Promise<string | null> {
 }
 
 /**
- * Make an authenticated API request with Better Auth session cookie
+ * Make an authenticated API request with Bearer token authentication
+ * CRITICAL: Uses Authorization header instead of cookies for mobile app compatibility
  */
 export async function authenticatedFetch(
   endpoint: string,
@@ -45,13 +46,16 @@ export async function authenticatedFetch(
   
   const url = endpoint.startsWith('http') ? endpoint : `${API_URL}${endpoint}`;
   
-  console.log('API: Making authenticated request to:', url);
+  console.log('API: Making authenticated request to:', url, 'with token length:', sessionToken.length);
   
-  // CRITICAL FIX: Use Authorization header for React Native (more reliable than cookies)
-  // Backend's extractSessionToken supports both "Bearer <token>" and "session=<token>" cookie
-  const headers = {
-    ...options.headers,
+  // CRITICAL: Use Authorization header for mobile apps (more reliable than cookies)
+  // Backend's extractSessionToken prioritizes Authorization header over cookies
+  const headers: Record<string, string> = {
+    ...(options.headers as Record<string, string>),
     'Authorization': `Bearer ${sessionToken}`,
+    // Add platform headers to help backend identify mobile requests
+    'X-Platform': ENV.PLATFORM,
+    'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
   };
   
   // Add Content-Type for JSON requests if not already set
@@ -59,13 +63,18 @@ export async function authenticatedFetch(
     headers['Content-Type'] = 'application/json';
   }
   
+  // CRITICAL: Use "omit" for credentials to avoid cookie-based auth issues on mobile
   const response = await fetch(url, {
     ...options,
     headers,
-    credentials: 'include',
+    credentials: 'omit',
   });
   
-  console.log('API: Response status:', response.status);
+  console.log('API: Response status:', response.status, 'for', url);
+  
+  if (!response.ok && response.status === 401) {
+    console.error('API: Unauthorized (401) - session may have expired');
+  }
   
   return response;
 }
@@ -90,6 +99,7 @@ export async function authenticatedFetchJSON<T = any>(
 
 /**
  * Upload a file with authentication
+ * CRITICAL: Uses Authorization header instead of cookies for mobile app compatibility
  */
 export async function authenticatedUpload(
   endpoint: string,
@@ -104,20 +114,27 @@ export async function authenticatedUpload(
   
   const url = endpoint.startsWith('http') ? endpoint : `${API_URL}${endpoint}`;
   
-  console.log('API: Uploading to:', url);
+  console.log('API: Uploading to:', url, 'with token length:', sessionToken.length);
   
-  // CRITICAL FIX: Use Authorization header for React Native (more reliable than cookies)
+  // CRITICAL: Use Authorization header for mobile apps (more reliable than cookies)
   // DO NOT set Content-Type for FormData - browser will set it with boundary
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${sessionToken}`,
+      // Add platform headers to help backend identify mobile requests
+      'X-Platform': ENV.PLATFORM,
+      'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
     },
-    credentials: 'include',
+    credentials: 'omit',
     body: formData,
   });
   
   console.log('API: Upload response status:', response.status);
+  
+  if (!response.ok && response.status === 401) {
+    console.error('API: Unauthorized (401) - session may have expired');
+  }
   
   return response;
 }
