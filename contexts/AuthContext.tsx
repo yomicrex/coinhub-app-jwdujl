@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { authClient } from '@/lib/auth';
 import ENV from '@/config/env';
+import { addAuthDebugLog } from '@/components/AuthDebugPanel';
 
 const API_URL = ENV.BACKEND_URL;
 
@@ -63,13 +64,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!sessionToken) {
         console.log('AuthContext: No valid session token found - user not authenticated');
         setUser(null);
+        
+        // Debug log
+        addAuthDebugLog({
+          type: 'error',
+          endpoint: '/api/auth/me',
+          method: 'GET',
+          error: 'No session token found',
+        });
+        
         return null;
       }
       
       console.log('AuthContext: Making /me request with session token, length:', sessionToken.length);
       
       const queryParams = forceRefresh ? `?_t=${Date.now()}` : '';
-      const response = await fetch(`${API_URL}/api/auth/me${queryParams}`, {
+      const url = `${API_URL}/api/auth/me${queryParams}`;
+      
+      // Debug log - request
+      addAuthDebugLog({
+        type: 'request',
+        endpoint: url,
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${sessionToken.substring(0, 20)}...`,
+          'X-Platform': ENV.PLATFORM,
+          'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
+        },
+      });
+      
+      const response = await fetch(url, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -82,8 +106,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       console.log('AuthContext: /me response status:', response.status);
       
+      // Get response body for logging
+      const responseClone = response.clone();
+      let responseBody = '';
+      try {
+        responseBody = await responseClone.text();
+      } catch (e) {
+        responseBody = 'Unable to read response body';
+      }
+      
       if (!response.ok) {
         console.error('AuthContext: /me request failed with status:', response.status);
+        
+        // Debug log - error response
+        addAuthDebugLog({
+          type: 'error',
+          endpoint: url,
+          method: 'GET',
+          status: response.status,
+          error: `Request failed with status ${response.status}`,
+          body: responseBody.substring(0, 300),
+        });
+        
         if (response.status === 401 || response.status === 404) {
           console.log('AuthContext: User not authenticated or profile not found - clearing user state');
           setUser(null);
@@ -93,6 +137,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error('AuthContext: /me error response:', errorText);
         throw new Error(`Failed to fetch user profile: ${response.status} - ${errorText}`);
       }
+      
+      // Debug log - success response
+      addAuthDebugLog({
+        type: 'response',
+        endpoint: url,
+        method: 'GET',
+        status: response.status,
+        body: responseBody.substring(0, 300),
+      });
       
       const data = await response.json();
       console.log('AuthContext: /me response received successfully');
@@ -165,6 +218,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error) {
       console.error('AuthContext: Error fetching user profile:', error);
+      
+      // Debug log
+      addAuthDebugLog({
+        type: 'error',
+        endpoint: '/api/auth/me',
+        method: 'GET',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      
       setUser(null);
       return null;
     }
@@ -203,6 +265,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (email: string, password: string) => {
     console.log('AuthContext: SignIn - Attempting to sign in with email:', email);
     
+    // Debug log
+    addAuthDebugLog({
+      type: 'info',
+      endpoint: '/api/auth/sign-in',
+      method: 'POST',
+      message: `Sign in attempt for email: ${email}`,
+    });
+    
     try {
       console.log('AuthContext: SignIn - Clearing cached user data BEFORE sign in');
       setUser(null);
@@ -214,10 +284,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (result.error) {
         console.error('AuthContext: SignIn - Failed with error:', result.error);
+        
+        // Debug log
+        addAuthDebugLog({
+          type: 'error',
+          endpoint: '/api/auth/sign-in',
+          method: 'POST',
+          error: result.error.message || 'Sign in failed',
+        });
+        
         throw new Error(result.error.message || 'Sign in failed');
       }
 
       console.log('AuthContext: SignIn - Better Auth sign-in successful');
+      
+      // Debug log
+      addAuthDebugLog({
+        type: 'response',
+        endpoint: '/api/auth/sign-in',
+        method: 'POST',
+        status: 200,
+        message: 'Sign in successful',
+      });
       
       console.log('AuthContext: SignIn - Waiting for session to be stored...');
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -233,6 +321,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('AuthContext: SignIn - User state updated successfully');
     } catch (error: any) {
       console.error('AuthContext: SignIn - Error:', error);
+      
+      // Debug log
+      addAuthDebugLog({
+        type: 'error',
+        endpoint: '/api/auth/sign-in',
+        method: 'POST',
+        error: error.message || 'Sign in failed',
+      });
+      
       setUser(null);
       throw new Error(error.message || 'Sign in failed');
     }
@@ -240,6 +337,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUp = async (email: string, password: string) => {
     console.log('AuthContext: SignUp - Attempting to sign up with email:', email);
+    
+    // Debug log
+    addAuthDebugLog({
+      type: 'info',
+      endpoint: '/api/auth/sign-up',
+      method: 'POST',
+      message: `Sign up attempt for email: ${email}`,
+    });
     
     try {
       console.log('AuthContext: SignUp - Clearing cached user data BEFORE sign up');
@@ -253,10 +358,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (result.error) {
         console.error('AuthContext: SignUp - Failed with error:', result.error);
+        
+        // Debug log
+        addAuthDebugLog({
+          type: 'error',
+          endpoint: '/api/auth/sign-up',
+          method: 'POST',
+          error: result.error.message || 'Sign up failed',
+        });
+        
         throw new Error(result.error.message || 'Sign up failed');
       }
 
       console.log('AuthContext: SignUp - Better Auth sign-up successful');
+      
+      // Debug log
+      addAuthDebugLog({
+        type: 'response',
+        endpoint: '/api/auth/sign-up',
+        method: 'POST',
+        status: 200,
+        message: 'Sign up successful',
+      });
       
       console.log('AuthContext: SignUp - Waiting for session to be stored...');
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -272,6 +395,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('AuthContext: SignUp - User state updated successfully');
     } catch (error: any) {
       console.error('AuthContext: SignUp - Error:', error);
+      
+      // Debug log
+      addAuthDebugLog({
+        type: 'error',
+        endpoint: '/api/auth/sign-up',
+        method: 'POST',
+        error: error.message || 'Sign up failed',
+      });
+      
       setUser(null);
       throw new Error(error.message || 'Sign up failed');
     }
@@ -280,11 +412,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const completeProfile = async (username: string, displayName: string) => {
     console.log('AuthContext: CompleteProfile - Completing profile with username:', username);
     
+    // Debug log
+    addAuthDebugLog({
+      type: 'info',
+      endpoint: '/api/profiles/complete',
+      method: 'POST',
+      message: `Complete profile for username: ${username}`,
+    });
+    
     try {
       const sessionToken = await getToken();
       
       if (!sessionToken) {
         console.error('AuthContext: CompleteProfile - No valid session found');
+        
+        // Debug log
+        addAuthDebugLog({
+          type: 'error',
+          endpoint: '/api/profiles/complete',
+          method: 'POST',
+          error: 'No session token available',
+        });
+        
         throw new Error('Not authenticated. Please sign in again.');
       }
       
@@ -303,12 +452,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         console.error('AuthContext: CompleteProfile - Failed with status:', response.status, errorData);
+        
+        // Debug log
+        addAuthDebugLog({
+          type: 'error',
+          endpoint: '/api/profiles/complete',
+          method: 'POST',
+          status: response.status,
+          error: errorData.message || errorData.error || 'Failed to complete profile',
+        });
+        
         throw new Error(errorData.message || errorData.error || 'Failed to complete profile');
       }
 
       const data = await response.json();
 
       console.log('AuthContext: CompleteProfile - Successful, profile created');
+      
+      // Debug log
+      addAuthDebugLog({
+        type: 'response',
+        endpoint: '/api/profiles/complete',
+        method: 'POST',
+        status: 200,
+        message: 'Profile completed successfully',
+      });
       
       setUser(null);
       
@@ -319,12 +487,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('AuthContext: CompleteProfile - User data refreshed successfully');
     } catch (error: any) {
       console.error('AuthContext: CompleteProfile - Error:', error);
+      
+      // Debug log
+      addAuthDebugLog({
+        type: 'error',
+        endpoint: '/api/profiles/complete',
+        method: 'POST',
+        error: error.message || 'Failed to complete profile',
+      });
+      
       throw error;
     }
   };
 
   const signOut = async () => {
     console.log('AuthContext: SignOut - Signing out user');
+    
+    // Debug log
+    addAuthDebugLog({
+      type: 'info',
+      endpoint: '/api/auth/sign-out',
+      method: 'POST',
+      message: 'Sign out initiated',
+    });
     
     try {
       console.log('AuthContext: SignOut - Clearing user state IMMEDIATELY');
@@ -333,8 +518,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await authClient.signOut();
       
       console.log('AuthContext: SignOut - Better Auth signOut complete');
+      
+      // Debug log
+      addAuthDebugLog({
+        type: 'response',
+        endpoint: '/api/auth/sign-out',
+        method: 'POST',
+        status: 200,
+        message: 'Sign out successful',
+      });
     } catch (error) {
       console.error('AuthContext: SignOut - Error during signOut:', error);
+      
+      // Debug log
+      addAuthDebugLog({
+        type: 'error',
+        endpoint: '/api/auth/sign-out',
+        method: 'POST',
+        error: error instanceof Error ? error.message : String(error),
+      });
       
       setUser(null);
     }
@@ -344,6 +546,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshUser = async () => {
     console.log('AuthContext: RefreshUser - Refreshing user data');
+    
+    // Debug log
+    addAuthDebugLog({
+      type: 'info',
+      endpoint: 'refreshUser',
+      message: 'Refreshing user data',
+    });
     
     setUser(null);
     

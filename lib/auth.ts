@@ -4,6 +4,7 @@ import { expoClient } from "@better-auth/expo/client";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import ENV from "@/config/env";
+import { addAuthDebugLog } from "@/components/AuthDebugPanel";
 
 const API_URL = ENV.BACKEND_URL;
 const APP_SCHEME = ENV.APP_SCHEME;
@@ -13,6 +14,13 @@ console.log("Auth: Using app scheme:", APP_SCHEME);
 console.log("Auth: Platform:", Platform.OS);
 console.log("Auth: Is standalone:", ENV.IS_STANDALONE);
 console.log("Auth: Is Expo Go:", ENV.IS_EXPO_GO);
+
+// Debug log - initialization
+addAuthDebugLog({
+  type: 'info',
+  endpoint: 'auth-initialization',
+  message: `Auth client initializing - Backend: ${API_URL}, Platform: ${Platform.OS}, Standalone: ${ENV.IS_STANDALONE}`,
+});
 
 // Platform-specific storage: localStorage for web, SecureStore for native
 const storage = Platform.OS === "web"
@@ -49,8 +57,26 @@ export const authClient = createAuthClient({
   },
 });
 
+// Debug log - client created
+addAuthDebugLog({
+  type: 'info',
+  endpoint: 'auth-initialization',
+  message: 'Auth client created successfully with credentials: omit',
+  headers: {
+    'X-Platform': Platform.OS,
+    'X-App-Type': ENV.IS_STANDALONE ? "standalone" : ENV.IS_EXPO_GO ? "expo-go" : "unknown",
+  },
+});
+
 export async function clearAuthTokens() {
   console.log("clearAuthTokens: Clearing all auth tokens");
+  
+  // Debug log
+  addAuthDebugLog({
+    type: 'info',
+    endpoint: 'clearAuthTokens',
+    message: 'Clearing all auth tokens',
+  });
   
   if (Platform.OS === "web") {
     // Clear all auth-related items from localStorage
@@ -63,6 +89,13 @@ export async function clearAuthTokens() {
     }
     keysToRemove.forEach(key => localStorage.removeItem(key));
     console.log("clearAuthTokens: Cleared web storage");
+    
+    // Debug log
+    addAuthDebugLog({
+      type: 'info',
+      endpoint: 'clearAuthTokens',
+      message: `Cleared ${keysToRemove.length} keys from web storage`,
+    });
   } else {
     // Clear SecureStore items for native
     try {
@@ -75,8 +108,22 @@ export async function clearAuthTokens() {
         }
       }
       console.log("clearAuthTokens: Cleared native storage");
+      
+      // Debug log
+      addAuthDebugLog({
+        type: 'info',
+        endpoint: 'clearAuthTokens',
+        message: `Cleared ${keys.length} keys from native storage`,
+      });
     } catch (error) {
       console.error("clearAuthTokens: Error clearing native storage:", error);
+      
+      // Debug log
+      addAuthDebugLog({
+        type: 'error',
+        endpoint: 'clearAuthTokens',
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 }

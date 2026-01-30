@@ -18,6 +18,8 @@ import {
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { authenticatedFetch } from '@/utils/api';
+import { AuthDebugPanel } from '@/components/AuthDebugPanel';
+import ENV from '@/config/env';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -25,10 +27,14 @@ export default function SettingsScreen() {
   const [showDeleteModal, setShowDeleteModal] = React.useState(false);
   const [showPasswordResetModal, setShowPasswordResetModal] = React.useState(false);
   const [showEmailUpdateModal, setShowEmailUpdateModal] = React.useState(false);
+  const [showDebugPanel, setShowDebugPanel] = React.useState(false);
   const [newEmail, setNewEmail] = React.useState('');
   const [isUpdatingEmail, setIsUpdatingEmail] = React.useState(false);
   const [isResettingPassword, setIsResettingPassword] = React.useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = React.useState(false);
+
+  // Show debug panel in dev mode or TestFlight builds
+  const showDebugButton = ENV.IS_DEV || ENV.IS_STANDALONE;
 
   console.log('Settings screen loaded', { userEmail: user?.email });
 
@@ -231,6 +237,32 @@ export default function SettingsScreen() {
         }}
       />
       <ScrollView style={styles.scrollView}>
+        {/* Debug Section (only in dev/TestFlight) */}
+        {showDebugButton && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Developer Tools</Text>
+            
+            <TouchableOpacity
+              style={styles.option}
+              onPress={() => setShowDebugPanel(true)}
+            >
+              <IconSymbol
+                ios_icon_name="ladybug"
+                android_material_icon_name="bug-report"
+                size={24}
+                color="#FFD700"
+              />
+              <Text style={styles.optionText}>Auth Debug Panel</Text>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="arrow-forward"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Subscription Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Subscription</Text>
@@ -373,6 +405,12 @@ export default function SettingsScreen() {
           <Text style={styles.footerText}>© 2026 CoinHub. All rights reserved.</Text>
         </View>
       </ScrollView>
+
+      {/* Auth Debug Panel */}
+      <AuthDebugPanel
+        visible={showDebugPanel}
+        onClose={() => setShowDebugPanel(false)}
+      />
 
       {/* Email Update Modal */}
       <Modal

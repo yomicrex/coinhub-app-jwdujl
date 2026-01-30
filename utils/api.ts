@@ -1,6 +1,7 @@
 
 import { authClient } from '@/lib/auth';
 import ENV from '@/config/env';
+import { addAuthDebugLog } from '@/components/AuthDebugPanel';
 
 const API_URL = ENV.BACKEND_URL;
 
@@ -18,13 +19,37 @@ async function getSessionToken(): Promise<string | null> {
     
     if (sessionToken) {
       console.log('API: Token extracted successfully, length:', sessionToken.length);
+      
+      // Debug log
+      addAuthDebugLog({
+        type: 'info',
+        endpoint: 'getSessionToken',
+        message: `Token extracted successfully (length: ${sessionToken.length})`,
+      });
+      
       return sessionToken;
     }
     
     console.log('API: No session token found');
+    
+    // Debug log
+    addAuthDebugLog({
+      type: 'error',
+      endpoint: 'getSessionToken',
+      error: 'No session token found',
+    });
+    
     return null;
   } catch (error) {
     console.error('API: Error getting token:', error);
+    
+    // Debug log
+    addAuthDebugLog({
+      type: 'error',
+      endpoint: 'getSessionToken',
+      error: error instanceof Error ? error.message : String(error),
+    });
+    
     return null;
   }
 }
@@ -41,6 +66,15 @@ export async function authenticatedFetch(
   
   if (!sessionToken) {
     console.error('API: No session token available for authenticated request');
+    
+    // Debug log
+    addAuthDebugLog({
+      type: 'error',
+      endpoint,
+      method: options.method || 'GET',
+      error: 'No session token available',
+    });
+    
     throw new Error('Not authenticated. Please sign in again.');
   }
   
@@ -63,6 +97,20 @@ export async function authenticatedFetch(
     headers['Content-Type'] = 'application/json';
   }
   
+  // Debug log - request
+  addAuthDebugLog({
+    type: 'request',
+    endpoint: url,
+    method: options.method || 'GET',
+    headers: {
+      'Authorization': `Bearer ${sessionToken.substring(0, 20)}...`,
+      'X-Platform': headers['X-Platform'],
+      'X-App-Type': headers['X-App-Type'],
+      'Content-Type': headers['Content-Type'] || 'none',
+    },
+    body: options.body ? String(options.body).substring(0, 300) : undefined,
+  });
+  
   // CRITICAL: Use "omit" for credentials to avoid cookie-based auth issues on mobile
   const response = await fetch(url, {
     ...options,
@@ -71,6 +119,35 @@ export async function authenticatedFetch(
   });
   
   console.log('API: Response status:', response.status, 'for', url);
+  
+  // Get response body for logging
+  const responseClone = response.clone();
+  let responseBody = '';
+  try {
+    responseBody = await responseClone.text();
+  } catch (e) {
+    responseBody = 'Unable to read response body';
+  }
+  
+  // Debug log - response
+  if (response.ok) {
+    addAuthDebugLog({
+      type: 'response',
+      endpoint: url,
+      method: options.method || 'GET',
+      status: response.status,
+      body: responseBody.substring(0, 300),
+    });
+  } else {
+    addAuthDebugLog({
+      type: 'error',
+      endpoint: url,
+      method: options.method || 'GET',
+      status: response.status,
+      error: `Request failed with status ${response.status}`,
+      body: responseBody.substring(0, 300),
+    });
+  }
   
   if (!response.ok && response.status === 401) {
     console.error('API: Unauthorized (401) - session may have expired');
@@ -109,6 +186,15 @@ export async function authenticatedUpload(
   
   if (!sessionToken) {
     console.error('API: No session token available for upload');
+    
+    // Debug log
+    addAuthDebugLog({
+      type: 'error',
+      endpoint,
+      method: 'POST',
+      error: 'No session token available for upload',
+    });
+    
     throw new Error('Not authenticated. Please sign in again.');
   }
   
@@ -118,19 +204,64 @@ export async function authenticatedUpload(
   
   // CRITICAL: Use Authorization header for mobile apps (more reliable than cookies)
   // DO NOT set Content-Type for FormData - browser will set it with boundary
-  const response = await fetch(url, {
+  const headers: Record<string, string> = {
+    'Authorization': `Bearer ${sessionToken}`,
+    // Add platform headers to help backend identify mobile requests
+    'X-Platform': ENV.PLATFORM,
+    'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
+  };
+  
+  // Debug log - upload request
+  addAuthDebugLog({
+    type: 'request',
+    endpoint: url,
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${sessionToken}`,
-      // Add platform headers to help backend identify mobile requests
-      'X-Platform': ENV.PLATFORM,
-      'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
+      'Authorization': `Bearer ${sessionToken.substring(0, 20)}...`,
+      'X-Platform': headers['X-Platform'],
+      'X-App-Type': headers['X-App-Type'],
     },
+    message: 'File upload request',
+  });
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
     credentials: 'omit',
     body: formData,
   });
   
   console.log('API: Upload response status:', response.status);
+  
+  // Get response body for logging
+  const responseClone = response.clone();
+  let responseBody = '';
+  try {
+    responseBody = await responseClone.text();
+  } catch (e) {
+    responseBody = 'Unable to read response body';
+  }
+  
+  // Debug log - upload response
+  if (response.ok) {
+    addAuthDebugLog({
+      type: 'response',
+      endpoint: url,
+      method: 'POST',
+      status: response.status,
+      message: 'File upload successful',
+      body: responseBody.substring(0, 300),
+    });
+  } else {
+    addAuthDebugLog({
+      type: 'error',
+      endpoint: url,
+      method: 'POST',
+      status: response.status,
+      error: `Upload failed with status ${response.status}`,
+      body: responseBody.substring(0, 300),
+    });
+  }
   
   if (!response.ok && response.status === 401) {
     console.error('API: Unauthorized (401) - session may have expired');

@@ -20,6 +20,8 @@ import { colors } from '@/styles/commonStyles';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { BlurView } from 'expo-blur';
+import { AuthDebugPanel } from '@/components/AuthDebugPanel';
+import ENV from '@/config/env';
 
 const { width, height } = Dimensions.get('window');
 
@@ -30,6 +32,10 @@ export default function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+
+  // Show debug panel in dev mode or TestFlight builds
+  const showDebugButton = ENV.IS_DEV || ENV.IS_STANDALONE;
 
   console.log('AuthScreen: Rendered with user:', user?.email, 'needsCompletion:', user?.needsProfileCompletion);
 
@@ -81,6 +87,8 @@ export default function AuthScreen() {
         errorMessage = 'This email is already registered. Please sign in instead.';
       } else if (errorMessage.includes('Invalid credentials') || errorMessage.includes('Incorrect')) {
         errorMessage = 'Invalid email or password. Please try again.';
+      } else if (errorMessage.includes('invalid origin')) {
+        errorMessage = 'Authentication error: Invalid origin. This is a known issue in TestFlight builds. Please check the debug panel for details.';
       }
       
       Alert.alert('Error', errorMessage);
@@ -118,6 +126,17 @@ export default function AuthScreen() {
     >
       <View style={styles.overlay} />
       <SafeAreaView style={styles.container} edges={['bottom']}>
+        {/* Debug Button (only in dev/TestFlight) */}
+        {showDebugButton && (
+          <TouchableOpacity
+            style={styles.debugButton}
+            onPress={() => setShowDebugPanel(true)}
+          >
+            <IconSymbol ios_icon_name="ladybug" android_material_icon_name="bug-report" size={24} color="#FFD700" />
+            <Text style={styles.debugButtonText}>Debug</Text>
+          </TouchableOpacity>
+        )}
+
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardView}
@@ -190,6 +209,12 @@ export default function AuthScreen() {
             </BlurView>
           </ScrollView>
         </KeyboardAvoidingView>
+
+        {/* Debug Panel */}
+        <AuthDebugPanel
+          visible={showDebugPanel}
+          onClose={() => setShowDebugPanel(false)}
+        />
       </SafeAreaView>
     </ImageBackground>
   );
@@ -207,6 +232,24 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
+  },
+  debugButton: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 60 : 40,
+    right: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    zIndex: 1000,
+    gap: 6,
+  },
+  debugButtonText: {
+    color: '#FFD700',
+    fontSize: 14,
+    fontWeight: '600',
   },
   keyboardView: {
     flex: 1,
