@@ -93,33 +93,35 @@ try {
 
   // Register CORS middleware for Better Auth endpoints
   // CRITICAL: Native mobile apps (iOS/Android/TestFlight) don't send origin headers
-  // We must allow requests without origin headers to support mobile apps
+  // We use X-App-Type header to detect mobile apps instead of referer fallback
   // This also handles CSRF token validation for mobile apps
   await app.fastify.register(async (fastifyInstance) => {
     fastifyInstance.addHook('onRequest', async (request, reply) => {
-      const origin = request.headers.origin || request.headers.referer;
+      // Use ONLY origin header - do NOT fall back to referer
+      const origin = request.headers.origin as string | undefined;
+      const appType = request.headers['x-app-type'] as string | undefined;
       const userAgent = request.headers['user-agent'] || 'unknown';
+      const isMobileApp = appType === 'standalone' || appType === 'expo-go';
 
       // Log for debugging
       if (origin) {
         app.logger.debug(
-          { origin, userAgent, method: request.method, path: request.url },
+          { origin, userAgent, appType, method: request.method, path: request.url },
           'Request with origin header'
         );
       } else {
         app.logger.debug(
-          { userAgent, method: request.method, path: request.url },
-          'Request without origin header (likely native mobile app)'
+          { userAgent, appType, method: request.method, path: request.url, isMobileApp },
+          'Request without origin header'
         );
       }
 
-      // If no origin header, ALLOW the request
-      // This is critical for native mobile apps (iOS/Android/TestFlight)
-      if (!origin) {
+      // CORS handling: Allow requests without origin OR from mobile apps
+      if (!origin || isMobileApp) {
         reply.header('Access-Control-Allow-Origin', '*');
         reply.header('Access-Control-Allow-Credentials', 'true');
         reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-        reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token');
+        reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token, X-App-Type, X-Platform');
         // Mark request as from a trusted source for Better Auth CSRF checks
         (request as any).trustedForCSRF = true;
 
@@ -141,7 +143,7 @@ try {
         reply.header('Access-Control-Allow-Origin', origin);
         reply.header('Access-Control-Allow-Credentials', 'true');
         reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-        reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token');
+        reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token, X-App-Type, X-Platform');
         // Mark trusted origins for Better Auth CSRF checks
         (request as any).trustedForCSRF = true;
         app.logger.debug({ origin }, 'Request from trusted origin');
@@ -156,42 +158,30 @@ try {
   });
 
   // Register CSRF bypass middleware for mobile apps
-  // Mobile apps send Authorization header instead of CSRF tokens
-  // CRITICAL: Better Auth's CSRF protection breaks native mobile apps that don't send origin headers
+  // Mobile apps use X-App-Type header to identify themselves
+  // CRITICAL: Better Auth's CSRF protection must be bypassed for mobile app auth requests
   await app.fastify.register(async (fastifyInstance) => {
     fastifyInstance.addHook('preHandler', async (request, reply) => {
-      // Skip CSRF check for mobile app requests
-      // Native mobile apps (iOS/Android/TestFlight) don't send origin headers
-      // and use Bearer token authentication instead of CSRF tokens
-
-      const hasOriginHeader = !!request.headers.origin;
-      const hasRefererHeader = !!request.headers.referer;
+      // Detect mobile apps using X-App-Type header
+      const appType = request.headers['x-app-type'] as string | undefined;
+      const isMobileApp = appType === 'standalone' || appType === 'expo-go';
       const hasAuthHeader = !!request.headers.authorization;
-      const isBrowserRequest = hasOriginHeader || hasRefererHeader;
-      const isMobileRequest = !isBrowserRequest;
 
-      // For all auth endpoints from mobile apps (no origin/referer), bypass CSRF
-      if (request.url.startsWith('/api/auth/') && isMobileRequest) {
+      // CRITICAL: For ALL auth endpoints from mobile apps, bypass CSRF
+      // This prevents Better Auth from throwing "invalid origin" errors
+      if (request.url.startsWith('/api/auth/') && isMobileApp) {
         // Mark this request as CSRF-safe so Better Auth doesn't reject it
         (request as any).skipCsrfCheck = true;
+        (request as any).trustedForCSRF = true;
         app.logger.debug(
           {
             method: request.method,
             path: request.url,
+            appType,
             hasAuth: hasAuthHeader,
-            isMobileRequest: true,
-            reason: 'No origin/referer header detected - mobile app request'
+            reason: 'Mobile app request - CSRF bypassed'
           },
-          'Bypassing CSRF check for mobile auth request (no origin header)'
-        );
-      }
-
-      // Also bypass for requests with Authorization header on auth endpoints
-      if (request.url.startsWith('/api/auth/') && hasAuthHeader && !isBrowserRequest) {
-        (request as any).skipCsrfCheck = true;
-        app.logger.debug(
-          { method: request.method, path: request.url },
-          'Bypassing CSRF check for auth request with Bearer token (mobile app pattern)'
+          'Bypassing CSRF check for mobile auth request (X-App-Type detected)'
         );
       }
     });
