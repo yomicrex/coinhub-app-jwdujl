@@ -117,6 +117,8 @@ export function registerAuthRoutes(app: App) {
       referer: request.headers.referer || undefined,
       'x-app-type': request.headers['x-app-type'] || undefined,
       'x-platform': request.headers['x-platform'] || undefined,
+      'x-forwarded-host': request.headers['x-forwarded-host'] || undefined,
+      'x-forwarded-proto': request.headers['x-forwarded-proto'] || undefined,
       authorization: request.headers.authorization ? `Bearer [${request.headers.authorization.substring(7, 17)}...]` : undefined,
       'user-agent': request.headers['user-agent'] || undefined,
       'content-type': request.headers['content-type'] || undefined,
