@@ -128,9 +128,9 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
       });
 
       const backendVersion = data.backendVersion || 'unknown';
-      const isUpdated = backendVersion === '2026-01-31-02';
+      const isUpdated = backendVersion === '2026-01-31-03';
       
-      const resultText = `✅ Backend Version Test:\n\nVersion: ${backendVersion}\nTimestamp: ${data.timestamp || 'unknown'}\n\nStatus: ${response.status}\n\n${isUpdated ? '✅ Backend is UPDATED with latest fix (2026-01-31-02)!' : '⚠️ Backend version mismatch - expected 2026-01-31-02'}`;
+      const resultText = `✅ Backend Version Test:\n\nVersion: ${backendVersion}\nTimestamp: ${data.timestamp || 'unknown'}\n\nStatus: ${response.status}\n\n${isUpdated ? '✅ Backend is UPDATED with latest fix (2026-01-31-03)!' : '⚠️ Backend version mismatch - expected 2026-01-31-03'}`;
       
       setVersionTestResult(resultText);
       alert(resultText);
