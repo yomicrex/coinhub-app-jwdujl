@@ -79,19 +79,42 @@ export default function AuthScreen() {
     } catch (error: any) {
       console.error('AuthScreen: Auth error:', error);
       
-      // Provide more helpful error messages
+      // CRITICAL: Enhanced error display with HTTP status and response body
+      // This helps identify whether "Invalid origin" is from Better Auth or our middleware
       let errorMessage = error.message || 'Authentication failed';
+      let errorDetails = '';
+      
+      // Try to extract status code and response body from error
+      if (error.status || error.statusCode) {
+        errorDetails += `\n\nHTTP Status: ${error.status || error.statusCode}`;
+      }
+      
+      if (error.response) {
+        try {
+          const responseText = typeof error.response === 'string' 
+            ? error.response 
+            : JSON.stringify(error.response);
+          errorDetails += `\n\nResponse: ${responseText.substring(0, 200)}`;
+        } catch (e) {
+          // Ignore JSON stringify errors
+        }
+      }
       
       // Handle specific error cases
       if (errorMessage.includes('User already exists')) {
         errorMessage = 'This email is already registered. Please sign in instead.';
       } else if (errorMessage.includes('Invalid credentials') || errorMessage.includes('Incorrect')) {
         errorMessage = 'Invalid email or password. Please try again.';
-      } else if (errorMessage.includes('invalid origin')) {
-        errorMessage = 'Authentication error: Invalid origin. This is a known issue in TestFlight builds. Please check the debug panel for details.';
+      } else if (errorMessage.toLowerCase().includes('invalid origin')) {
+        errorMessage = 'Authentication error: Invalid origin detected.';
+        errorDetails += '\n\n⚠️ This is a known issue in TestFlight builds. Please open the Debug panel (top-right button) to see detailed logs and help us diagnose the issue.';
       }
       
-      Alert.alert('Error', errorMessage);
+      // Show error with details
+      const fullErrorMessage = errorMessage + errorDetails;
+      console.error('AuthScreen: Full error message:', fullErrorMessage);
+      
+      Alert.alert('Error', fullErrorMessage);
     } finally {
       setIsLoading(false);
     }

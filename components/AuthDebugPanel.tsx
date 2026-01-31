@@ -130,12 +130,12 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
       });
 
       const backendVersion = data.backendVersion || data.version || 'unknown';
-      const expectedVersion = '2026-01-31-origin-fix-v3';
+      const expectedVersion = '2026-01-31-origin-logging-v1';
       // Accept any version that starts with "2026-01-31" as valid (allows for multiple deployments on same day)
-      const isUpdated = backendVersion.startsWith('2026-01-31');
+      const isUpdated = typeof backendVersion === 'string' && backendVersion.startsWith('2026-01-31');
       const isExactMatch = backendVersion === expectedVersion;
       
-      const resultText = `${isExactMatch ? '✅' : isUpdated ? '⚠️' : '❌'} Backend Version Test:\n\nVersion: ${backendVersion}\nExpected: ${expectedVersion}\nMatch: ${isExactMatch ? '✅ Exact Match' : isUpdated ? '⚠️ Partial Match (same day)' : '❌ No Match'}\n\nTimestamp: ${data.timestamp || 'unknown'}\nStatus: ${response.status}\n\n${isExactMatch ? '✅ Backend is UPDATED with EXACT version!' : isUpdated ? '⚠️ Backend is updated (same day) but version differs' : '❌ Backend version mismatch - expected 2026-01-31-origin-fix-v3'}`;
+      const resultText = `${isExactMatch ? '✅' : isUpdated ? '⚠️' : '❌'} Backend Version Test:\n\nVersion: ${backendVersion}\nExpected: ${expectedVersion}\nMatch: ${isExactMatch ? '✅ Exact Match' : isUpdated ? '⚠️ Partial Match (same day)' : '❌ No Match'}\n\nTimestamp: ${data.timestamp || 'unknown'}\nStatus: ${response.status}\n\n${isExactMatch ? '✅ Backend is UPDATED with EXACT version!' : isUpdated ? '⚠️ Backend is updated (same day) but version differs' : '❌ Backend version mismatch - expected 2026-01-31-origin-logging-v1'}`;
       
       setVersionTestResult(resultText);
       alert(resultText);

@@ -285,15 +285,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (result.error) {
         console.error('AuthContext: SignIn - Failed with error:', result.error);
         
-        // Debug log
+        // CRITICAL: Enhanced error logging to capture HTTP status and response body
+        // This helps identify whether "Invalid origin" is from Better Auth or our middleware
+        const errorMessage = result.error.message || 'Sign in failed';
+        const errorStatus = (result.error as any).status || (result.error as any).statusCode || 'unknown';
+        const errorCode = (result.error as any).code || 'unknown';
+        const errorBody = JSON.stringify(result.error, null, 2).substring(0, 500);
+        
+        console.error('AuthContext: Sign-in error details:', {
+          message: errorMessage,
+          status: errorStatus,
+          code: errorCode,
+          fullError: errorBody,
+        });
+        
+        // Debug log with enhanced details
         addAuthDebugLog({
           type: 'error',
           endpoint: '/api/auth/sign-in',
           method: 'POST',
-          error: result.error.message || 'Sign in failed',
+          status: typeof errorStatus === 'number' ? errorStatus : undefined,
+          error: `[${errorCode}] ${errorMessage} (Status: ${errorStatus})`,
+          body: errorBody,
         });
         
-        throw new Error(result.error.message || 'Sign in failed');
+        throw new Error(errorMessage);
       }
 
       console.log('AuthContext: SignIn - Better Auth sign-in successful');
@@ -322,12 +338,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error: any) {
       console.error('AuthContext: SignIn - Error:', error);
       
-      // Debug log
+      // CRITICAL: Enhanced error logging for exceptions
+      const errorMessage = error.message || 'Sign in failed';
+      const errorName = error.name || 'Error';
+      const errorStack = error.stack?.substring(0, 500) || 'No stack trace';
+      
+      console.error('AuthContext: Sign-in exception details:', {
+        name: errorName,
+        message: errorMessage,
+        stack: errorStack,
+      });
+      
+      // Debug log with enhanced details
       addAuthDebugLog({
         type: 'error',
         endpoint: '/api/auth/sign-in',
         method: 'POST',
-        error: error.message || 'Sign in failed',
+        error: `${errorName}: ${errorMessage}`,
+        body: `Stack: ${errorStack}`,
       });
       
       setUser(null);
