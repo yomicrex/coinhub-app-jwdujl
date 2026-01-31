@@ -104,10 +104,12 @@ try {
   throw error;
 }
 
-// CRITICAL: Register header normalization middleware BEFORE Better Auth initialization
+// CRITICAL: Register header normalization and URL fixing middleware BEFORE Better Auth initialization
 // This normalizes headers for mobile apps to prevent "Invalid origin" errors
 try {
   app.logger.info('Registering mobile auth header normalization middleware');
+
+  const publicBaseURL = 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
 
   // CRITICAL: Mobile Auth Header Normalization - Runs FIRST, before URL fix
   // For mobile auth requests, force Origin and Referer headers to the public URL
@@ -120,8 +122,6 @@ try {
 
       // CRITICAL: For mobile auth requests, normalize headers BEFORE authentication processes them
       if (isAuthRoute && isMobileApp) {
-        const publicBaseURL = 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
-
         // Force Origin header to public URL - this prevents "Invalid origin" errors
         request.headers.origin = publicBaseURL;
 
@@ -131,6 +131,9 @@ try {
         // Mark as trusted to bypass CSRF checks
         (request as any).trustedForCSRF = true;
         (request as any).skipCsrfCheck = true;
+
+        // Store the constructed base URL for Better Auth to use
+        (request as any).constructedBaseURL = publicBaseURL;
 
         app.logger.info(
           {
@@ -143,6 +146,24 @@ try {
           },
           '[MOBILE_AUTH] Mobile app auth request - headers normalized BEFORE authentication'
         );
+      }
+
+      // For ALL auth requests (not just mobile), ensure we have a constructed base URL
+      if (isAuthRoute) {
+        // If not already set, set it now
+        if (!(request as any).constructedBaseURL) {
+          (request as any).constructedBaseURL = publicBaseURL;
+
+          app.logger.info(
+            {
+              method: request.method,
+              path: request.url,
+              constructedBaseURL: publicBaseURL,
+              isMobileApp
+            },
+            '[AUTH_BASE_URL] Constructed base URL set for auth request'
+          );
+        }
       }
     });
   });

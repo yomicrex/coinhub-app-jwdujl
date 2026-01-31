@@ -101,7 +101,7 @@ export function registerAuthRoutes(app: App) {
   app.fastify.get('/api/debug/version', async (request: FastifyRequest, reply: FastifyReply) => {
     app.logger.info('Debug version endpoint requested');
     return {
-      backendVersion: '1.0.13-request-logging-diagnostic',
+      backendVersion: '1.0.14-auth-base-url-fix',
       timestamp: new Date().toISOString(),
     };
   });
@@ -165,6 +165,31 @@ export function registerAuthRoutes(app: App) {
 
     app.logger.info({ config }, 'DEBUG: Auth configuration returned');
     return config;
+  });
+
+  /**
+   * GET /api/debug/auth-request-url
+   * PUBLIC DEBUG ENDPOINT - Shows what URL/origin Better Auth will receive
+   * Helps verify that Better Auth is getting the correct public BASE URL, not localhost
+   * No authentication required
+   */
+  app.fastify.get('/api/debug/auth-request-url', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.info('Debug auth-request-url endpoint requested');
+
+    const publicBaseURL = 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
+    const constructedBaseURL = (request as any).constructedBaseURL || publicBaseURL;
+    const appType = request.headers['x-app-type'] as string | undefined;
+
+    return {
+      requestUrl: request.url,
+      constructedUrlUsedForAuthHandler: constructedBaseURL,
+      rawHost: request.headers.host || undefined,
+      rawOrigin: request.headers.origin || undefined,
+      rawReferer: request.headers.referer || undefined,
+      xAppType: appType || undefined,
+      isMobileApp: appType === 'standalone' || appType === 'expo-go',
+      note: 'constructedUrlUsedForAuthHandler should be the public base URL, never localhost'
+    };
   });
 
   /**
