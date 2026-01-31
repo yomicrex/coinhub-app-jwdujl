@@ -156,11 +156,20 @@ export function registerAuthRoutes(app: App) {
       disableCSRFCheck: true, // CSRF is disabled for mobile apps via middleware
       baseURL: 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev',
       trustedOrigins: [
+        // Production domain
         'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev',
+        // Local development (HTTP and HTTPS)
+        'http://localhost:8082',
+        'https://localhost:8082',
+        // App schemes
         'CoinHub://',
         'coinhub://',
+        // Regex patterns for localhost/127.0.0.1
+        'localhost (regex pattern)',
+        '127.0.0.1 (regex pattern)',
       ],
       trustProxy: true, // Fastify trustProxy is enabled
+      note: 'Complete list of allowed origins for Better Auth origin validation'
     };
 
     app.logger.info({ config }, 'DEBUG: Auth configuration returned');

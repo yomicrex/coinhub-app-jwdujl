@@ -344,12 +344,21 @@ try {
 // This must be registered as a plugin BEFORE app.run()
 try {
   const trustedOrigins: (string | RegExp)[] = [
-    // Development web
+    // Development web (HTTP)
     'http://localhost:3000',
     'http://localhost:8081',
     'http://localhost:8082',
     'http://127.0.0.1:3000',
     'http://127.0.0.1:8081',
+    'http://127.0.0.1:8082',
+
+    // Development web (HTTPS)
+    'https://localhost:3000',
+    'https://localhost:8081',
+    'https://localhost:8082',
+    'https://127.0.0.1:3000',
+    'https://127.0.0.1:8081',
+    'https://127.0.0.1:8082',
 
     // Expo Go mobile app
     'exp://localhost:8081',
