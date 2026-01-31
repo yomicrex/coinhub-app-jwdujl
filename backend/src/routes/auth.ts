@@ -101,7 +101,7 @@ export function registerAuthRoutes(app: App) {
   app.fastify.get('/api/debug/version', async (request: FastifyRequest, reply: FastifyReply) => {
     app.logger.info('Debug version endpoint requested');
     return {
-      backendVersion: '1.0.14-auth-base-url-fix',
+      backendVersion: '1.0.15-mobile-auth-signin-debug',
       timestamp: new Date().toISOString(),
     };
   });
@@ -189,6 +189,40 @@ export function registerAuthRoutes(app: App) {
       xAppType: appType || undefined,
       isMobileApp: appType === 'standalone' || appType === 'expo-go',
       note: 'constructedUrlUsedForAuthHandler should be the public base URL, never localhost'
+    };
+  });
+
+  /**
+   * GET /api/debug/auth-signin-headers
+   * PUBLIC DEBUG ENDPOINT - Shows normalized headers for sign-in requests
+   * Specifically for debugging mobile sign-in origin validation errors
+   * No authentication required
+   */
+  app.fastify.get('/api/debug/auth-signin-headers', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.info('Debug auth-signin-headers endpoint requested');
+
+    const publicBaseURL = 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
+    const appType = request.headers['x-app-type'] as string | undefined;
+    const isMobileApp = appType === 'standalone' || appType === 'expo-go';
+
+    // Simulate what headers will be used for sign-in
+    const signInOrigin = isMobileApp ? publicBaseURL : (request.headers.origin || 'undefined');
+    const signInReferer = isMobileApp ? publicBaseURL : (request.headers.referer || 'undefined');
+
+    return {
+      constructedUrlUsedForAuthHandler: publicBaseURL,
+      originHeaderUsedForAuth: signInOrigin,
+      refererHeaderUsedForAuth: signInReferer,
+      isMobileApp,
+      rawRequestHeaders: {
+        url: request.url,
+        host: request.headers.host || undefined,
+        origin: request.headers.origin || undefined,
+        referer: request.headers.referer || undefined,
+        'x-app-type': appType || undefined,
+        'x-forwarded-proto': request.headers['x-forwarded-proto'] || undefined
+      },
+      note: 'For mobile apps (x-app-type=standalone or expo-go), origin and referer are normalized to the public base URL'
     };
   });
 
