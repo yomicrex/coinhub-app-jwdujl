@@ -44,16 +44,48 @@ export const authClient = createAuthClient({
     // CRITICAL: For native mobile apps (iOS/Android/TestFlight), we must:
     // 1. Use "omit" for credentials to avoid cookie-based auth issues
     // 2. Use Authorization header (Bearer token) instead of cookies
-    // 3. NOT send origin header (native apps don't have origins)
+    // 3. Send X-App-Type header so backend can identify mobile apps and bypass CSRF
     credentials: "omit",
     headers: {
-      // CRITICAL: Don't send origin header for native apps
-      // TestFlight/App Store builds don't have origins
-      // Add platform identifier to help backend distinguish mobile requests
-      "X-Requested-With": "XMLHttpRequest",
-      "X-Platform": Platform.OS,
+      // CRITICAL: X-App-Type header is REQUIRED for mobile apps
+      // Backend uses this to bypass CSRF checks for native apps
       "X-App-Type": ENV.IS_STANDALONE ? "standalone" : ENV.IS_EXPO_GO ? "expo-go" : "unknown",
+      "X-Platform": Platform.OS,
+      "X-Requested-With": "XMLHttpRequest",
     },
+  },
+  // CRITICAL: Use custom fetch to ensure headers are sent with EVERY request
+  // Better Auth sometimes bypasses fetchOptions.headers for certain requests
+  fetch: async (url: string | URL | Request, options?: RequestInit) => {
+    const headers = new Headers(options?.headers);
+    
+    // CRITICAL: Always add X-App-Type header for mobile app identification
+    // Backend requires this to bypass CSRF checks
+    headers.set("X-App-Type", ENV.IS_STANDALONE ? "standalone" : ENV.IS_EXPO_GO ? "expo-go" : "unknown");
+    headers.set("X-Platform", Platform.OS);
+    headers.set("X-Requested-With", "XMLHttpRequest");
+    
+    // Log the request for debugging
+    console.log('Auth: Custom fetch -', typeof url === 'string' ? url : url.toString(), 'with headers:', {
+      'X-App-Type': headers.get('X-App-Type'),
+      'X-Platform': headers.get('X-Platform'),
+    });
+    
+    addAuthDebugLog({
+      type: 'request',
+      endpoint: typeof url === 'string' ? url : url.toString(),
+      method: options?.method || 'GET',
+      headers: {
+        'X-App-Type': headers.get('X-App-Type') || 'none',
+        'X-Platform': headers.get('X-Platform') || 'none',
+      },
+    });
+    
+    return fetch(url, {
+      ...options,
+      headers,
+      credentials: "omit",
+    });
   },
 });
 
