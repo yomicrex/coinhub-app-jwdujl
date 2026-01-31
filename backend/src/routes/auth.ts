@@ -101,7 +101,7 @@ export function registerAuthRoutes(app: App) {
   app.fastify.get('/api/debug/version', async (request: FastifyRequest, reply: FastifyReply) => {
     app.logger.info('Debug version endpoint requested');
     return {
-      backendVersion: '1.0.12-mobile-auth-header-fix',
+      backendVersion: '1.0.13-request-logging-diagnostic',
       timestamp: new Date().toISOString(),
     };
   });

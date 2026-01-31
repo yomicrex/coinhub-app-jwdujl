@@ -47,6 +47,63 @@ try {
   throw error;
 }
 
+// CRITICAL: Add comprehensive request logging for debugging "Invalid origin" errors
+// This captures the EXACT headers received by the backend BEFORE any middleware modifies them
+try {
+  app.logger.info('Registering request logging middleware');
+
+  await app.fastify.register(async (fastifyInstance) => {
+    fastifyInstance.addHook('onRequest', async (request, reply) => {
+      // Log ONLY for auth routes to keep logs manageable
+      if (request.url.startsWith('/api/auth/')) {
+        const logData = {
+          requestId: request.id,
+          timestamp: new Date().toISOString(),
+          method: request.method,
+          url: request.url,
+          host: request.headers.host,
+          origin: request.headers.origin || 'undefined',
+          referer: request.headers.referer || 'undefined',
+          'x-app-type': request.headers['x-app-type'] || 'undefined',
+          'x-forwarded-proto': request.headers['x-forwarded-proto'] || 'undefined',
+          'x-forwarded-host': request.headers['x-forwarded-host'] || 'undefined',
+          'x-original-host': request.headers['x-original-host'] || 'undefined',
+          hasAuthorization: !!request.headers.authorization
+        };
+
+        app.logger.info(logData, '[AUTH_REQUEST_RECEIVED] Raw headers at request start');
+      }
+
+      // Capture response for logging
+      const originalSend = reply.send;
+      reply.send = function(payload) {
+        if (request.url.startsWith('/api/auth/')) {
+          const statusCode = this.statusCode;
+          const responseBody = typeof payload === 'string' ? payload : JSON.stringify(payload);
+          const truncatedBody = responseBody.substring(0, 300);
+
+          app.logger.info(
+            {
+              requestId: request.id,
+              statusCode,
+              responseBodyPreview: truncatedBody,
+              method: request.method,
+              url: request.url
+            },
+            '[AUTH_RESPONSE_SENT] Status and response preview'
+          );
+        }
+        return originalSend.call(this, payload);
+      };
+    });
+  });
+
+  app.logger.info('Request logging middleware registered');
+} catch (error) {
+  app.logger.error({ err: error }, 'Failed to register request logging middleware');
+  throw error;
+}
+
 // CRITICAL: Register header normalization middleware BEFORE Better Auth initialization
 // This normalizes headers for mobile apps to prevent "Invalid origin" errors
 try {
