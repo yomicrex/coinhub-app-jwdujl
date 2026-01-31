@@ -105,30 +105,74 @@ try {
       }
 
       const appType = request.headers['x-app-type'] as string | undefined;
+      const platform = request.headers['x-platform'] as string | undefined;
       const userAgent = request.headers['user-agent'] || 'unknown';
       const isMobileApp = appType === 'standalone' || appType === 'expo-go';
 
-      // Log for debugging
-      if (origin) {
-        app.logger.debug(
-          { origin, userAgent, appType, method: request.method, path: request.url },
-          'Request with origin header'
-        );
-      } else {
-        app.logger.debug(
-          { userAgent, appType, method: request.method, path: request.url, isMobileApp },
-          'Request without origin header'
-        );
-      }
+      // Store values on request for preHandler middleware
+      (request as any).origin = origin;
+      (request as any).appType = appType;
+      (request as any).platform = platform;
+      (request as any).isMobileApp = isMobileApp;
+
+      // Log for debugging - comprehensive request info
+      app.logger.info(
+        {
+          origin: origin || 'none',
+          appType: appType || 'none',
+          platform: platform || 'none',
+          isMobileApp,
+          method: request.method,
+          path: request.url,
+          hasAuth: !!request.headers.authorization,
+          userAgent: userAgent.substring(0, 100), // Truncate long user agents
+          timestamp: new Date().toISOString()
+        },
+        `[CORS] Request received - ${request.method} ${request.url}`
+      );
 
       // CORS handling: Allow requests without origin OR from mobile apps
       if (!origin || isMobileApp) {
-        reply.header('Access-Control-Allow-Origin', '*');
+        // For mobile apps, use the app type as origin if no origin provided
+        const originToUse = origin || (isMobileApp ? appType : '*');
+
+        reply.header('Access-Control-Allow-Origin', originToUse);
         reply.header('Access-Control-Allow-Credentials', 'true');
         reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
         reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token, X-App-Type, X-Platform');
+
         // Mark request as from a trusted source for Better Auth CSRF checks
         (request as any).trustedForCSRF = true;
+
+        // Log CORS handling for mobile/no-origin requests
+        const reason = !origin ? 'No origin header (mobile or native app)' : `Mobile app (${appType})`;
+        app.logger.info(
+          {
+            origin: origin || 'none',
+            appType: appType || 'none',
+            method: request.method,
+            path: request.url,
+            corsOriginSet: originToUse
+          },
+          `[CORS] ${reason} - allowing request with CORS headers`
+        );
+
+        // CRITICAL: For mobile auth endpoints, also mark for CSRF bypass
+        if (request.url.startsWith('/api/auth/') && isMobileApp) {
+          (request as any).skipCsrfCheck = true;
+          (request as any).csrfBypassEnabled = true;
+
+          app.logger.info(
+            {
+              origin: origin || 'none',
+              appType: appType || 'unknown',
+              method: request.method,
+              path: request.url,
+              action: 'Early CSRF bypass for mobile auth'
+            },
+            '[CSRF] Mobile app auth request - CSRF bypass enabled in onRequest'
+          );
+        }
 
         if (request.method === 'OPTIONS') {
           return reply.status(200).send();
@@ -151,9 +195,20 @@ try {
         reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token, X-App-Type, X-Platform');
         // Mark trusted origins for Better Auth CSRF checks
         (request as any).trustedForCSRF = true;
-        app.logger.debug({ origin }, 'Request from trusted origin');
+        app.logger.info(
+          { origin, method: request.method, path: request.url },
+          '[CORS] Request from trusted origin - allowing'
+        );
       } else {
-        app.logger.warn({ origin, trustedOriginCount: trustedOrigins.length }, 'Request from untrusted origin');
+        app.logger.warn(
+          {
+            origin,
+            trustedOriginCount: trustedOrigins.length,
+            path: request.url,
+            method: request.method
+          },
+          '[CORS] Request from untrusted origin - rejecting'
+        );
       }
 
       if (request.method === 'OPTIONS') {
@@ -162,11 +217,12 @@ try {
     });
   });
 
-  // Register CSRF bypass middleware for mobile apps
+  // Register CSRF bypass middleware for mobile apps - MORE AGGRESSIVE VERSION
   // Mobile apps use X-App-Type header to identify themselves
   // CRITICAL: Better Auth's CSRF protection must be bypassed for mobile app auth requests
+  // This runs in onRequest (second registration) to mark requests BEFORE Better Auth's CSRF check
   await app.fastify.register(async (fastifyInstance) => {
-    fastifyInstance.addHook('preHandler', async (request, reply) => {
+    fastifyInstance.addHook('onRequest', async (request, reply) => {
       // Detect mobile apps using X-App-Type header
       const appType = request.headers['x-app-type'] as string | undefined;
       const isMobileApp = appType === 'standalone' || appType === 'expo-go';
@@ -175,18 +231,56 @@ try {
       // CRITICAL: For ALL auth endpoints from mobile apps, bypass CSRF
       // This prevents Better Auth from throwing "invalid origin" errors
       if (request.url.startsWith('/api/auth/') && isMobileApp) {
-        // Mark this request as CSRF-safe so Better Auth doesn't reject it
+        // Mark this request with MULTIPLE properties to ensure CSRF bypass
         (request as any).skipCsrfCheck = true;
         (request as any).trustedForCSRF = true;
-        app.logger.debug(
+        (request as any).csrfBypassEnabled = true;
+
+        // Also set on reply to ensure headers reflect CSRF bypass
+        reply.header('X-CSRF-Bypass', 'true');
+
+        app.logger.info(
           {
             method: request.method,
             path: request.url,
             appType,
             hasAuth: hasAuthHeader,
-            reason: 'Mobile app request - CSRF bypassed'
+            reason: 'Mobile app auth request - CSRF completely bypassed',
+            origin: (request as any).origin || 'none'
           },
-          'Bypassing CSRF check for mobile auth request (X-App-Type detected)'
+          '[CSRF] Second onRequest - Bypassing CSRF check for mobile auth request (X-App-Type detected)'
+        );
+      }
+    });
+  });
+
+  // Additional preHandler hook for backup CSRF bypass
+  // Ensures CSRF bypass is applied even if Better Auth checks happen in preHandler
+  await app.fastify.register(async (fastifyInstance) => {
+    fastifyInstance.addHook('preHandler', async (request, reply) => {
+      // Read stored mobile app flag from onRequest
+      const appType = request.headers['x-app-type'] as string | undefined;
+      const isMobileApp = appType === 'standalone' || appType === 'expo-go';
+
+      // For mobile auth requests, reapply CSRF bypass markers
+      if (request.url.startsWith('/api/auth/') && isMobileApp) {
+        (request as any).skipCsrfCheck = true;
+        (request as any).trustedForCSRF = true;
+        (request as any).csrfBypassEnabled = true;
+
+        app.logger.info(
+          {
+            method: request.method,
+            path: request.url,
+            appType,
+            reason: 'Mobile app auth request - CSRF bypass reapplied in preHandler',
+            alreadyMarked: {
+              skipCsrfCheck: (request as any).skipCsrfCheck,
+              trustedForCSRF: (request as any).trustedForCSRF,
+              csrfBypassEnabled: (request as any).csrfBypassEnabled
+            }
+          },
+          '[CSRF] preHandler - Reapplying CSRF bypass for mobile auth request'
         );
       }
     });
