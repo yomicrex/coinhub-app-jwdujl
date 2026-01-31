@@ -37,6 +37,46 @@ try {
   throw error;
 }
 
+// CRITICAL: Register CSRF bypass middleware BEFORE Better Auth initialization
+// This ensures mobile app requests are marked before Better Auth's CSRF check runs
+try {
+  app.logger.info('Registering early CSRF bypass middleware for mobile apps');
+
+  // FIRST middleware layer: Detect mobile apps and mark for CSRF bypass
+  // This runs BEFORE Better Auth's hooks to prevent "invalid origin" errors
+  await app.fastify.register(async (fastifyInstance) => {
+    fastifyInstance.addHook('onRequest', async (request, reply) => {
+      // Detect mobile apps using X-App-Type header
+      const appType = request.headers['x-app-type'] as string | undefined;
+      const isMobileApp = appType === 'standalone' || appType === 'expo-go';
+
+      // CRITICAL: Mark mobile app requests BEFORE Better Auth sees them
+      if (request.url.startsWith('/api/auth/') && isMobileApp) {
+        // These properties must be set EARLY so Better Auth checks them
+        (request as any).skipCsrfCheck = true;
+        (request as any).trustedForCSRF = true;
+        (request as any).csrfBypassEnabled = true;
+
+        app.logger.info(
+          {
+            method: request.method,
+            path: request.url,
+            appType,
+            hasAuth: !!request.headers.authorization,
+            timestamp: new Date().toISOString()
+          },
+          '[CSRF EARLY] Mobile app auth request - CSRF bypass enabled BEFORE Better Auth initialization'
+        );
+      }
+    });
+  });
+
+  app.logger.info('Early CSRF bypass middleware registered');
+} catch (error) {
+  app.logger.error({ err: error }, 'Failed to register early CSRF bypass middleware');
+  throw error;
+}
+
 // Initialize authentication system
 // Better Auth automatically enables email/password provider
 try {
