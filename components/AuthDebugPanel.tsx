@@ -62,9 +62,11 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
   const [testingHeaders, setTestingHeaders] = useState(false);
   const [testingVersion, setTestingVersion] = useState(false);
   const [testingAuthConfig, setTestingAuthConfig] = useState(false);
+  const [testingAuthRequestUrl, setTestingAuthRequestUrl] = useState(false);
   const [headersTestResult, setHeadersTestResult] = useState<string | null>(null);
   const [versionTestResult, setVersionTestResult] = useState<string | null>(null);
   const [authConfigTestResult, setAuthConfigTestResult] = useState<string | null>(null);
+  const [authRequestUrlTestResult, setAuthRequestUrlTestResult] = useState<string | null>(null);
 
   // Refresh logs every second when visible
   useEffect(() => {
@@ -304,6 +306,71 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
     }
   };
 
+  const handleTestAuthRequestUrl = async () => {
+    console.log('[AUTH DEBUG] Testing auth-request-url endpoint...');
+    setTestingAuthRequestUrl(true);
+    setAuthRequestUrlTestResult(null);
+
+    try {
+      const url = `${ENV.BACKEND_URL}/api/debug/auth-request-url`;
+      
+      addAuthDebugLog({
+        type: 'info',
+        endpoint: url,
+        method: 'GET',
+        message: 'Testing auth-request-url endpoint to verify Better Auth URL construction',
+      });
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'X-App-Type': ENV.APP_TYPE,
+          'X-Platform': Platform.OS,
+        },
+        credentials: 'omit',
+      });
+
+      const data = await response.json();
+      
+      console.log('[AUTH DEBUG] Auth-request-url test response:', data);
+      
+      addAuthDebugLog({
+        type: 'response',
+        endpoint: url,
+        method: 'GET',
+        status: response.status,
+        body: JSON.stringify(data, null, 2),
+      });
+
+      // Check if the constructed URL uses the correct base URL (not localhost)
+      const constructedUrl = data.constructedUrlUsedForAuthHandler || 'undefined';
+      const isCorrectBase = typeof constructedUrl === 'string' && 
+                           constructedUrl.startsWith(ENV.BACKEND_URL);
+      const hasLocalhost = typeof constructedUrl === 'string' && 
+                          (constructedUrl.includes('localhost') || constructedUrl.includes('127.0.0.1'));
+
+      const resultText = `${isCorrectBase && !hasLocalhost ? '✅' : '❌'} Auth Request URL Test:\n\n=== Request URL ===\nRaw request.url: ${data.requestUrl || 'undefined'}\n\n=== Constructed URL (for Better Auth) ===\nURL: ${constructedUrl}\n\n${isCorrectBase ? '✅ Uses correct base URL' : '❌ Does NOT use correct base URL'}\n${hasLocalhost ? '❌ Contains localhost (WRONG!)' : '✅ No localhost detected'}\n\nExpected Base: ${ENV.BACKEND_URL}\n\n=== Raw Headers ===\nHost: ${data.rawHost || 'undefined'}\nOrigin: ${data.rawOrigin || 'undefined'}\nReferer: ${data.rawReferer || 'undefined'}\nX-App-Type: ${data.xAppType || 'undefined'}\n\nStatus: ${response.status}\n\n${isCorrectBase && !hasLocalhost ? '✅ Better Auth URL construction is CORRECT!' : '❌ Better Auth URL construction needs fixing!'}`;
+      
+      setAuthRequestUrlTestResult(resultText);
+      alert(resultText);
+    } catch (error) {
+      console.error('[AUTH DEBUG] Auth-request-url test failed:', error);
+      
+      addAuthDebugLog({
+        type: 'error',
+        endpoint: `${ENV.BACKEND_URL}/api/debug/auth-request-url`,
+        method: 'GET',
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      const errorText = `❌ Auth Request URL Test Failed:\n\n${error instanceof Error ? error.message : String(error)}\n\nThis endpoint may not be deployed yet.`;
+      setAuthRequestUrlTestResult(errorText);
+      alert(errorText);
+    } finally {
+      setTestingAuthRequestUrl(false);
+    }
+  };
+
   const generateDebugReport = (): string => {
     const sections: string[] = [];
 
@@ -441,6 +508,16 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
             <IconSymbol ios_icon_name="network" android_material_icon_name="wifi" size={20} color="#FFF" />
             <Text style={styles.actionButtonText}>
               {testingHeaders ? 'Testing...' : 'Test Headers'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.authRequestUrlButton]} 
+            onPress={handleTestAuthRequestUrl}
+            disabled={testingAuthRequestUrl}
+          >
+            <IconSymbol ios_icon_name="link" android_material_icon_name="link" size={20} color="#FFF" />
+            <Text style={styles.actionButtonText}>
+              {testingAuthRequestUrl ? 'Testing...' : 'Test Auth URL'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -613,6 +690,9 @@ const styles = StyleSheet.create({
   },
   authConfigButton: {
     backgroundColor: '#E67E22',
+  },
+  authRequestUrlButton: {
+    backgroundColor: '#3498DB',
   },
   actionButtonText: {
     color: '#FFF',

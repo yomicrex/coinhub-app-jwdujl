@@ -23,12 +23,15 @@ The existing codebase already had:
 ### ✅ Testing Tools Available
 - **Auth Debug Panel** - Real-time logging and testing
 - **Test Version Button** - Verifies backend deployment (should show 2026-01-31-origin-fix-v3)
-- **Test Auth Config Button** - Verifies backend configuration (NEW!)
+- **Test Auth Config Button** - Verifies backend configuration
   - Checks CSRF is disabled
   - Verifies base URL is correct
   - Confirms proxy trust is enabled
   - Shows trusted origins
 - **Test Headers Button** - Verifies mobile headers
+- **Test Auth URL Button** - Verifies Better Auth URL construction (NEW!)
+  - Checks that Better Auth receives public base URL (not localhost)
+  - This is the ROOT CAUSE FIX for "invalid origin" error
 - **Debug Report** - Copy all logs to clipboard
 
 ## What You Need to Do
@@ -43,7 +46,7 @@ The backend must be deployed with the latest changes. To verify:
 
 **If it shows an older version:** The backend needs to be redeployed.
 
-### 1.5. Verify Backend Configuration (NEW!)
+### 1.5. Verify Backend Configuration
 The backend configuration must be correct. To verify:
 
 1. In Auth Debug Panel, tap "Test Auth Config"
@@ -57,6 +60,18 @@ The backend configuration must be correct. To verify:
      - `coinhub://`
 
 **If any value is incorrect:** The backend configuration needs to be updated.
+
+### 1.6. Verify Better Auth URL Construction (NEW!)
+The backend must construct URLs correctly for Better Auth. To verify:
+
+1. In Auth Debug Panel, tap "Test Auth URL"
+2. Verify the following:
+   - `Constructed URL` starts with `https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev` ✅
+   - `Constructed URL` does NOT contain "localhost" or "127.0.0.1" ✅
+   - `Raw Host` shows the correct public domain ✅
+   - `X-App-Type` shows "standalone" (in TestFlight) ✅
+
+**If the constructed URL contains localhost:** This is the ROOT CAUSE of the "invalid origin" error. The backend needs to be fixed to use the public base URL instead of localhost when constructing the Request URL for Better Auth.
 
 ### 2. Test Authentication
 Perform 15+ consecutive login attempts to verify the fix:
@@ -102,10 +117,12 @@ Verify sessions persist across app restarts:
 
 ✅ **All must pass:**
 - Backend version shows "2026-01-31-origin-fix-v3" or later
-- Auth Config test shows `disableCSRFCheck: true` (NEW!)
-- Auth Config test shows correct base URL (NEW!)
-- Auth Config test shows `trustProxy: true` (NEW!)
-- Auth Config test shows trusted origins (NEW!)
+- Auth Config test shows `disableCSRFCheck: true`
+- Auth Config test shows correct base URL
+- Auth Config test shows `trustProxy: true`
+- Auth Config test shows trusted origins
+- **Auth URL test shows public base URL (not localhost) (NEW!)**
+- **Auth URL test shows NO localhost in constructed URL (NEW!)**
 - Headers test shows `x-app-type: "standalone"`
 - 15+ login attempts succeed
 - No "invalid origin" errors
@@ -156,9 +173,9 @@ Verify sessions persist across app restarts:
 - `app/auth.tsx` - Debug panel access
 
 **Backend:**
-- `backend/src/index.ts` - Origin/CSRF detection
+- `backend/src/index.ts` - Origin/CSRF detection, Better Auth URL construction fix
 - `backend/src/routes/auth.ts` - Auth endpoints
-- New endpoints: `/api/debug/version`, `/api/debug/headers`
+- New endpoints: `/api/debug/version`, `/api/debug/headers`, `/api/debug/auth-config`, `/api/debug/auth-request-url`
 
 ## Next Steps
 
@@ -246,11 +263,16 @@ The backend must implement these changes:
 5. **Debug Endpoints**
    - `GET /api/debug/version` - Returns backend version (should be 2026-01-31-origin-fix-v3)
    - `GET /api/debug/headers` - Returns all request headers (enhanced with more fields)
-   - `GET /api/debug/auth-config` - Returns backend auth configuration (NEW!)
+   - `GET /api/debug/auth-config` - Returns backend auth configuration
      - Shows `disableCSRFCheck` status
      - Shows `baseURL` configuration
      - Shows `trustedOrigins` array
      - Shows `trustProxy` status
+   - `GET /api/debug/auth-request-url` - Returns Better Auth URL construction details (NEW!)
+     - Shows `requestUrl` (raw request.url)
+     - Shows `constructedUrlUsedForAuthHandler` (URL passed to Better Auth)
+     - Shows `rawHost`, `rawOrigin`, `rawReferer`, `xAppType`
+     - **Critical for verifying the ROOT CAUSE FIX**
 
 ### Testing Checklist
 

@@ -22,7 +22,17 @@ The backend changes for fixing the Better Auth "invalid origin" error in TestFli
   - Shows `trustedOrigins` array
   - Shows `trustProxy` status
 
-### 3. ✅ CORS Headers Updated
+### 3. ✅ New Auth Request URL Debug Endpoint (NEW!)
+- **GET `/api/debug/auth-request-url`** - Returns Better Auth URL construction details
+  - Shows `requestUrl` (raw request.url)
+  - Shows `constructedUrlUsedForAuthHandler` (the URL passed to Better Auth)
+  - Shows `rawHost` (request.headers.host)
+  - Shows `rawOrigin` (request.headers.origin)
+  - Shows `rawReferer` (request.headers.referer)
+  - Shows `xAppType` (request.headers['x-app-type'])
+  - **Purpose:** Verify that Better Auth receives the correct public base URL, not localhost
+
+### 4. ✅ CORS Headers Updated
 - All CORS responses include: `Content-Type, Authorization, X-CSRF-Token, X-App-Type, X-Platform`
 
 ## Frontend Integration Status
@@ -54,8 +64,9 @@ All authentication requests now include:
 - ✅ Real-time auth request/response logging
 - ✅ Environment information display
 - ✅ **Test Version** button - Calls `/api/debug/version` endpoint
-- ✅ **Test Auth Config** button - Calls `/api/debug/auth-config` endpoint (NEW!)
+- ✅ **Test Auth Config** button - Calls `/api/debug/auth-config` endpoint
 - ✅ **Test Headers** button - Calls `/api/debug/headers` endpoint
+- ✅ **Test Auth URL** button - Calls `/api/debug/auth-request-url` endpoint (NEW!)
 - ✅ Copy debug report to clipboard
 - ✅ Clear logs functionality
 
@@ -97,7 +108,7 @@ All authentication requests now include:
 }
 ```
 
-### 1.5. Test Backend Auth Configuration (NEW!)
+### 1.5. Test Backend Auth Configuration
 
 **Steps:**
 1. In the Auth Debug Panel, tap **"Test Auth Config"** button
@@ -126,6 +137,33 @@ All authentication requests now include:
 - ✅ Backend knows its public URL
 - ✅ Proxy headers are trusted
 - ✅ App schemes are trusted for OAuth/deep linking
+
+### 1.6. Test Better Auth URL Construction (NEW!)
+
+**Steps:**
+1. In the Auth Debug Panel, tap **"Test Auth URL"** button
+2. Verify response shows:
+   - `constructedUrlUsedForAuthHandler` starts with the public base URL
+   - `constructedUrlUsedForAuthHandler` does NOT contain "localhost" or "127.0.0.1"
+   - `rawHost` shows the correct public domain
+   - `xAppType` shows "standalone" (in TestFlight)
+
+**Expected Result:**
+```json
+{
+  "requestUrl": "/api/debug/auth-request-url",
+  "constructedUrlUsedForAuthHandler": "https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev/api/debug/auth-request-url",
+  "rawHost": "qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev",
+  "rawOrigin": undefined,
+  "rawReferer": undefined,
+  "xAppType": "standalone"
+}
+```
+
+**What This Verifies:**
+- ✅ Better Auth receives the correct public base URL (not localhost)
+- ✅ The Fastify handler constructs URLs correctly for mobile apps
+- ✅ This is the ROOT CAUSE FIX for the "invalid origin" error
 
 ### 2. Test Headers Endpoint
 
@@ -226,9 +264,10 @@ The backend has been seeded with test accounts:
 1. ✅ `lib/auth.ts` - Added custom fetch with headers
 2. ✅ `utils/api.ts` - Added X-App-Type and X-Platform headers
 3. ✅ `contexts/AuthContext.tsx` - Added headers to manual API calls
-4. ✅ `components/AuthDebugPanel.tsx` - Added test functions for new endpoints
+4. ✅ `components/AuthDebugPanel.tsx` - Added test functions for new endpoints (including `/api/debug/auth-request-url`)
 5. ✅ `app/settings.tsx` - Debug panel already integrated
 6. ✅ `app/auth.tsx` - Debug panel already integrated
+7. ✅ `BACKEND_INTEGRATION_COMPLETE.md` - Updated with new endpoint documentation
 
 ### No New Files Created
 All integration was done by updating existing files.
@@ -242,8 +281,9 @@ All integration was done by updating existing files.
 - [x] Debug panel accessible in Settings
 - [x] Debug panel accessible in Auth screen
 - [x] Version endpoint test function implemented
-- [x] **Auth Config endpoint test function implemented (NEW!)**
+- [x] Auth Config endpoint test function implemented
 - [x] Headers endpoint test function implemented
+- [x] **Auth Request URL endpoint test function implemented (NEW!)**
 - [x] Session persistence working
 - [x] Auth flow handles profile completion
 - [x] No hardcoded backend URLs
@@ -256,8 +296,9 @@ All integration was done by updating existing files.
 2. **Test with real users** - Perform 15+ login attempts
 3. **Monitor Auth Debug Panel** - Check for any errors
 4. **Verify backend version** - Ensure it shows "2026-01-31-origin-fix-v3" or later
-5. **Verify backend configuration** - Run "Test Auth Config" to verify settings (NEW!)
-6. **Check headers** - Verify X-App-Type is "standalone" in TestFlight
+5. **Verify backend configuration** - Run "Test Auth Config" to verify settings
+6. **Verify Better Auth URL construction** - Run "Test Auth URL" to ensure no localhost (NEW!)
+7. **Check headers** - Verify X-App-Type is "standalone" in TestFlight
 
 ## Success Criteria
 
@@ -265,11 +306,15 @@ All integration was done by updating existing files.
 - No "invalid origin" errors in TestFlight
 - 15+ consecutive login attempts succeed
 - `/api/debug/version` shows updated backend version (2026-01-31-origin-fix-v3)
-- `/api/debug/auth-config` shows correct configuration (NEW!)
+- `/api/debug/auth-config` shows correct configuration
   - `disableCSRFCheck: true`
   - `baseURL` matches Specular domain
   - `trustProxy: true`
   - `trustedOrigins` includes app schemes
+- `/api/debug/auth-request-url` shows correct URL construction (NEW!)
+  - `constructedUrlUsedForAuthHandler` uses public base URL
+  - No "localhost" or "127.0.0.1" in constructed URL
+  - This is the ROOT CAUSE FIX for "invalid origin"
 - `/api/debug/headers` shows correct X-App-Type header
 - Session persists across app restarts
 - Auth flow works correctly
@@ -297,8 +342,11 @@ If issues persist:
 **New Features in This Update:**
 - ✅ Auth Config test button added to debug panel
 - ✅ Backend configuration verification endpoint integrated
+- ✅ **Auth Request URL test button added to debug panel (NEW!)**
+- ✅ **Better Auth URL construction verification endpoint integrated (NEW!)**
 - ✅ Enhanced testing guide with new test instructions
 - ✅ Comprehensive documentation of backend changes
+- ✅ Root cause fix verification for "invalid origin" error
 
 ---
 
