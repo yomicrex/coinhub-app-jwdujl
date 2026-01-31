@@ -63,10 +63,12 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
   const [testingVersion, setTestingVersion] = useState(false);
   const [testingAuthConfig, setTestingAuthConfig] = useState(false);
   const [testingAuthRequestUrl, setTestingAuthRequestUrl] = useState(false);
+  const [testingAuthSigninHeaders, setTestingAuthSigninHeaders] = useState(false);
   const [headersTestResult, setHeadersTestResult] = useState<string | null>(null);
   const [versionTestResult, setVersionTestResult] = useState<string | null>(null);
   const [authConfigTestResult, setAuthConfigTestResult] = useState<string | null>(null);
   const [authRequestUrlTestResult, setAuthRequestUrlTestResult] = useState<string | null>(null);
+  const [authSigninHeadersTestResult, setAuthSigninHeadersTestResult] = useState<string | null>(null);
 
   // Refresh logs every second when visible
   useEffect(() => {
@@ -132,12 +134,12 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
       });
 
       const backendVersion = data.backendVersion || data.version || 'unknown';
-      const expectedVersion = '2026-01-31-origin-logging-v1';
+      const expectedVersion = '2026-01-31-mobile-auth-fix-v1';
       // Accept any version that starts with "2026-01-31" as valid (allows for multiple deployments on same day)
       const isUpdated = typeof backendVersion === 'string' && backendVersion.startsWith('2026-01-31');
       const isExactMatch = backendVersion === expectedVersion;
       
-      const resultText = `${isExactMatch ? '✅' : isUpdated ? '⚠️' : '❌'} Backend Version Test:\n\nVersion: ${backendVersion}\nExpected: ${expectedVersion}\nMatch: ${isExactMatch ? '✅ Exact Match' : isUpdated ? '⚠️ Partial Match (same day)' : '❌ No Match'}\n\nTimestamp: ${data.timestamp || 'unknown'}\nStatus: ${response.status}\n\n${isExactMatch ? '✅ Backend is UPDATED with EXACT version!' : isUpdated ? '⚠️ Backend is updated (same day) but version differs' : '❌ Backend version mismatch - expected 2026-01-31-origin-logging-v1'}`;
+      const resultText = `${isExactMatch ? '✅' : isUpdated ? '⚠️' : '❌'} Backend Version Test:\n\nVersion: ${backendVersion}\nExpected: ${expectedVersion}\nMatch: ${isExactMatch ? '✅ Exact Match' : isUpdated ? '⚠️ Partial Match (same day)' : '❌ No Match'}\n\nTimestamp: ${data.timestamp || 'unknown'}\nStatus: ${response.status}\n\n${isExactMatch ? '✅ Backend is UPDATED with EXACT version!' : isUpdated ? '⚠️ Backend is updated (same day) but version differs' : '❌ Backend version mismatch - expected 2026-01-31-mobile-auth-fix-v1'}`;
       
       setVersionTestResult(resultText);
       alert(resultText);
@@ -371,6 +373,79 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
     }
   };
 
+  const handleTestAuthSigninHeaders = async () => {
+    console.log('[AUTH DEBUG] Testing auth-signin-headers endpoint...');
+    setTestingAuthSigninHeaders(true);
+    setAuthSigninHeadersTestResult(null);
+
+    try {
+      const url = `${ENV.BACKEND_URL}/api/debug/auth-signin-headers`;
+      
+      addAuthDebugLog({
+        type: 'info',
+        endpoint: url,
+        method: 'GET',
+        message: 'Testing auth-signin-headers endpoint to verify mobile auth header normalization',
+      });
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'X-App-Type': ENV.APP_TYPE,
+          'X-Platform': Platform.OS,
+        },
+        credentials: 'omit',
+      });
+
+      const data = await response.json();
+      
+      console.log('[AUTH DEBUG] Auth-signin-headers test response:', data);
+      
+      addAuthDebugLog({
+        type: 'response',
+        endpoint: url,
+        method: 'GET',
+        status: response.status,
+        body: JSON.stringify(data, null, 2),
+      });
+
+      // Check if the headers are correctly normalized for mobile
+      const constructedUrl = data.constructedUrlUsedForAuthHandler || 'undefined';
+      const originHeader = data.originHeaderUsedForAuth || 'undefined';
+      const refererHeader = data.refererHeaderUsedForAuth || 'undefined';
+      
+      const isCorrectBase = typeof constructedUrl === 'string' && 
+                           constructedUrl.startsWith(ENV.BACKEND_URL);
+      const hasCorrectOrigin = originHeader === ENV.BACKEND_URL;
+      const hasCorrectReferer = refererHeader === ENV.BACKEND_URL || refererHeader === 'undefined';
+      
+      const isMobileRequest = data.rawFastifyRequest?.['x-app-type'] === 'standalone' || 
+                             data.rawFastifyRequest?.['x-app-type'] === 'expo-go';
+      
+      const allCorrect = isCorrectBase && hasCorrectOrigin && isMobileRequest;
+
+      const resultText = `${allCorrect ? '✅' : '❌'} Auth Sign-In Headers Test:\n\n=== Constructed URL (for Better Auth) ===\nURL: ${constructedUrl}\n${isCorrectBase ? '✅ Correct base URL' : '❌ Wrong base URL'}\n\n=== Normalized Headers (for Better Auth) ===\nOrigin: ${originHeader}\n${hasCorrectOrigin ? '✅ Correct origin' : '❌ Wrong origin'}\n\nReferer: ${refererHeader}\n${hasCorrectReferer ? '✅ Correct referer' : '⚠️ Check referer'}\n\n=== Raw Fastify Request ===\nURL: ${data.rawFastifyRequest?.url || 'undefined'}\nHost: ${data.rawFastifyRequest?.host || 'undefined'}\nOrigin: ${data.rawFastifyRequest?.origin || 'undefined'}\nReferer: ${data.rawFastifyRequest?.referer || 'undefined'}\nX-App-Type: ${data.rawFastifyRequest?.['x-app-type'] || 'undefined'}\nX-Forwarded-Proto: ${data.rawFastifyRequest?.['x-forwarded-proto'] || 'undefined'}\n\n${isMobileRequest ? '✅ Detected as mobile request' : '⚠️ Not detected as mobile'}\n\nStatus: ${response.status}\n\n${allCorrect ? '✅ Mobile auth header normalization is WORKING!' : '❌ Mobile auth header normalization needs fixing!'}`;
+      
+      setAuthSigninHeadersTestResult(resultText);
+      alert(resultText);
+    } catch (error) {
+      console.error('[AUTH DEBUG] Auth-signin-headers test failed:', error);
+      
+      addAuthDebugLog({
+        type: 'error',
+        endpoint: `${ENV.BACKEND_URL}/api/debug/auth-signin-headers`,
+        method: 'GET',
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      const errorText = `❌ Auth Sign-In Headers Test Failed:\n\n${error instanceof Error ? error.message : String(error)}\n\nThis endpoint may not be deployed yet (it was added in the latest backend fix).`;
+      setAuthSigninHeadersTestResult(errorText);
+      alert(errorText);
+    } finally {
+      setTestingAuthSigninHeaders(false);
+    }
+  };
+
   const generateDebugReport = (): string => {
     const sections: string[] = [];
 
@@ -518,6 +593,19 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
             <IconSymbol ios_icon_name="link" android_material_icon_name="link" size={20} color="#FFF" />
             <Text style={styles.actionButtonText}>
               {testingAuthRequestUrl ? 'Testing...' : 'Test Auth URL'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        
+        <View style={styles.actionButtons}>
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.authSigninHeadersButton]} 
+            onPress={handleTestAuthSigninHeaders}
+            disabled={testingAuthSigninHeaders}
+          >
+            <IconSymbol ios_icon_name="checkmark.shield" android_material_icon_name="verified-user" size={20} color="#FFF" />
+            <Text style={styles.actionButtonText}>
+              {testingAuthSigninHeaders ? 'Testing...' : 'Test Sign-In Headers'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -693,6 +781,9 @@ const styles = StyleSheet.create({
   },
   authRequestUrlButton: {
     backgroundColor: '#3498DB',
+  },
+  authSigninHeadersButton: {
+    backgroundColor: '#16A085',
   },
   actionButtonText: {
     color: '#FFF',
