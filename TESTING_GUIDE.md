@@ -25,6 +25,14 @@
    - ✅ Should show: `backendVersion: "2026-01-31-01"` or later
    - ❌ If older version: Backend not deployed yet
 
+**Verify Auth Configuration (NEW!):**
+1. In Auth Debug Panel, tap **"Test Auth Config"** button
+2. Check the alert message:
+   - ✅ `Disable CSRF Check: TRUE`
+   - ✅ `Base URL` matches Specular domain
+   - ✅ `Trust Proxy: TRUE`
+   - ✅ `Trusted Origins` includes CoinHub:// and coinhub://
+
 **Verify Headers:**
 1. In Auth Debug Panel, tap **"Test Headers"** button
 2. Check the alert message:
@@ -98,8 +106,13 @@
 - App Version
 
 ### Test Functions
-- **Test Version** - Verifies backend deployment
-- **Test Headers** - Verifies mobile headers are sent
+- **Test Version** - Verifies backend deployment (should show 2026-01-31-origin-fix-v3 or later)
+- **Test Auth Config** - Verifies backend authentication configuration (NEW!)
+  - Checks CSRF is disabled
+  - Verifies base URL is correct
+  - Confirms proxy trust is enabled
+  - Shows trusted origins
+- **Test Headers** - Verifies mobile headers are sent correctly
 - **Copy Debug Report** - Copies all logs to clipboard
 - **Clear Logs** - Clears all logs
 
@@ -171,7 +184,10 @@
 ## Success Criteria
 
 ✅ **All tests pass:**
-- [ ] Backend version is "2026-01-31-01" or later
+- [ ] Backend version is "2026-01-31-origin-fix-v3" or later
+- [ ] Auth Config test shows `disableCSRFCheck: true` (NEW!)
+- [ ] Auth Config test shows correct base URL (NEW!)
+- [ ] Auth Config test shows `trustProxy: true` (NEW!)
 - [ ] Headers test shows `x-app-type: "standalone"`
 - [ ] 15+ login attempts succeed without errors
 - [ ] Session persists across app restarts
@@ -219,4 +235,50 @@
 
 **Last Updated:** 2026-01-31
 
-**Required Backend Version:** 2026-01-31-01 or later
+**Required Backend Version:** 2026-01-31-origin-fix-v3 or later
+
+## What's New in This Update
+
+### Backend Changes (2026-01-31-origin-fix-v3)
+
+1. **CSRF Protection Disabled for Mobile Apps**
+   - Mobile apps (TestFlight, standalone) no longer blocked by CSRF checks
+   - Backend identifies mobile apps via `X-App-Type` header
+   - Fixes "Invalid origin" errors in TestFlight
+
+2. **Explicit Base URL Configuration**
+   - Backend now knows its public URL
+   - Properly handles requests from reverse proxy
+   - Ensures correct origin validation
+
+3. **Trusted Origins Added**
+   - App schemes (CoinHub://, coinhub://) are trusted
+   - Specular domain is trusted
+   - Enables proper OAuth and deep linking
+
+4. **Proxy Trust Enabled**
+   - Backend trusts X-Forwarded-* headers
+   - Correctly interprets host and protocol behind proxy
+   - Fixes host mismatch issues
+
+5. **Enhanced Debug Endpoints**
+   - New `/api/debug/auth-config` endpoint
+   - Enhanced `/api/debug/headers` with more fields
+   - Updated `/api/debug/version` with new version string
+
+### Frontend Changes
+
+1. **New Auth Config Test**
+   - Added "Test Auth Config" button to debug panel
+   - Verifies backend configuration is correct
+   - Shows CSRF status, base URL, proxy trust, and trusted origins
+
+2. **Enhanced Debug Panel**
+   - Better error messages
+   - More detailed test results
+   - Color-coded buttons for different tests
+
+3. **Updated Testing Guide**
+   - Added auth config test instructions
+   - Updated success criteria
+   - Documented new backend features

@@ -14,8 +14,13 @@ The backend changes for fixing the Better Auth "invalid origin" error in TestFli
 - Mobile requests are properly distinguished from browser requests
 
 ### 2. ✅ New Debug Endpoints Added
-- **GET `/api/debug/version`** - Returns backend version and timestamp
-- **GET `/api/debug/headers`** - Returns all request headers for debugging
+- **GET `/api/debug/version`** - Returns backend version and timestamp (updated to 2026-01-31-origin-fix-v3)
+- **GET `/api/debug/headers`** - Returns all request headers for debugging (enhanced with more fields)
+- **GET `/api/debug/auth-config`** - Returns backend auth configuration (NEW!)
+  - Shows `disableCSRFCheck` status
+  - Shows `baseURL` configuration
+  - Shows `trustedOrigins` array
+  - Shows `trustProxy` status
 
 ### 3. ✅ CORS Headers Updated
 - All CORS responses include: `Content-Type, Authorization, X-CSRF-Token, X-App-Type, X-Platform`
@@ -49,6 +54,7 @@ All authentication requests now include:
 - ✅ Real-time auth request/response logging
 - ✅ Environment information display
 - ✅ **Test Version** button - Calls `/api/debug/version` endpoint
+- ✅ **Test Auth Config** button - Calls `/api/debug/auth-config` endpoint (NEW!)
 - ✅ **Test Headers** button - Calls `/api/debug/headers` endpoint
 - ✅ Copy debug report to clipboard
 - ✅ Clear logs functionality
@@ -79,17 +85,47 @@ All authentication requests now include:
 2. Navigate to **Settings** → **Developer Tools** → **Auth Debug Panel**
 3. Tap **"Test Version"** button
 4. Verify response shows:
-   - `backendVersion: "2026-01-31-01"` (or later)
+   - `backendVersion: "2026-01-31-origin-fix-v3"` (or later)
    - Current timestamp
    - Status: 200
 
 **Expected Result:**
 ```json
 {
-  "backendVersion": "2026-01-31-01",
+  "backendVersion": "2026-01-31-origin-fix-v3",
   "timestamp": "2026-01-31T12:00:00.000Z"
 }
 ```
+
+### 1.5. Test Backend Auth Configuration (NEW!)
+
+**Steps:**
+1. In the Auth Debug Panel, tap **"Test Auth Config"** button
+2. Verify response shows:
+   - `disableCSRFCheck: true`
+   - `baseURL` matches the Specular domain
+   - `trustProxy: true`
+   - `trustedOrigins` includes app schemes
+
+**Expected Result:**
+```json
+{
+  "disableCSRFCheck": true,
+  "baseURL": "https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev",
+  "trustProxy": true,
+  "trustedOrigins": [
+    "https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev",
+    "CoinHub://",
+    "coinhub://"
+  ]
+}
+```
+
+**What This Verifies:**
+- ✅ CSRF protection is disabled for mobile apps
+- ✅ Backend knows its public URL
+- ✅ Proxy headers are trusted
+- ✅ App schemes are trusted for OAuth/deep linking
 
 ### 2. Test Headers Endpoint
 
@@ -206,6 +242,7 @@ All integration was done by updating existing files.
 - [x] Debug panel accessible in Settings
 - [x] Debug panel accessible in Auth screen
 - [x] Version endpoint test function implemented
+- [x] **Auth Config endpoint test function implemented (NEW!)**
 - [x] Headers endpoint test function implemented
 - [x] Session persistence working
 - [x] Auth flow handles profile completion
@@ -218,15 +255,21 @@ All integration was done by updating existing files.
 1. **Deploy to TestFlight** (if not already done)
 2. **Test with real users** - Perform 15+ login attempts
 3. **Monitor Auth Debug Panel** - Check for any errors
-4. **Verify backend version** - Ensure it shows "2026-01-31-01" or later
-5. **Check headers** - Verify X-App-Type is "standalone" in TestFlight
+4. **Verify backend version** - Ensure it shows "2026-01-31-origin-fix-v3" or later
+5. **Verify backend configuration** - Run "Test Auth Config" to verify settings (NEW!)
+6. **Check headers** - Verify X-App-Type is "standalone" in TestFlight
 
 ## Success Criteria
 
 ✅ **All criteria met:**
 - No "invalid origin" errors in TestFlight
 - 15+ consecutive login attempts succeed
-- `/api/debug/version` shows updated backend version
+- `/api/debug/version` shows updated backend version (2026-01-31-origin-fix-v3)
+- `/api/debug/auth-config` shows correct configuration (NEW!)
+  - `disableCSRFCheck: true`
+  - `baseURL` matches Specular domain
+  - `trustProxy: true`
+  - `trustedOrigins` includes app schemes
 - `/api/debug/headers` shows correct X-App-Type header
 - Session persists across app restarts
 - Auth flow works correctly
@@ -249,7 +292,13 @@ If issues persist:
 
 **Last Updated:** 2026-01-31
 
-**Backend Version Required:** 2026-01-31-XX or later
+**Backend Version Required:** 2026-01-31-origin-fix-v3 or later
+
+**New Features in This Update:**
+- ✅ Auth Config test button added to debug panel
+- ✅ Backend configuration verification endpoint integrated
+- ✅ Enhanced testing guide with new test instructions
+- ✅ Comprehensive documentation of backend changes
 
 ---
 

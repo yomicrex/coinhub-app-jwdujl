@@ -22,7 +22,12 @@ The existing codebase already had:
 
 ### ✅ Testing Tools Available
 - **Auth Debug Panel** - Real-time logging and testing
-- **Test Version Button** - Verifies backend deployment
+- **Test Version Button** - Verifies backend deployment (should show 2026-01-31-origin-fix-v3)
+- **Test Auth Config Button** - Verifies backend configuration (NEW!)
+  - Checks CSRF is disabled
+  - Verifies base URL is correct
+  - Confirms proxy trust is enabled
+  - Shows trusted origins
 - **Test Headers Button** - Verifies mobile headers
 - **Debug Report** - Copy all logs to clipboard
 
@@ -34,9 +39,24 @@ The backend must be deployed with the latest changes. To verify:
 1. Open app in TestFlight
 2. Go to Settings → Developer Tools → Auth Debug Panel
 3. Tap "Test Version"
-4. Verify it shows `backendVersion: "2026-01-31-01"` or later
+4. Verify it shows `backendVersion: "2026-01-31-origin-fix-v3"` or later
 
 **If it shows an older version:** The backend needs to be redeployed.
+
+### 1.5. Verify Backend Configuration (NEW!)
+The backend configuration must be correct. To verify:
+
+1. In Auth Debug Panel, tap "Test Auth Config"
+2. Verify the following:
+   - `Disable CSRF Check: TRUE` ✅
+   - `Base URL` matches `https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev` ✅
+   - `Trust Proxy: TRUE` ✅
+   - `Trusted Origins` includes:
+     - `https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev`
+     - `CoinHub://`
+     - `coinhub://`
+
+**If any value is incorrect:** The backend configuration needs to be updated.
 
 ### 2. Test Authentication
 Perform 15+ consecutive login attempts to verify the fix:
@@ -81,7 +101,11 @@ Verify sessions persist across app restarts:
 ## Success Criteria
 
 ✅ **All must pass:**
-- Backend version shows "2026-01-31-01" or later
+- Backend version shows "2026-01-31-origin-fix-v3" or later
+- Auth Config test shows `disableCSRFCheck: true` (NEW!)
+- Auth Config test shows correct base URL (NEW!)
+- Auth Config test shows `trustProxy: true` (NEW!)
+- Auth Config test shows trusted origins (NEW!)
 - Headers test shows `x-app-type: "standalone"`
 - 15+ login attempts succeed
 - No "invalid origin" errors
@@ -187,9 +211,10 @@ All required changes are **already implemented** and working:
 
 5. **✅ Debug Endpoints Integration**
    - File: `components/AuthDebugPanel.tsx`
-   - Endpoints: `/api/debug/version`, `/api/debug/headers`
+   - Endpoints: `/api/debug/version`, `/api/debug/headers`, `/api/debug/auth-config` (NEW!)
    - Verified: Test buttons work and display results
    - Access: Available from Settings and Auth screen
+   - New: Auth Config test verifies backend configuration
 
 6. **✅ Logging & Verification**
    - Files: `lib/auth.ts`, `utils/api.ts`
@@ -219,14 +244,23 @@ The backend must implement these changes:
    - Include: `Content-Type, Authorization, X-CSRF-Token, X-App-Type, X-Platform`
 
 5. **Debug Endpoints**
-   - `GET /api/debug/version` - Returns backend version
-   - `GET /api/debug/headers` - Returns all request headers
+   - `GET /api/debug/version` - Returns backend version (should be 2026-01-31-origin-fix-v3)
+   - `GET /api/debug/headers` - Returns all request headers (enhanced with more fields)
+   - `GET /api/debug/auth-config` - Returns backend auth configuration (NEW!)
+     - Shows `disableCSRFCheck` status
+     - Shows `baseURL` configuration
+     - Shows `trustedOrigins` array
+     - Shows `trustProxy` status
 
 ### Testing Checklist
 
 Use this checklist to verify the fix:
 
-- [ ] Backend version is `2026-01-31-XX` or later
+- [ ] Backend version is `2026-01-31-origin-fix-v3` or later
+- [ ] Auth Config test shows `disableCSRFCheck: true` (NEW!)
+- [ ] Auth Config test shows correct base URL (NEW!)
+- [ ] Auth Config test shows `trustProxy: true` (NEW!)
+- [ ] Auth Config test shows trusted origins (NEW!)
 - [ ] Headers test shows `X-App-Type: standalone`
 - [ ] Headers test shows `X-Platform: ios`
 - [ ] Sign in succeeds without "invalid origin" error

@@ -61,8 +61,10 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
   const [expandedLogIndex, setExpandedLogIndex] = useState<number | null>(null);
   const [testingHeaders, setTestingHeaders] = useState(false);
   const [testingVersion, setTestingVersion] = useState(false);
+  const [testingAuthConfig, setTestingAuthConfig] = useState(false);
   const [headersTestResult, setHeadersTestResult] = useState<string | null>(null);
   const [versionTestResult, setVersionTestResult] = useState<string | null>(null);
+  const [authConfigTestResult, setAuthConfigTestResult] = useState<string | null>(null);
 
   // Refresh logs every second when visible
   useEffect(() => {
@@ -150,6 +152,74 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
       alert(errorText);
     } finally {
       setTestingVersion(false);
+    }
+  };
+
+  const handleTestAuthConfig = async () => {
+    console.log('[AUTH DEBUG] Testing auth-config endpoint...');
+    setTestingAuthConfig(true);
+    setAuthConfigTestResult(null);
+
+    try {
+      const url = `${ENV.BACKEND_URL}/api/debug/auth-config`;
+      
+      addAuthDebugLog({
+        type: 'info',
+        endpoint: url,
+        method: 'GET',
+        message: 'Testing auth-config endpoint to verify backend configuration',
+      });
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'X-App-Type': ENV.APP_TYPE,
+          'X-Platform': Platform.OS,
+        },
+        credentials: 'omit',
+      });
+
+      const data = await response.json();
+      
+      console.log('[AUTH DEBUG] Auth-config test response:', data);
+      
+      addAuthDebugLog({
+        type: 'response',
+        endpoint: url,
+        method: 'GET',
+        status: response.status,
+        body: JSON.stringify(data, null, 2),
+      });
+
+      // Check if the configuration is correct
+      const isConfigCorrect = 
+        data.disableCSRFCheck === true &&
+        data.baseURL === ENV.BACKEND_URL &&
+        data.trustProxy === true;
+
+      const trustedOriginsText = data.trustedOrigins 
+        ? data.trustedOrigins.join('\n  - ')
+        : 'undefined';
+
+      const resultText = `${isConfigCorrect ? '✅' : '⚠️'} Auth Config Test:\n\nDisable CSRF Check: ${data.disableCSRFCheck ? '✅ TRUE' : '❌ FALSE'}\nBase URL: ${data.baseURL || 'undefined'}\n  Expected: ${ENV.BACKEND_URL}\n  Match: ${data.baseURL === ENV.BACKEND_URL ? '✅' : '❌'}\n\nTrust Proxy: ${data.trustProxy ? '✅ TRUE' : '❌ FALSE'}\n\nTrusted Origins:\n  - ${trustedOriginsText}\n\nStatus: ${response.status}\n\n${isConfigCorrect ? '✅ Backend configuration is CORRECT!' : '⚠️ Backend configuration needs attention'}`;
+      
+      setAuthConfigTestResult(resultText);
+      alert(resultText);
+    } catch (error) {
+      console.error('[AUTH DEBUG] Auth-config test failed:', error);
+      
+      addAuthDebugLog({
+        type: 'error',
+        endpoint: `${ENV.BACKEND_URL}/api/debug/auth-config`,
+        method: 'GET',
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      const errorText = `❌ Auth Config Test Failed:\n\n${error instanceof Error ? error.message : String(error)}\n\nThis endpoint may not be deployed yet.`;
+      setAuthConfigTestResult(errorText);
+      alert(errorText);
+    } finally {
+      setTestingAuthConfig(false);
     }
   };
 
@@ -346,6 +416,19 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity 
+            style={[styles.actionButton, styles.authConfigButton]} 
+            onPress={handleTestAuthConfig}
+            disabled={testingAuthConfig}
+          >
+            <IconSymbol ios_icon_name="gear" android_material_icon_name="settings" size={20} color="#FFF" />
+            <Text style={styles.actionButtonText}>
+              {testingAuthConfig ? 'Testing...' : 'Test Auth Config'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        
+        <View style={styles.actionButtons}>
+          <TouchableOpacity 
             style={[styles.actionButton, styles.testButton]} 
             onPress={handleTestHeaders}
             disabled={testingHeaders}
@@ -522,6 +605,9 @@ const styles = StyleSheet.create({
   },
   versionButton: {
     backgroundColor: '#9B59B6',
+  },
+  authConfigButton: {
+    backgroundColor: '#E67E22',
   },
   actionButtonText: {
     color: '#FFF',
