@@ -179,7 +179,7 @@ try {
         reply.header('Access-Control-Allow-Origin', originToUse);
         reply.header('Access-Control-Allow-Credentials', 'true');
         reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-        reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token, X-App-Type, X-Platform');
+        reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token, X-App-Type, X-Platform, X-Requested-With');
 
         // Mark request as from a trusted source for Better Auth CSRF checks
         (request as any).trustedForCSRF = true;
@@ -232,7 +232,7 @@ try {
         reply.header('Access-Control-Allow-Origin', origin);
         reply.header('Access-Control-Allow-Credentials', 'true');
         reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-        reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token, X-App-Type, X-Platform');
+        reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token, X-App-Type, X-Platform, X-Requested-With');
         // Mark trusted origins for Better Auth CSRF checks
         (request as any).trustedForCSRF = true;
         app.logger.info(

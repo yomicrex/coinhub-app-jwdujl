@@ -94,6 +94,47 @@ export function registerAuthRoutes(app: App) {
   });
 
   /**
+   * GET /api/debug/headers
+   * PUBLIC DEBUG ENDPOINT - Returns raw request headers to debug mobile app auth issues
+   * Helps diagnose what iOS/TestFlight/Expo is actually sending
+   * No authentication required
+   */
+  app.fastify.get('/api/debug/headers', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.info(
+      {
+        method: request.method,
+        path: request.url,
+        origin: request.headers.origin || 'undefined',
+        referer: request.headers.referer || 'undefined',
+        xAppType: request.headers['x-app-type'] || 'undefined'
+      },
+      'DEBUG: Headers request received'
+    );
+
+    return {
+      timestamp: new Date().toISOString(),
+      origin: request.headers.origin || undefined,
+      referer: request.headers.referer || undefined,
+      'x-app-type': request.headers['x-app-type'] || undefined,
+      'x-platform': request.headers['x-platform'] || undefined,
+      authorization: request.headers.authorization ? `Bearer [${request.headers.authorization.substring(7, 17)}...]` : undefined,
+      'user-agent': request.headers['user-agent'] || undefined,
+      'content-type': request.headers['content-type'] || undefined,
+      host: request.headers.host || undefined,
+      method: request.method,
+      url: request.url,
+      hasAuthorization: !!request.headers.authorization,
+      _debug: {
+        allHeaders: Object.fromEntries(
+          Object.entries(request.headers)
+            .filter(([key]) => !key.toLowerCase().includes('authorization'))
+            .map(([key, value]) => [key, typeof value === 'string' ? value.substring(0, 100) : value])
+        )
+      }
+    };
+  });
+
+  /**
    * GET /api/auth/debug/users
    * DEBUG ENDPOINT - List all users in auth database to diagnose sign-up/sign-in issues
    * Shows email addresses and verification status
