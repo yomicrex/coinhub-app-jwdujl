@@ -146,6 +146,7 @@ try {
 
 // Initialize authentication system
 // Better Auth automatically enables email/password provider
+// Note: Origin checking is handled by our middleware URL reconstruction and CORS bypass for mobile apps
 try {
   app.logger.info('Initializing authentication system');
   app.withAuth();
