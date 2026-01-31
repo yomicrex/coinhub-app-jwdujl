@@ -101,7 +101,7 @@ export function registerAuthRoutes(app: App) {
   app.fastify.get('/api/debug/version', async (request: FastifyRequest, reply: FastifyReply) => {
     app.logger.info('Debug version endpoint requested');
     return {
-      backendVersion: '2026-01-31-01',
+      backendVersion: '2026-01-31-02',
       timestamp: new Date().toISOString(),
     };
   });
