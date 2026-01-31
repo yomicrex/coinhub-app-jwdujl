@@ -78,7 +78,7 @@ export default function ProfileScreen() {
     try {
       const response = await fetch(`${API_URL}/api/users/${user.id}/coins`, {
         headers: {
-          'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
+          'X-App-Type': ENV.APP_TYPE,
           'X-Platform': Platform.OS,
         },
         credentials: 'omit',
@@ -111,7 +111,7 @@ export default function ProfileScreen() {
     try {
       const response = await fetch(`${API_URL}/api/users/${user.id}/coins`, {
         headers: {
-          'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
+          'X-App-Type': ENV.APP_TYPE,
           'X-Platform': Platform.OS,
         },
         credentials: 'omit',
@@ -149,7 +149,7 @@ export default function ProfileScreen() {
     
     try {
       const headers = {
-        'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
+        'X-App-Type': ENV.APP_TYPE,
         'X-Platform': Platform.OS,
       };
       
@@ -183,7 +183,7 @@ export default function ProfileScreen() {
     try {
       const response = await fetch(`${API_URL}/api/users/${user.username}`, {
         headers: {
-          'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
+          'X-App-Type': ENV.APP_TYPE,
           'X-Platform': Platform.OS,
         },
         credentials: 'omit',

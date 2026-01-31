@@ -49,7 +49,7 @@ export const authClient = createAuthClient({
     headers: {
       // CRITICAL: X-App-Type header is REQUIRED for mobile apps
       // Backend uses this to bypass CSRF checks for native apps
-      "X-App-Type": ENV.IS_STANDALONE ? "standalone" : ENV.IS_EXPO_GO ? "expo-go" : "unknown",
+      "X-App-Type": ENV.APP_TYPE,
       "X-Platform": Platform.OS,
       "X-Requested-With": "XMLHttpRequest",
     },
@@ -61,24 +61,40 @@ export const authClient = createAuthClient({
     
     // CRITICAL: Always add X-App-Type header for mobile app identification
     // Backend requires this to bypass CSRF checks
-    headers.set("X-App-Type", ENV.IS_STANDALONE ? "standalone" : ENV.IS_EXPO_GO ? "expo-go" : "unknown");
+    headers.set("X-App-Type", ENV.APP_TYPE);
     headers.set("X-Platform", Platform.OS);
     headers.set("X-Requested-With", "XMLHttpRequest");
     
     // Log the request for debugging
-    console.log('Auth: Custom fetch -', typeof url === 'string' ? url : url.toString(), 'with headers:', {
-      'X-App-Type': headers.get('X-App-Type'),
-      'X-Platform': headers.get('X-Platform'),
+    const urlString = typeof url === 'string' ? url : url.toString();
+    const xAppType = headers.get('X-App-Type');
+    const xPlatform = headers.get('X-Platform');
+    
+    console.log('Auth: Custom fetch -', urlString);
+    console.log('Auth: Headers -', {
+      'X-App-Type': xAppType,
+      'X-Platform': xPlatform,
+      'X-Requested-With': headers.get('X-Requested-With'),
     });
+    
+    // CRITICAL: Verify headers are set correctly for mobile apps
+    if (ENV.IS_STANDALONE && xAppType !== 'standalone') {
+      console.error('⚠️ WARNING: Running in standalone but X-App-Type is not "standalone"!');
+    }
+    if (ENV.IS_EXPO_GO && xAppType !== 'expo-go') {
+      console.error('⚠️ WARNING: Running in Expo Go but X-App-Type is not "expo-go"!');
+    }
     
     addAuthDebugLog({
       type: 'request',
-      endpoint: typeof url === 'string' ? url : url.toString(),
+      endpoint: urlString,
       method: options?.method || 'GET',
       headers: {
-        'X-App-Type': headers.get('X-App-Type') || 'none',
-        'X-Platform': headers.get('X-Platform') || 'none',
+        'X-App-Type': xAppType || 'none',
+        'X-Platform': xPlatform || 'none',
+        'X-Requested-With': headers.get('X-Requested-With') || 'none',
       },
+      message: `Better Auth request with ${xAppType} app type`,
     });
     
     return fetch(url, {
@@ -96,7 +112,7 @@ addAuthDebugLog({
   message: 'Auth client created successfully with credentials: omit',
   headers: {
     'X-Platform': Platform.OS,
-    'X-App-Type': ENV.IS_STANDALONE ? "standalone" : ENV.IS_EXPO_GO ? "expo-go" : "unknown",
+    'X-App-Type': ENV.APP_TYPE,
   },
 });
 

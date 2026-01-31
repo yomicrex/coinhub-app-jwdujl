@@ -50,6 +50,21 @@ function getAppName(): string {
 }
 
 /**
+ * Get the X-App-Type header value for backend requests
+ * CRITICAL: This determines how the backend treats the request (mobile vs browser)
+ * Returns: "standalone" for TestFlight/App Store, "expo-go" for Expo Go, "unknown" otherwise
+ */
+function getAppType(): 'standalone' | 'expo-go' | 'unknown' {
+  if (isStandalone()) {
+    return 'standalone';
+  }
+  if (isExpoGo()) {
+    return 'expo-go';
+  }
+  return 'unknown';
+}
+
+/**
  * Check if running in development mode
  */
 function isDevelopment(): boolean {
@@ -65,9 +80,23 @@ function isExpoGo(): boolean {
 
 /**
  * Check if running in standalone app (TestFlight/App Store)
+ * CRITICAL: In production builds (!__DEV__), we default to standalone if appOwnership is undefined
+ * This ensures TestFlight builds are always correctly identified as standalone
  */
 function isStandalone(): boolean {
-  return Constants.appOwnership === 'standalone';
+  // Explicit standalone check
+  if (Constants.appOwnership === 'standalone') {
+    return true;
+  }
+  
+  // In production builds, if appOwnership is not 'expo', assume standalone
+  // This handles edge cases where appOwnership might be undefined in TestFlight
+  if (!__DEV__ && Constants.appOwnership !== 'expo') {
+    console.log('[ENV] Production build with non-expo appOwnership, treating as standalone');
+    return true;
+  }
+  
+  return false;
 }
 
 // Export configuration
@@ -78,6 +107,7 @@ export const ENV = {
   IS_DEV: isDevelopment(),
   IS_EXPO_GO: isExpoGo(),
   IS_STANDALONE: isStandalone(),
+  APP_TYPE: getAppType(),
   PLATFORM: Platform.OS,
 };
 
@@ -89,7 +119,9 @@ console.log('[ENV] Configuration loaded:', {
   isDev: ENV.IS_DEV,
   isExpoGo: ENV.IS_EXPO_GO,
   isStandalone: ENV.IS_STANDALONE,
+  appType: ENV.APP_TYPE,
   platform: ENV.PLATFORM,
+  appOwnership: Constants.appOwnership,
 });
 
 export default ENV;

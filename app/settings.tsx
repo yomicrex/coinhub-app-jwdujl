@@ -68,7 +68,7 @@ export default function SettingsScreen() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
+          'X-App-Type': ENV.APP_TYPE,
           'X-Platform': ENV.PLATFORM,
         },
         credentials: 'omit',

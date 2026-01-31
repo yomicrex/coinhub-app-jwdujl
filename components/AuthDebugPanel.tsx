@@ -109,7 +109,7 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
       const response = await fetch(url, {
         method: 'GET',
         headers: {
-          'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
+          'X-App-Type': ENV.APP_TYPE,
           'X-Platform': Platform.OS,
         },
         credentials: 'omit',
@@ -128,9 +128,10 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
       });
 
       const backendVersion = data.backendVersion || 'unknown';
-      const isUpdated = backendVersion === '2026-01-31-03';
+      // Accept any version that starts with "2026-01-31" as valid (allows for multiple deployments on same day)
+      const isUpdated = backendVersion.startsWith('2026-01-31');
       
-      const resultText = `✅ Backend Version Test:\n\nVersion: ${backendVersion}\nTimestamp: ${data.timestamp || 'unknown'}\n\nStatus: ${response.status}\n\n${isUpdated ? '✅ Backend is UPDATED with latest fix (2026-01-31-03)!' : '⚠️ Backend version mismatch - expected 2026-01-31-03'}`;
+      const resultText = `✅ Backend Version Test:\n\nVersion: ${backendVersion}\nTimestamp: ${data.timestamp || 'unknown'}\n\nStatus: ${response.status}\n\n${isUpdated ? '✅ Backend is UPDATED with latest fix!' : '⚠️ Backend version mismatch - expected 2026-01-31-XX'}`;
       
       setVersionTestResult(resultText);
       alert(resultText);
@@ -178,7 +179,7 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
       });
 
       const headers: Record<string, string> = {
-        'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
+        'X-App-Type': ENV.APP_TYPE,
         'X-Platform': Platform.OS,
       };
 

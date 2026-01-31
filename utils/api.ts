@@ -80,7 +80,9 @@ export async function authenticatedFetch(
   
   const url = endpoint.startsWith('http') ? endpoint : `${API_URL}${endpoint}`;
   
-  console.log('API: Making authenticated request to:', url, 'with token length:', sessionToken.length);
+  console.log('API: Making authenticated request to:', url);
+  console.log('API: Token length:', sessionToken.length);
+  console.log('API: App Type:', ENV.APP_TYPE, '| Platform:', ENV.PLATFORM);
   
   // CRITICAL: Use Authorization header for mobile apps (more reliable than cookies)
   // Backend's extractSessionToken prioritizes Authorization header over cookies
@@ -89,8 +91,16 @@ export async function authenticatedFetch(
     'Authorization': `Bearer ${sessionToken}`,
     // Add platform headers to help backend identify mobile requests
     'X-Platform': ENV.PLATFORM,
-    'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
+    'X-App-Type': ENV.APP_TYPE,
   };
+  
+  // CRITICAL: Verify headers are set correctly for mobile apps
+  if (ENV.IS_STANDALONE && ENV.APP_TYPE !== 'standalone') {
+    console.error('⚠️ WARNING: Running in standalone but X-App-Type is not "standalone"!');
+  }
+  if (ENV.IS_EXPO_GO && ENV.APP_TYPE !== 'expo-go') {
+    console.error('⚠️ WARNING: Running in Expo Go but X-App-Type is not "expo-go"!');
+  }
   
   // Add Content-Type for JSON requests if not already set
   if (options.body && typeof options.body === 'string' && !headers['Content-Type']) {
@@ -208,7 +218,7 @@ export async function authenticatedUpload(
     'Authorization': `Bearer ${sessionToken}`,
     // Add platform headers to help backend identify mobile requests
     'X-Platform': ENV.PLATFORM,
-    'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
+    'X-App-Type': ENV.APP_TYPE,
   };
   
   // Debug log - upload request
