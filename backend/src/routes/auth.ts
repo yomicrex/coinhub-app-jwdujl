@@ -101,7 +101,7 @@ export function registerAuthRoutes(app: App) {
   app.fastify.get('/api/debug/version', async (request: FastifyRequest, reply: FastifyReply) => {
     app.logger.info('Debug version endpoint requested');
     return {
-      backendVersion: '2026-01-31-proxy-fix-v1',
+      backendVersion: '2026-01-31-origin-fix-v3',
       timestamp: new Date().toISOString(),
     };
   });
@@ -113,16 +113,30 @@ export function registerAuthRoutes(app: App) {
    * No authentication required
    */
   app.fastify.get('/api/debug/headers', async (request: FastifyRequest, reply: FastifyReply) => {
+    // Construct the base URL from forwarded headers (same logic as middleware)
+    const proto = request.headers['x-forwarded-proto'] || 'https';
+    const host =
+      request.headers['x-forwarded-host'] ||
+      request.headers['x-original-host'] ||
+      request.headers['x-forwarded-server'] ||
+      request.headers.host;
+    const constructedBaseURL = `${proto}://${host}`;
+
     app.logger.info(
       {
         method: request.method,
         path: request.url,
         origin: request.headers.origin || 'undefined',
         referer: request.headers.referer || 'undefined',
-        xAppType: request.headers['x-app-type'] || 'undefined'
+        xAppType: request.headers['x-app-type'] || 'undefined',
+        constructedBaseURL
       },
       'DEBUG: Headers request received'
     );
+
+    // Truncate user-agent if it's very long
+    const userAgent = request.headers['user-agent'] || undefined;
+    const truncatedUserAgent = userAgent && userAgent.length > 200 ? userAgent.substring(0, 200) + '...' : userAgent;
 
     return {
       timestampISO: new Date().toISOString(),
@@ -138,7 +152,8 @@ export function registerAuthRoutes(app: App) {
       'x-app-type': request.headers['x-app-type'] || undefined,
       'x-platform': request.headers['x-platform'] || undefined,
       hasAuthorization: !!request.headers.authorization,
-      'user-agent': request.headers['user-agent'] || undefined
+      'user-agent': truncatedUserAgent,
+      constructedBaseURL
     };
   });
 
