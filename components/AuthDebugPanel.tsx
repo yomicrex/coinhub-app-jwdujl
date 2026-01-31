@@ -129,11 +129,13 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
         body: JSON.stringify(data, null, 2),
       });
 
-      const backendVersion = data.backendVersion || 'unknown';
+      const backendVersion = data.backendVersion || data.version || 'unknown';
+      const expectedVersion = '2026-01-31-origin-fix-v3';
       // Accept any version that starts with "2026-01-31" as valid (allows for multiple deployments on same day)
       const isUpdated = backendVersion.startsWith('2026-01-31');
+      const isExactMatch = backendVersion === expectedVersion;
       
-      const resultText = `✅ Backend Version Test:\n\nVersion: ${backendVersion}\nTimestamp: ${data.timestamp || 'unknown'}\n\nStatus: ${response.status}\n\n${isUpdated ? '✅ Backend is UPDATED with latest fix!' : '⚠️ Backend version mismatch - expected 2026-01-31-XX'}`;
+      const resultText = `${isExactMatch ? '✅' : isUpdated ? '⚠️' : '❌'} Backend Version Test:\n\nVersion: ${backendVersion}\nExpected: ${expectedVersion}\nMatch: ${isExactMatch ? '✅ Exact Match' : isUpdated ? '⚠️ Partial Match (same day)' : '❌ No Match'}\n\nTimestamp: ${data.timestamp || 'unknown'}\nStatus: ${response.status}\n\n${isExactMatch ? '✅ Backend is UPDATED with EXACT version!' : isUpdated ? '⚠️ Backend is updated (same day) but version differs' : '❌ Backend version mismatch - expected 2026-01-31-origin-fix-v3'}`;
       
       setVersionTestResult(resultText);
       alert(resultText);
@@ -277,7 +279,10 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
       });
 
       // Format the result with all the new fields from the backend
-      const resultText = `✅ Headers Test Result:\n\nTimestamp: ${data.timestampISO || 'undefined'}\nMethod: ${data.method || 'undefined'}\nURL: ${data.url || 'undefined'}\nHost: ${data.host || 'undefined'}\nX-Forwarded-Host: ${data['x-forwarded-host'] || 'undefined'}\nX-Forwarded-Proto: ${data['x-forwarded-proto'] || 'undefined'}\n\nOrigin: ${data.origin || 'undefined'}\nReferer: ${data.referer || 'undefined'}\nX-App-Type: ${data['x-app-type'] || 'undefined'}\nX-Platform: ${data['x-platform'] || 'undefined'}\n\nHas Authorization: ${data.hasAuthorization ? 'Yes' : 'No'}\nUser-Agent: ${data['user-agent'] ? data['user-agent'].substring(0, 50) + '...' : 'undefined'}\n\nStatus: ${response.status}\n\n${sessionToken ? '✅ Tested WITH authentication' : '⚠️ Tested WITHOUT authentication'}`;
+      // According to backend spec, these headers should be returned:
+      // host, x-forwarded-host, x-original-host, x-forwarded-server, x-forwarded-proto,
+      // origin, referer, x-app-type, user-agent, hasAuthorization
+      const resultText = `✅ Headers Test Result:\n\n=== Request Info ===\nTimestamp: ${data.timestampISO || data.timestamp || 'undefined'}\nMethod: ${data.method || 'undefined'}\nURL: ${data.url || 'undefined'}\n\n=== Host Headers ===\nHost: ${data.host || 'undefined'}\nX-Forwarded-Host: ${data['x-forwarded-host'] || 'undefined'}\nX-Original-Host: ${data['x-original-host'] || 'undefined'}\nX-Forwarded-Server: ${data['x-forwarded-server'] || 'undefined'}\nX-Forwarded-Proto: ${data['x-forwarded-proto'] || 'undefined'}\n\n=== Origin Headers ===\nOrigin: ${data.origin || 'undefined'}\nReferer: ${data.referer || 'undefined'}\n\n=== App Headers ===\nX-App-Type: ${data['x-app-type'] || 'undefined'}\nX-Platform: ${data['x-platform'] || 'undefined'}\n\n=== Auth ===\nHas Authorization: ${data.hasAuthorization ? '✅ Yes' : '❌ No'}\n\n=== User Agent ===\n${data['user-agent'] ? data['user-agent'].substring(0, 80) + (data['user-agent'].length > 80 ? '...' : '') : 'undefined'}\n\nStatus: ${response.status}\n\n${sessionToken ? '✅ Tested WITH authentication' : '⚠️ Tested WITHOUT authentication'}`;
       
       setHeadersTestResult(resultText);
       alert(resultText);
