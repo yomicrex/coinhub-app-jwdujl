@@ -60,7 +60,9 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
   const [logs, setLogs] = useState<AuthDebugLog[]>([]);
   const [expandedLogIndex, setExpandedLogIndex] = useState<number | null>(null);
   const [testingHeaders, setTestingHeaders] = useState(false);
+  const [testingVersion, setTestingVersion] = useState(false);
   const [headersTestResult, setHeadersTestResult] = useState<string | null>(null);
+  const [versionTestResult, setVersionTestResult] = useState<string | null>(null);
 
   // Refresh logs every second when visible
   useEffect(() => {
@@ -87,6 +89,64 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
     clearAuthDebugLogs();
     setLogs([]);
     setExpandedLogIndex(null);
+  };
+
+  const handleTestVersion = async () => {
+    console.log('[AUTH DEBUG] Testing version endpoint...');
+    setTestingVersion(true);
+    setVersionTestResult(null);
+
+    try {
+      const url = `${ENV.BACKEND_URL}/api/debug/version`;
+      
+      addAuthDebugLog({
+        type: 'info',
+        endpoint: url,
+        method: 'GET',
+        message: 'Testing version endpoint to verify backend deployment',
+      });
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
+          'X-Platform': Platform.OS,
+        },
+        credentials: 'omit',
+      });
+
+      const data = await response.json();
+      
+      console.log('[AUTH DEBUG] Version test response:', data);
+      
+      addAuthDebugLog({
+        type: 'response',
+        endpoint: url,
+        method: 'GET',
+        status: response.status,
+        body: JSON.stringify(data, null, 2),
+      });
+
+      const resultText = `✅ Backend Version:\n\nVersion: ${data.backendVersion || 'unknown'}\nTimestamp: ${data.timestamp || 'unknown'}\n\nStatus: ${response.status}\n\n${data.backendVersion === '2026-01-31-01' ? '✅ Backend is UPDATED with latest fix!' : '⚠️ Backend may not be updated yet'}`;
+      
+      setVersionTestResult(resultText);
+      alert(resultText);
+    } catch (error) {
+      console.error('[AUTH DEBUG] Version test failed:', error);
+      
+      addAuthDebugLog({
+        type: 'error',
+        endpoint: `${ENV.BACKEND_URL}/api/debug/version`,
+        method: 'GET',
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      const errorText = `❌ Version Test Failed:\n\n${error instanceof Error ? error.message : String(error)}\n\nThis may mean the backend is not deployed yet.`;
+      setVersionTestResult(errorText);
+      alert(errorText);
+    } finally {
+      setTestingVersion(false);
+    }
   };
 
   const handleTestHeaders = async () => {
@@ -271,6 +331,16 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
         {/* Action Buttons */}
         <View style={styles.actionButtons}>
           <TouchableOpacity 
+            style={[styles.actionButton, styles.versionButton]} 
+            onPress={handleTestVersion}
+            disabled={testingVersion}
+          >
+            <IconSymbol ios_icon_name="checkmark.circle" android_material_icon_name="check-circle" size={20} color="#FFF" />
+            <Text style={styles.actionButtonText}>
+              {testingVersion ? 'Testing...' : 'Test Version'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
             style={[styles.actionButton, styles.testButton]} 
             onPress={handleTestHeaders}
             disabled={testingHeaders}
@@ -444,6 +514,9 @@ const styles = StyleSheet.create({
   },
   testButton: {
     backgroundColor: '#50C878',
+  },
+  versionButton: {
+    backgroundColor: '#9B59B6',
   },
   actionButtonText: {
     color: '#FFF',
