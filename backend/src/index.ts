@@ -20,6 +20,16 @@ const schema = { ...appSchema, ...authSchema };
 
 export const app = await createApplication(schema);
 
+// CRITICAL: Enable proxy trust to read X-Forwarded-* headers correctly
+// This must be done IMMEDIATELY after app creation to ensure Fastify reads forwarded headers
+try {
+  app.logger.info('Enabling Fastify trustProxy for reverse proxy support');
+  (app.fastify as any).trust = true; // Enable trust proxy to read X-Forwarded-* headers
+  app.logger.info('Fastify trustProxy enabled - will read X-Forwarded-* headers from proxy');
+} catch (error) {
+  app.logger.warn({ err: error }, 'Failed to set trustProxy - may not read forwarded headers correctly');
+}
+
 export type App = typeof app;
 
 // Initialize email service
@@ -45,12 +55,18 @@ try {
   // FIRST middleware layer: Fix request URL using forwarded headers
   // This is CRITICAL to fix "invalid origin" errors when behind a proxy
   // Better Auth receives the wrong host (localhost:8082) instead of actual domain
+  // With trustProxy enabled, Fastify now correctly reads X-Forwarded-* headers
   await app.fastify.register(async (fastifyInstance) => {
     fastifyInstance.addHook('onRequest', async (request, reply) => {
       // For /api/auth/* requests, fix the URL using forwarded headers
       if (request.url.startsWith('/api/auth/')) {
         const proto = request.headers['x-forwarded-proto'] || 'https';
-        const host = request.headers['x-forwarded-host'] || request.headers.host;
+        // Try multiple header variants for host (priority order)
+        const host =
+          request.headers['x-forwarded-host'] ||
+          request.headers['x-original-host'] ||
+          request.headers['x-forwarded-server'] ||
+          request.headers.host;
         const base = `${proto}://${host}`;
 
         // Store the corrected URL on the request for Better Auth to use
@@ -66,12 +82,25 @@ try {
               correctedUrl: url.toString(),
               proto,
               host,
+              sourceHeaders: {
+                'x-forwarded-host': request.headers['x-forwarded-host'] || undefined,
+                'x-original-host': request.headers['x-original-host'] || undefined,
+                'x-forwarded-server': request.headers['x-forwarded-server'] || undefined,
+                'host': request.headers.host
+              }
             },
-            '[AUTH_URL_FIX] Fixed request URL for Better Auth using forwarded headers'
+            '[AUTH_URL_FIX] Fixed request URL for Better Auth using forwarded headers (trustProxy enabled)'
           );
         } catch (error) {
           app.logger.warn(
-            { err: error, url: request.url, proto: request.headers['x-forwarded-proto'], host: request.headers['x-forwarded-host'] },
+            {
+              err: error,
+              url: request.url,
+              proto: request.headers['x-forwarded-proto'],
+              'x-forwarded-host': request.headers['x-forwarded-host'],
+              'x-original-host': request.headers['x-original-host'],
+              'x-forwarded-server': request.headers['x-forwarded-server']
+            },
             '[AUTH_URL_FIX] Failed to construct URL from forwarded headers'
           );
         }
@@ -103,6 +132,13 @@ try {
   });
 
   app.logger.info('Early middleware for Better Auth registered (URL fix + CSRF bypass)');
+  app.logger.info(
+    {
+      trustProxyEnabled: (app.fastify as any).trust === true,
+      trustProxyValue: (app.fastify as any).trust
+    },
+    'Fastify proxy configuration status - verify X-Forwarded-* headers will be read'
+  );
 } catch (error) {
   app.logger.error({ err: error }, 'Failed to register early middleware for Better Auth');
   throw error;
