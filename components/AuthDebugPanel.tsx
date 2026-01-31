@@ -64,11 +64,13 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
   const [testingAuthConfig, setTestingAuthConfig] = useState(false);
   const [testingAuthRequestUrl, setTestingAuthRequestUrl] = useState(false);
   const [testingAuthSigninHeaders, setTestingAuthSigninHeaders] = useState(false);
+  const [testingAuthHandlerInput, setTestingAuthHandlerInput] = useState(false);
   const [headersTestResult, setHeadersTestResult] = useState<string | null>(null);
   const [versionTestResult, setVersionTestResult] = useState<string | null>(null);
   const [authConfigTestResult, setAuthConfigTestResult] = useState<string | null>(null);
   const [authRequestUrlTestResult, setAuthRequestUrlTestResult] = useState<string | null>(null);
   const [authSigninHeadersTestResult, setAuthSigninHeadersTestResult] = useState<string | null>(null);
+  const [authHandlerInputTestResult, setAuthHandlerInputTestResult] = useState<string | null>(null);
 
   // Refresh logs every second when visible
   useEffect(() => {
@@ -446,6 +448,83 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
     }
   };
 
+  const handleTestAuthHandlerInput = async () => {
+    console.log('[AUTH DEBUG] Testing auth-handler-input endpoint...');
+    setTestingAuthHandlerInput(true);
+    setAuthHandlerInputTestResult(null);
+
+    try {
+      const url = `${ENV.BACKEND_URL}/api/debug/auth-handler-input`;
+      
+      addAuthDebugLog({
+        type: 'info',
+        endpoint: url,
+        method: 'GET',
+        message: 'Testing auth-handler-input endpoint to verify EXACT Request object passed to Better Auth',
+      });
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'X-App-Type': ENV.APP_TYPE,
+          'X-Platform': Platform.OS,
+        },
+        credentials: 'omit',
+      });
+
+      const data = await response.json();
+      
+      console.log('[AUTH DEBUG] Auth-handler-input test response:', data);
+      
+      addAuthDebugLog({
+        type: 'response',
+        endpoint: url,
+        method: 'GET',
+        status: response.status,
+        body: JSON.stringify(data, null, 2),
+      });
+
+      // Check if the Request object passed to Better Auth is correct
+      const fullUrl = data.fullUrlUsedForAuthHandler || 'undefined';
+      const hostHeader = data.hostHeaderUsedForAuth || 'undefined';
+      const originHeader = data.originHeaderUsedForAuth || 'undefined';
+      const refererHeader = data.refererHeaderUsedForAuth || 'undefined';
+      
+      // Validation checks
+      const hasFullPath = typeof fullUrl === 'string' && 
+                         fullUrl.includes('/api/debug/auth-handler-input');
+      const hasCorrectBase = typeof fullUrl === 'string' && 
+                            fullUrl.startsWith(ENV.BACKEND_URL);
+      const hasCorrectHost = hostHeader === 'qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
+      const hasCorrectOrigin = originHeader === ENV.BACKEND_URL;
+      const hasCorrectReferer = refererHeader === ENV.BACKEND_URL;
+      const noLocalhost = !fullUrl.includes('localhost') && !hostHeader.includes('localhost');
+      
+      const allCorrect = hasFullPath && hasCorrectBase && hasCorrectHost && 
+                        hasCorrectOrigin && hasCorrectReferer && noLocalhost;
+
+      const resultText = `${allCorrect ? '✅' : '❌'} Auth Handler Input Test:\n\n=== CRITICAL: Full URL (MUST include pathname) ===\nFull URL: ${fullUrl}\n${hasFullPath ? '✅ Includes full path' : '❌ Missing pathname!'}\n${hasCorrectBase ? '✅ Correct base URL' : '❌ Wrong base URL'}\n${noLocalhost ? '✅ No localhost' : '❌ Contains localhost!'}\n\n=== CRITICAL: Host Header (MUST be public domain) ===\nHost: ${hostHeader}\n${hasCorrectHost ? '✅ Correct public domain' : '❌ Wrong host (should be qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev)'}\n\n=== Origin & Referer Headers ===\nOrigin: ${originHeader}\n${hasCorrectOrigin ? '✅ Correct origin' : '❌ Wrong origin'}\n\nReferer: ${refererHeader}\n${hasCorrectReferer ? '✅ Correct referer' : '❌ Wrong referer'}\n\n=== Expected Values ===\nExpected Base: ${ENV.BACKEND_URL}\nExpected Host: qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev\n\nStatus: ${response.status}\n\n${allCorrect ? '✅ Request object for Better Auth is PERFECT!' : '❌ Request object needs fixing - this is why INVALID_ORIGIN occurs!'}`;
+      
+      setAuthHandlerInputTestResult(resultText);
+      alert(resultText);
+    } catch (error) {
+      console.error('[AUTH DEBUG] Auth-handler-input test failed:', error);
+      
+      addAuthDebugLog({
+        type: 'error',
+        endpoint: `${ENV.BACKEND_URL}/api/debug/auth-handler-input`,
+        method: 'GET',
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      const errorText = `❌ Auth Handler Input Test Failed:\n\n${error instanceof Error ? error.message : String(error)}\n\nThis endpoint may not be deployed yet (it was added in the latest backend fix).`;
+      setAuthHandlerInputTestResult(errorText);
+      alert(errorText);
+    } finally {
+      setTestingAuthHandlerInput(false);
+    }
+  };
+
   const generateDebugReport = (): string => {
     const sections: string[] = [];
 
@@ -606,6 +685,19 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
             <IconSymbol ios_icon_name="checkmark.shield" android_material_icon_name="verified-user" size={20} color="#FFF" />
             <Text style={styles.actionButtonText}>
               {testingAuthSigninHeaders ? 'Testing...' : 'Test Sign-In Headers'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        
+        <View style={styles.actionButtons}>
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.authHandlerInputButton]} 
+            onPress={handleTestAuthHandlerInput}
+            disabled={testingAuthHandlerInput}
+          >
+            <IconSymbol ios_icon_name="arrow.right.circle" android_material_icon_name="input" size={20} color="#FFF" />
+            <Text style={styles.actionButtonText}>
+              {testingAuthHandlerInput ? 'Testing...' : 'Test Handler Input'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -784,6 +876,9 @@ const styles = StyleSheet.create({
   },
   authSigninHeadersButton: {
     backgroundColor: '#16A085',
+  },
+  authHandlerInputButton: {
+    backgroundColor: '#D35400',
   },
   actionButtonText: {
     color: '#FFF',
