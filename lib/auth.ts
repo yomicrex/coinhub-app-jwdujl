@@ -45,6 +45,7 @@ export const authClient = createAuthClient({
     // 1. Use "omit" for credentials to avoid cookie-based auth issues
     // 2. Use Authorization header (Bearer token) instead of cookies
     // 3. Send X-App-Type header so backend can identify mobile apps and bypass CSRF
+    // 4. Send explicit Origin and Referer headers for native builds to fix INVALID_ORIGIN errors
     credentials: "omit",
     headers: {
       // CRITICAL: X-App-Type header is REQUIRED for mobile apps
@@ -52,6 +53,16 @@ export const authClient = createAuthClient({
       "X-App-Type": ENV.APP_TYPE,
       "X-Platform": Platform.OS,
       "X-Requested-With": "XMLHttpRequest",
+      // CRITICAL FIX: For native builds (iOS/Android/TestFlight), add explicit Origin and Referer headers
+      // This fixes the 403 [INVALID_ORIGIN] error from Better Auth when Origin header is missing
+      // Better Auth derives origin from host/x-forwarded-proto, which can be localhost:8082 in TestFlight
+      // By sending explicit Origin/Referer headers pointing to the backend URL, we ensure Better Auth
+      // sees the correct origin and doesn't reject the request
+      // DO NOT add these on web - browsers handle Origin/Referer automatically
+      ...(Platform.OS !== "web" ? {
+        "Origin": API_URL,
+        "Referer": API_URL,
+      } : {}),
     },
   },
   // CRITICAL: Use custom fetch to ensure headers are sent with EVERY request
@@ -65,16 +76,31 @@ export const authClient = createAuthClient({
     headers.set("X-Platform", Platform.OS);
     headers.set("X-Requested-With", "XMLHttpRequest");
     
+    // CRITICAL FIX: For native builds (iOS/Android/TestFlight), add explicit Origin and Referer headers
+    // This fixes the 403 [INVALID_ORIGIN] error from Better Auth when Origin header is missing
+    // Better Auth derives origin from host/x-forwarded-proto, which can be localhost:8082 in TestFlight
+    // By sending explicit Origin/Referer headers pointing to the backend URL, we ensure Better Auth
+    // sees the correct origin and doesn't reject the request
+    // DO NOT add these on web - browsers handle Origin/Referer automatically
+    if (Platform.OS !== "web") {
+      headers.set("Origin", API_URL);
+      headers.set("Referer", API_URL);
+    }
+    
     // Log the request for debugging
     const urlString = typeof url === 'string' ? url : url.toString();
     const xAppType = headers.get('X-App-Type');
     const xPlatform = headers.get('X-Platform');
+    const origin = headers.get('Origin');
+    const referer = headers.get('Referer');
     
     console.log('Auth: Custom fetch -', urlString);
     console.log('Auth: Headers -', {
       'X-App-Type': xAppType,
       'X-Platform': xPlatform,
       'X-Requested-With': headers.get('X-Requested-With'),
+      'Origin': origin || 'not set',
+      'Referer': referer || 'not set',
     });
     
     // CRITICAL: Verify headers are set correctly for mobile apps
@@ -85,6 +111,11 @@ export const authClient = createAuthClient({
       console.error('⚠️ WARNING: Running in Expo Go but X-App-Type is not "expo-go"!');
     }
     
+    // CRITICAL: Verify Origin/Referer headers are set for native builds
+    if (Platform.OS !== "web" && (!origin || !referer)) {
+      console.error('⚠️ WARNING: Native build missing Origin/Referer headers!');
+    }
+    
     addAuthDebugLog({
       type: 'request',
       endpoint: urlString,
@@ -93,6 +124,8 @@ export const authClient = createAuthClient({
         'X-App-Type': xAppType || 'none',
         'X-Platform': xPlatform || 'none',
         'X-Requested-With': headers.get('X-Requested-With') || 'none',
+        'Origin': origin || 'not set',
+        'Referer': referer || 'not set',
       },
       message: `Better Auth request with ${xAppType} app type`,
     });
