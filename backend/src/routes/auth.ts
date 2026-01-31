@@ -101,7 +101,7 @@ export function registerAuthRoutes(app: App) {
   app.fastify.get('/api/debug/version', async (request: FastifyRequest, reply: FastifyReply) => {
     app.logger.info('Debug version endpoint requested');
     return {
-      backendVersion: '2026-01-31-02',
+      backendVersion: '2026-01-31-03',
       timestamp: new Date().toISOString(),
     };
   });
@@ -125,27 +125,18 @@ export function registerAuthRoutes(app: App) {
     );
 
     return {
-      timestamp: new Date().toISOString(),
+      timestampISO: new Date().toISOString(),
+      method: request.method,
+      url: request.url,
+      host: request.headers.host || undefined,
+      'x-forwarded-host': request.headers['x-forwarded-host'] || undefined,
+      'x-forwarded-proto': request.headers['x-forwarded-proto'] || undefined,
       origin: request.headers.origin || undefined,
       referer: request.headers.referer || undefined,
       'x-app-type': request.headers['x-app-type'] || undefined,
       'x-platform': request.headers['x-platform'] || undefined,
-      'x-forwarded-host': request.headers['x-forwarded-host'] || undefined,
-      'x-forwarded-proto': request.headers['x-forwarded-proto'] || undefined,
-      authorization: request.headers.authorization ? `Bearer [${request.headers.authorization.substring(7, 17)}...]` : undefined,
-      'user-agent': request.headers['user-agent'] || undefined,
-      'content-type': request.headers['content-type'] || undefined,
-      host: request.headers.host || undefined,
-      method: request.method,
-      url: request.url,
       hasAuthorization: !!request.headers.authorization,
-      _debug: {
-        allHeaders: Object.fromEntries(
-          Object.entries(request.headers)
-            .filter(([key]) => !key.toLowerCase().includes('authorization'))
-            .map(([key, value]) => [key, typeof value === 'string' ? value.substring(0, 100) : value])
-        )
-      }
+      'user-agent': request.headers['user-agent'] || undefined
     };
   });
 
