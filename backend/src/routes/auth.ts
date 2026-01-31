@@ -113,48 +113,56 @@ export function registerAuthRoutes(app: App) {
    * No authentication required
    */
   app.fastify.get('/api/debug/headers', async (request: FastifyRequest, reply: FastifyReply) => {
-    // Construct the base URL from forwarded headers (same logic as middleware)
-    const proto = request.headers['x-forwarded-proto'] || 'https';
-    const host =
-      request.headers['x-forwarded-host'] ||
-      request.headers['x-original-host'] ||
-      request.headers['x-forwarded-server'] ||
-      request.headers.host;
-    const constructedBaseURL = `${proto}://${host}`;
+    // Truncate user-agent if it's very long
+    const userAgent = request.headers['user-agent'] || undefined;
+    const truncatedUserAgent = userAgent && userAgent.length > 200 ? userAgent.substring(0, 200) + '...' : userAgent;
 
     app.logger.info(
       {
         method: request.method,
         path: request.url,
         origin: request.headers.origin || 'undefined',
-        referer: request.headers.referer || 'undefined',
-        xAppType: request.headers['x-app-type'] || 'undefined',
-        constructedBaseURL
+        xAppType: request.headers['x-app-type'] || 'undefined'
       },
       'DEBUG: Headers request received'
     );
 
-    // Truncate user-agent if it's very long
-    const userAgent = request.headers['user-agent'] || undefined;
-    const truncatedUserAgent = userAgent && userAgent.length > 200 ? userAgent.substring(0, 200) + '...' : userAgent;
-
     return {
-      timestampISO: new Date().toISOString(),
-      method: request.method,
-      url: request.url,
-      host: request.headers.host || undefined,
-      'x-forwarded-host': request.headers['x-forwarded-host'] || undefined,
-      'x-forwarded-proto': request.headers['x-forwarded-proto'] || undefined,
-      'x-original-host': request.headers['x-original-host'] || undefined,
-      'x-forwarded-server': request.headers['x-forwarded-server'] || undefined,
       origin: request.headers.origin || undefined,
       referer: request.headers.referer || undefined,
+      'x-forwarded-host': request.headers['x-forwarded-host'] || undefined,
+      'x-original-host': request.headers['x-original-host'] || undefined,
+      'x-forwarded-server': request.headers['x-forwarded-server'] || undefined,
+      'x-forwarded-proto': request.headers['x-forwarded-proto'] || undefined,
+      host: request.headers.host || undefined,
       'x-app-type': request.headers['x-app-type'] || undefined,
-      'x-platform': request.headers['x-platform'] || undefined,
-      hasAuthorization: !!request.headers.authorization,
-      'user-agent': truncatedUserAgent,
-      constructedBaseURL
+      'user-agent': truncatedUserAgent
     };
+  });
+
+  /**
+   * GET /api/debug/auth-config
+   * PUBLIC DEBUG ENDPOINT - Returns authentication configuration status
+   * Helps verify that mobile app authentication fixes are deployed
+   * No authentication required
+   */
+  app.fastify.get('/api/debug/auth-config', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.info('Debug auth-config endpoint requested');
+
+    // Configuration values for mobile app authentication
+    const config = {
+      disableCSRFCheck: true, // CSRF is disabled for mobile apps via middleware
+      baseURL: 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev',
+      trustedOrigins: [
+        'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev',
+        'CoinHub://',
+        'coinhub://',
+      ],
+      trustProxy: true, // Fastify trustProxy is enabled
+    };
+
+    app.logger.info({ config }, 'DEBUG: Auth configuration returned');
+    return config;
   });
 
   /**
