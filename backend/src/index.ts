@@ -37,15 +37,46 @@ try {
   throw error;
 }
 
-// CRITICAL: Register CSRF bypass middleware BEFORE Better Auth initialization
+// CRITICAL: Register URL fix and CSRF bypass middleware BEFORE Better Auth initialization
 // This ensures mobile app requests are marked before Better Auth's CSRF check runs
 try {
-  app.logger.info('Registering early CSRF bypass middleware for mobile apps');
+  app.logger.info('Registering early middleware for Better Auth');
 
-  // FIRST middleware layer: Detect mobile apps and mark for CSRF bypass
-  // This runs BEFORE Better Auth's hooks to prevent "invalid origin" errors
+  // FIRST middleware layer: Fix request URL using forwarded headers
+  // This is CRITICAL to fix "invalid origin" errors when behind a proxy
+  // Better Auth receives the wrong host (localhost:8082) instead of actual domain
   await app.fastify.register(async (fastifyInstance) => {
     fastifyInstance.addHook('onRequest', async (request, reply) => {
+      // For /api/auth/* requests, fix the URL using forwarded headers
+      if (request.url.startsWith('/api/auth/')) {
+        const proto = request.headers['x-forwarded-proto'] || 'https';
+        const host = request.headers['x-forwarded-host'] || request.headers.host;
+        const base = `${proto}://${host}`;
+
+        // Store the corrected URL on the request for Better Auth to use
+        try {
+          const url = new URL(request.url, base);
+          (request as any).correctedUrl = url.toString();
+          (request as any).correctedBase = base;
+
+          app.logger.info(
+            {
+              method: request.method,
+              path: request.url,
+              correctedUrl: url.toString(),
+              proto,
+              host,
+            },
+            '[AUTH_URL_FIX] Fixed request URL for Better Auth using forwarded headers'
+          );
+        } catch (error) {
+          app.logger.warn(
+            { err: error, url: request.url, proto: request.headers['x-forwarded-proto'], host: request.headers['x-forwarded-host'] },
+            '[AUTH_URL_FIX] Failed to construct URL from forwarded headers'
+          );
+        }
+      }
+
       // Detect mobile apps using X-App-Type header
       const appType = request.headers['x-app-type'] as string | undefined;
       const isMobileApp = appType === 'standalone' || appType === 'expo-go';
@@ -71,9 +102,9 @@ try {
     });
   });
 
-  app.logger.info('Early CSRF bypass middleware registered');
+  app.logger.info('Early middleware for Better Auth registered (URL fix + CSRF bypass)');
 } catch (error) {
-  app.logger.error({ err: error }, 'Failed to register early CSRF bypass middleware');
+  app.logger.error({ err: error }, 'Failed to register early middleware for Better Auth');
   throw error;
 }
 
