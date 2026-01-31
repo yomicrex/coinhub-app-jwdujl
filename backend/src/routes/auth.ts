@@ -101,7 +101,7 @@ export function registerAuthRoutes(app: App) {
   app.fastify.get('/api/debug/version', async (request: FastifyRequest, reply: FastifyReply) => {
     app.logger.info('Debug version endpoint requested');
     return {
-      backendVersion: '1.0.15-mobile-auth-signin-debug',
+      backendVersion: '1.0.16-auth-handler-host-fix',
       timestamp: new Date().toISOString(),
     };
   });
@@ -223,6 +223,38 @@ export function registerAuthRoutes(app: App) {
         'x-forwarded-proto': request.headers['x-forwarded-proto'] || undefined
       },
       note: 'For mobile apps (x-app-type=standalone or expo-go), origin and referer are normalized to the public base URL'
+    };
+  });
+
+  /**
+   * GET /api/debug/auth-handler-input
+   * PUBLIC DEBUG ENDPOINT - Shows what values Better Auth receives for validation
+   * Specifically for debugging INVALID_ORIGIN errors
+   * No authentication required
+   */
+  app.fastify.get('/api/debug/auth-handler-input', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.info('Debug auth-handler-input endpoint requested');
+
+    const publicBaseURL = 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
+    const publicHost = 'qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
+
+    // These would have been normalized by preHandler for /api/auth/* routes
+    const normalizedHost = (request as any).normalizedHost || publicHost;
+    const normalizedOrigin = (request as any).normalizedOrigin || publicBaseURL;
+    const normalizedReferer = (request as any).normalizedReferer || publicBaseURL;
+    const fullUrl = (request as any).fullUrlForAuthHandler || new URL(request.url, publicBaseURL).toString();
+    const originalHost = (request as any).originalHost;
+    const originalOrigin = (request as any).originalOrigin;
+
+    return {
+      fullUrlUsedForAuthHandler: fullUrl,
+      hostHeaderUsedForAuth: normalizedHost,
+      originHeaderUsedForAuth: normalizedOrigin,
+      refererHeaderUsedForAuth: normalizedReferer,
+      rawHostFromRequest: originalHost || request.headers.host,
+      rawOriginFromRequest: originalOrigin || request.headers.origin || 'undefined',
+      rawRefererFromRequest: request.headers.referer || 'undefined',
+      note: 'All values shown are what Better Auth will see. Host must be the public domain, not localhost. Full URL must include the pathname (e.g., /api/auth/sign-in)'
     };
   });
 

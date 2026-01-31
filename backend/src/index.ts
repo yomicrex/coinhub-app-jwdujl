@@ -104,6 +104,63 @@ try {
   throw error;
 }
 
+// CRITICAL: Register preHandler for Better Auth request normalization
+// This runs right before Better Auth processes the request
+// Better Auth validates Host header against baseURL, so we must override it
+try {
+  app.logger.info('Registering Better Auth request normalization preHandler');
+
+  const publicBaseURL = 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
+  const publicHost = 'qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
+
+  await app.fastify.register(async (fastifyInstance) => {
+    fastifyInstance.addHook('preHandler', async (request, reply) => {
+      // Apply normalization to ALL /api/auth/* routes BEFORE Better Auth sees them
+      if (request.url.startsWith('/api/auth/')) {
+        // Store original headers for debugging
+        const originalHost = request.headers.host;
+        const originalOrigin = request.headers.origin;
+        const originalReferer = request.headers.referer;
+
+        // CRITICAL: Override Host header to public domain
+        // Better Auth validates Host header against its configured baseURL
+        request.headers.host = publicHost;
+
+        // Set Origin and Referer to public base URL
+        request.headers.origin = publicBaseURL;
+        request.headers.referer = publicBaseURL;
+
+        // Store normalized values for debug endpoints
+        (request as any).normalizedHost = publicHost;
+        (request as any).normalizedOrigin = publicBaseURL;
+        (request as any).normalizedReferer = publicBaseURL;
+        (request as any).fullUrlForAuthHandler = new URL(request.url, publicBaseURL).toString();
+        (request as any).originalHost = originalHost;
+        (request as any).originalOrigin = originalOrigin;
+        (request as any).originalReferer = originalReferer;
+
+        app.logger.info(
+          {
+            method: request.method,
+            path: request.url,
+            originalHost,
+            normalizedHost: publicHost,
+            originalOrigin: originalOrigin || 'undefined',
+            normalizedOrigin: publicBaseURL,
+            fullUrl: (request as any).fullUrlForAuthHandler
+          },
+          '[AUTH_PREHANDLER] Request headers normalized for Better Auth validation'
+        );
+      }
+    });
+  });
+
+  app.logger.info('Better Auth request normalization preHandler registered');
+} catch (error) {
+  app.logger.error({ err: error }, 'Failed to register Better Auth request normalization preHandler');
+  throw error;
+}
+
 // CRITICAL: Register header normalization and URL fixing middleware BEFORE Better Auth initialization
 // This normalizes headers for mobile apps to prevent "Invalid origin" errors
 try {
