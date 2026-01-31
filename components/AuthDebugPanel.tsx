@@ -127,7 +127,10 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
         body: JSON.stringify(data, null, 2),
       });
 
-      const resultText = `✅ Backend Version:\n\nVersion: ${data.backendVersion || 'unknown'}\nTimestamp: ${data.timestamp || 'unknown'}\n\nStatus: ${response.status}\n\n${data.backendVersion === '2026-01-31-01' ? '✅ Backend is UPDATED with latest fix!' : '⚠️ Backend may not be updated yet'}`;
+      const backendVersion = data.backendVersion || 'unknown';
+      const isUpdated = backendVersion === '2026-01-31-02';
+      
+      const resultText = `✅ Backend Version Test:\n\nVersion: ${backendVersion}\nTimestamp: ${data.timestamp || 'unknown'}\n\nStatus: ${response.status}\n\n${isUpdated ? '✅ Backend is UPDATED with latest fix (2026-01-31-02)!' : '⚠️ Backend version mismatch - expected 2026-01-31-02'}`;
       
       setVersionTestResult(resultText);
       alert(resultText);
@@ -202,7 +205,8 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
         body: JSON.stringify(data, null, 2),
       });
 
-      const resultText = `✅ Headers Test Result:\n\nOrigin: ${data.origin || 'undefined'}\nReferer: ${data.referer || 'undefined'}\nX-App-Type: ${data['x-app-type'] || 'undefined'}\nX-Platform: ${data['x-platform'] || 'undefined'}\nX-Forwarded-Host: ${data['x-forwarded-host'] || 'undefined'}\nX-Forwarded-Proto: ${data['x-forwarded-proto'] || 'undefined'}\nHas Auth: ${data.hasAuth ? 'Yes' : 'No'}\nURL: ${data.url || 'undefined'}\nMethod: ${data.method || 'undefined'}\n\nStatus: ${response.status}\n\n${sessionToken ? '✅ Tested WITH authentication' : '⚠️ Tested WITHOUT authentication'}`;
+      // Format the result with all the new fields from the backend
+      const resultText = `✅ Headers Test Result:\n\nTimestamp: ${data.timestampISO || 'undefined'}\nMethod: ${data.method || 'undefined'}\nURL: ${data.url || 'undefined'}\nHost: ${data.host || 'undefined'}\nX-Forwarded-Host: ${data['x-forwarded-host'] || 'undefined'}\nX-Forwarded-Proto: ${data['x-forwarded-proto'] || 'undefined'}\n\nOrigin: ${data.origin || 'undefined'}\nReferer: ${data.referer || 'undefined'}\nX-App-Type: ${data['x-app-type'] || 'undefined'}\nX-Platform: ${data['x-platform'] || 'undefined'}\n\nHas Authorization: ${data.hasAuthorization ? 'Yes' : 'No'}\nUser-Agent: ${data['user-agent'] ? data['user-agent'].substring(0, 50) + '...' : 'undefined'}\n\nStatus: ${response.status}\n\n${sessionToken ? '✅ Tested WITH authentication' : '⚠️ Tested WITHOUT authentication'}`;
       
       setHeadersTestResult(resultText);
       alert(resultText);
