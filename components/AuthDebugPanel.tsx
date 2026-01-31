@@ -142,7 +142,7 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
         body: JSON.stringify(data, null, 2),
       });
 
-      const resultText = `✅ Headers Test Result:\n\nOrigin: ${data.origin || 'undefined'}\nReferer: ${data.referer || 'undefined'}\nX-App-Type: ${data['x-app-type'] || 'undefined'}\nX-Platform: ${data['x-platform'] || 'undefined'}\nHas Auth: ${data.hasAuth ? 'Yes' : 'No'}\nURL: ${data.url || 'undefined'}\nMethod: ${data.method || 'undefined'}\n\nStatus: ${response.status}\n\n${sessionToken ? '✅ Tested WITH authentication' : '⚠️ Tested WITHOUT authentication'}`;
+      const resultText = `✅ Headers Test Result:\n\nOrigin: ${data.origin || 'undefined'}\nReferer: ${data.referer || 'undefined'}\nX-App-Type: ${data['x-app-type'] || 'undefined'}\nX-Platform: ${data['x-platform'] || 'undefined'}\nX-Forwarded-Host: ${data['x-forwarded-host'] || 'undefined'}\nX-Forwarded-Proto: ${data['x-forwarded-proto'] || 'undefined'}\nHas Auth: ${data.hasAuth ? 'Yes' : 'No'}\nURL: ${data.url || 'undefined'}\nMethod: ${data.method || 'undefined'}\n\nStatus: ${response.status}\n\n${sessionToken ? '✅ Tested WITH authentication' : '⚠️ Tested WITHOUT authentication'}`;
       
       setHeadersTestResult(resultText);
       alert(resultText);
