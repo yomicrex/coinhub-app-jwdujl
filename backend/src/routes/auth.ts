@@ -128,15 +128,16 @@ export function registerAuthRoutes(app: App) {
     );
 
     return {
-      origin: request.headers.origin || undefined,
-      referer: request.headers.referer || undefined,
+      host: request.headers.host || undefined,
       'x-forwarded-host': request.headers['x-forwarded-host'] || undefined,
       'x-original-host': request.headers['x-original-host'] || undefined,
       'x-forwarded-server': request.headers['x-forwarded-server'] || undefined,
       'x-forwarded-proto': request.headers['x-forwarded-proto'] || undefined,
-      host: request.headers.host || undefined,
+      origin: request.headers.origin || undefined,
+      referer: request.headers.referer || undefined,
       'x-app-type': request.headers['x-app-type'] || undefined,
-      'user-agent': truncatedUserAgent
+      'user-agent': truncatedUserAgent,
+      hasAuthorization: !!request.headers.authorization
     };
   });
 
