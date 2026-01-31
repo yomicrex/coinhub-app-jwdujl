@@ -94,6 +94,19 @@ export function registerAuthRoutes(app: App) {
   });
 
   /**
+   * GET /api/debug/version
+   * PUBLIC DEBUG ENDPOINT - Returns backend version and timestamp for deployment verification
+   * No authentication required
+   */
+  app.fastify.get('/api/debug/version', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.info('Debug version endpoint requested');
+    return {
+      backendVersion: '2026-01-31-01',
+      timestamp: new Date().toISOString(),
+    };
+  });
+
+  /**
    * GET /api/debug/headers
    * PUBLIC DEBUG ENDPOINT - Returns raw request headers to debug mobile app auth issues
    * Helps diagnose what iOS/TestFlight/Expo is actually sending
