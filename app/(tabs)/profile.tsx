@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { authClient } from '@/lib/auth';
 import { authenticatedFetch, API_URL } from '@/utils/api';
+import ENV from '@/config/env';
 import {
   View,
   Text,
@@ -13,6 +14,7 @@ import {
   Alert,
   ActivityIndicator,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
@@ -75,7 +77,11 @@ export default function ProfileScreen() {
     
     try {
       const response = await fetch(`${API_URL}/api/users/${user.id}/coins`, {
-        credentials: 'include',
+        headers: {
+          'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
+          'X-Platform': Platform.OS,
+        },
+        credentials: 'omit',
       });
 
       if (response.ok) {
@@ -104,7 +110,11 @@ export default function ProfileScreen() {
     
     try {
       const response = await fetch(`${API_URL}/api/users/${user.id}/coins`, {
-        credentials: 'include',
+        headers: {
+          'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
+          'X-Platform': Platform.OS,
+        },
+        credentials: 'omit',
       });
 
       if (response.ok) {
@@ -138,9 +148,14 @@ export default function ProfileScreen() {
     });
     
     try {
+      const headers = {
+        'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
+        'X-Platform': Platform.OS,
+      };
+      
       const [followersRes, followingRes] = await Promise.all([
-        fetch(`${API_URL}/api/users/${user.id}/followers`, { credentials: 'include' }),
-        fetch(`${API_URL}/api/users/${user.id}/following`, { credentials: 'include' }),
+        fetch(`${API_URL}/api/users/${user.id}/followers`, { headers, credentials: 'omit' }),
+        fetch(`${API_URL}/api/users/${user.id}/following`, { headers, credentials: 'omit' }),
       ]);
 
       if (followersRes.ok) {
@@ -167,7 +182,11 @@ export default function ProfileScreen() {
     
     try {
       const response = await fetch(`${API_URL}/api/users/${user.username}`, {
-        credentials: 'include',
+        headers: {
+          'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
+          'X-Platform': Platform.OS,
+        },
+        credentials: 'omit',
       });
 
       if (response.ok) {

@@ -59,6 +59,8 @@ interface AuthDebugPanelProps {
 export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
   const [logs, setLogs] = useState<AuthDebugLog[]>([]);
   const [expandedLogIndex, setExpandedLogIndex] = useState<number | null>(null);
+  const [testingHeaders, setTestingHeaders] = useState(false);
+  const [headersTestResult, setHeadersTestResult] = useState<string | null>(null);
 
   // Refresh logs every second when visible
   useEffect(() => {
@@ -85,6 +87,81 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
     clearAuthDebugLogs();
     setLogs([]);
     setExpandedLogIndex(null);
+  };
+
+  const handleTestHeaders = async () => {
+    console.log('[AUTH DEBUG] Testing headers endpoint...');
+    setTestingHeaders(true);
+    setHeadersTestResult(null);
+
+    try {
+      const url = `${ENV.BACKEND_URL}/api/debug/headers`;
+      
+      // Try to get session token for authenticated test
+      let sessionToken: string | null = null;
+      try {
+        const { authClient } = await import('@/lib/auth');
+        const session = await authClient.getSession();
+        sessionToken = session?.data?.session?.token || session?.session?.token || session?.token || null;
+      } catch (e) {
+        console.log('[AUTH DEBUG] Could not get session token, testing without auth');
+      }
+      
+      addAuthDebugLog({
+        type: 'info',
+        endpoint: url,
+        method: 'GET',
+        message: `Testing headers endpoint ${sessionToken ? 'WITH' : 'WITHOUT'} authentication`,
+      });
+
+      const headers: Record<string, string> = {
+        'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
+        'X-Platform': Platform.OS,
+      };
+
+      // Add Authorization header if we have a token
+      if (sessionToken) {
+        headers['Authorization'] = `Bearer ${sessionToken}`;
+      }
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+        credentials: 'omit',
+      });
+
+      const data = await response.json();
+      
+      console.log('[AUTH DEBUG] Headers test response:', data);
+      
+      addAuthDebugLog({
+        type: 'response',
+        endpoint: url,
+        method: 'GET',
+        status: response.status,
+        body: JSON.stringify(data, null, 2),
+      });
+
+      const resultText = `✅ Headers Test Result:\n\nOrigin: ${data.origin || 'undefined'}\nReferer: ${data.referer || 'undefined'}\nX-App-Type: ${data['x-app-type'] || 'undefined'}\nHas Authorization: ${data.hasAuthorization ? 'Yes' : 'No'}\n\nStatus: ${response.status}\n\n${sessionToken ? '✅ Tested WITH authentication' : '⚠️ Tested WITHOUT authentication'}`;
+      
+      setHeadersTestResult(resultText);
+      alert(resultText);
+    } catch (error) {
+      console.error('[AUTH DEBUG] Headers test failed:', error);
+      
+      addAuthDebugLog({
+        type: 'error',
+        endpoint: `${ENV.BACKEND_URL}/api/debug/headers`,
+        method: 'GET',
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      const errorText = `❌ Headers Test Failed:\n\n${error instanceof Error ? error.message : String(error)}`;
+      setHeadersTestResult(errorText);
+      alert(errorText);
+    } finally {
+      setTestingHeaders(false);
+    }
   };
 
   const generateDebugReport = (): string => {
@@ -192,6 +269,19 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
         </View>
 
         {/* Action Buttons */}
+        <View style={styles.actionButtons}>
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.testButton]} 
+            onPress={handleTestHeaders}
+            disabled={testingHeaders}
+          >
+            <IconSymbol ios_icon_name="network" android_material_icon_name="wifi" size={20} color="#FFF" />
+            <Text style={styles.actionButtonText}>
+              {testingHeaders ? 'Testing...' : 'Test Headers'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        
         <View style={styles.actionButtons}>
           <TouchableOpacity style={styles.actionButton} onPress={handleCopyDebugReport}>
             <IconSymbol ios_icon_name="doc.on.clipboard" android_material_icon_name="content-copy" size={20} color="#FFF" />
@@ -351,6 +441,9 @@ const styles = StyleSheet.create({
   },
   clearButton: {
     backgroundColor: '#FF4444',
+  },
+  testButton: {
+    backgroundColor: '#50C878',
   },
   actionButtonText: {
     color: '#FFF',

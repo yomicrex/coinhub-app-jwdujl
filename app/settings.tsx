@@ -64,11 +64,14 @@ export default function SettingsScreen() {
     setIsResettingPassword(true);
 
     try {
-      const response = await fetch(`${Constants.expoConfig?.extra?.backendUrl}/api/auth/request-password-reset`, {
+      const response = await fetch(`${ENV.BACKEND_URL}/api/auth/request-password-reset`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
+          'X-Platform': ENV.PLATFORM,
         },
+        credentials: 'omit',
         body: JSON.stringify({ email: user.email }),
       });
 
