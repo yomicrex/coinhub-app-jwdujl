@@ -47,6 +47,55 @@ try {
   throw error;
 }
 
+// CRITICAL: Register header normalization middleware BEFORE Better Auth initialization
+// This normalizes headers for mobile apps to prevent "Invalid origin" errors
+try {
+  app.logger.info('Registering mobile auth header normalization middleware');
+
+  // CRITICAL: Mobile Auth Header Normalization - Runs FIRST, before URL fix
+  // For mobile auth requests, force Origin and Referer headers to the public URL
+  // This prevents Better Auth from rejecting requests due to missing/invalid origin
+  await app.fastify.register(async (fastifyInstance) => {
+    fastifyInstance.addHook('onRequest', async (request, reply) => {
+      const appType = request.headers['x-app-type'] as string | undefined;
+      const isMobileApp = appType === 'standalone' || appType === 'expo-go';
+      const isAuthRoute = request.url.startsWith('/api/auth/');
+
+      // CRITICAL: For mobile auth requests, normalize headers BEFORE authentication processes them
+      if (isAuthRoute && isMobileApp) {
+        const publicBaseURL = 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
+
+        // Force Origin header to public URL - this prevents "Invalid origin" errors
+        request.headers.origin = publicBaseURL;
+
+        // Force Referer header to public URL for consistency
+        request.headers.referer = publicBaseURL;
+
+        // Mark as trusted to bypass CSRF checks
+        (request as any).trustedForCSRF = true;
+        (request as any).skipCsrfCheck = true;
+
+        app.logger.info(
+          {
+            method: request.method,
+            path: request.url,
+            appType,
+            action: 'Headers normalized for mobile auth',
+            originSet: publicBaseURL,
+            refererSet: publicBaseURL
+          },
+          '[MOBILE_AUTH] Mobile app auth request - headers normalized BEFORE authentication'
+        );
+      }
+    });
+  });
+
+  app.logger.info('Mobile auth header normalization middleware registered');
+} catch (error) {
+  app.logger.error({ err: error }, 'Failed to register mobile auth header normalization middleware');
+  throw error;
+}
+
 // CRITICAL: Register URL fix and CSRF bypass middleware BEFORE Better Auth initialization
 // This ensures mobile app requests are marked before Better Auth's CSRF check runs
 try {

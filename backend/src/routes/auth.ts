@@ -101,7 +101,7 @@ export function registerAuthRoutes(app: App) {
   app.fastify.get('/api/debug/version', async (request: FastifyRequest, reply: FastifyReply) => {
     app.logger.info('Debug version endpoint requested');
     return {
-      backendVersion: '2026-01-31-origin-fix-v4',
+      backendVersion: '1.0.12-mobile-auth-header-fix',
       timestamp: new Date().toISOString(),
     };
   });
@@ -128,14 +128,15 @@ export function registerAuthRoutes(app: App) {
     );
 
     return {
+      origin: request.headers.origin || undefined,
+      referer: request.headers.referer || undefined,
       host: request.headers.host || undefined,
+      'x-forwarded-proto': request.headers['x-forwarded-proto'] || undefined,
       'x-forwarded-host': request.headers['x-forwarded-host'] || undefined,
       'x-original-host': request.headers['x-original-host'] || undefined,
       'x-forwarded-server': request.headers['x-forwarded-server'] || undefined,
-      'x-forwarded-proto': request.headers['x-forwarded-proto'] || undefined,
-      origin: request.headers.origin || undefined,
-      referer: request.headers.referer || undefined,
       'x-app-type': request.headers['x-app-type'] || undefined,
+      'x-platform': request.headers['x-platform'] || undefined,
       'user-agent': truncatedUserAgent,
       hasAuthorization: !!request.headers.authorization
     };
