@@ -34,8 +34,8 @@ export default function AuthScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
 
-  // Show debug panel in dev mode or TestFlight builds
-  const showDebugButton = ENV.IS_DEV || ENV.IS_STANDALONE;
+  // CRITICAL: Only show debug button in development mode, NOT in TestFlight or production
+  const showDebugButton = __DEV__ || process.env.NODE_ENV === 'development';
 
   console.log('AuthScreen: Rendered with user:', user?.email, 'needsCompletion:', user?.needsProfileCompletion);
 
@@ -149,7 +149,7 @@ export default function AuthScreen() {
     >
       <View style={styles.overlay} />
       <SafeAreaView style={styles.container} edges={['bottom']}>
-        {/* Debug Button (only in dev/TestFlight) */}
+        {/* Debug Button - ONLY in development mode, NOT in TestFlight or production */}
         {showDebugButton && (
           <TouchableOpacity
             style={styles.debugButton}
@@ -233,11 +233,13 @@ export default function AuthScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
 
-        {/* Debug Panel */}
-        <AuthDebugPanel
-          visible={showDebugPanel}
-          onClose={() => setShowDebugPanel(false)}
-        />
+        {/* Debug Panel - Only rendered in development mode */}
+        {showDebugButton && (
+          <AuthDebugPanel
+            visible={showDebugPanel}
+            onClose={() => setShowDebugPanel(false)}
+          />
+        )}
       </SafeAreaView>
     </ImageBackground>
   );
