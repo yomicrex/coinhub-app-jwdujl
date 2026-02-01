@@ -235,32 +235,6 @@ export default function SettingsScreen() {
         }}
       />
       <ScrollView style={styles.scrollView}>
-        {/* Debug Section - ONLY in development mode, NEVER in production/TestFlight */}
-        {showDebugButton && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Developer Tools</Text>
-            
-            <TouchableOpacity
-              style={styles.option}
-              onPress={() => setShowDebugPanel(true)}
-            >
-              <IconSymbol
-                ios_icon_name="ladybug"
-                android_material_icon_name="bug-report"
-                size={24}
-                color="#FFD700"
-              />
-              <Text style={styles.optionText}>Auth Debug Panel</Text>
-              <IconSymbol
-                ios_icon_name="chevron.right"
-                android_material_icon_name="arrow-forward"
-                size={20}
-                color={colors.textSecondary}
-              />
-            </TouchableOpacity>
-          </View>
-        )}
-
         {/* Subscription Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Subscription</Text>
@@ -403,14 +377,6 @@ export default function SettingsScreen() {
           <Text style={styles.footerText}>© 2026 CoinHub. All rights reserved.</Text>
         </View>
       </ScrollView>
-
-      {/* Auth Debug Panel - ONLY in development mode */}
-      {showDebugButton && (
-        <AuthDebugPanel
-          visible={showDebugPanel}
-          onClose={() => setShowDebugPanel(false)}
-        />
-      )}
 
       {/* Email Update Modal */}
       <Modal
