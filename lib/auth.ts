@@ -4,23 +4,16 @@ import { expoClient } from "@better-auth/expo/client";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import ENV from "@/config/env";
-import { addAuthDebugLog } from "@/components/AuthDebugPanel";
 
 const API_URL = ENV.BACKEND_URL;
 const APP_SCHEME = ENV.APP_SCHEME;
 
-console.log("Auth: Using backend URL:", API_URL);
-console.log("Auth: Using app scheme:", APP_SCHEME);
-console.log("Auth: Platform:", Platform.OS);
-console.log("Auth: Is standalone:", ENV.IS_STANDALONE);
-console.log("Auth: Is Expo Go:", ENV.IS_EXPO_GO);
-
-// Debug log - initialization
-addAuthDebugLog({
-  type: 'info',
-  endpoint: 'auth-initialization',
-  message: `Auth client initializing - Backend: ${API_URL}, Platform: ${Platform.OS}, Standalone: ${ENV.IS_STANDALONE}`,
-});
+// Only log in development
+if (ENV.IS_DEV) {
+  console.log("Auth: Using backend URL:", API_URL);
+  console.log("Auth: Using app scheme:", APP_SCHEME);
+  console.log("Auth: Platform:", Platform.OS);
+}
 
 // Platform-specific storage: localStorage for web, SecureStore for native
 const storage = Platform.OS === "web"
@@ -44,91 +37,42 @@ export const authClient = createAuthClient({
     // CRITICAL: For native mobile apps (iOS/Android/TestFlight), we must:
     // 1. Use "omit" for credentials to avoid cookie-based auth issues
     // 2. Use Authorization header (Bearer token) instead of cookies
-    // 3. Send X-App-Type header so backend can identify mobile apps and bypass CSRF
-    // 4. Send explicit Origin and Referer headers for native builds to fix INVALID_ORIGIN errors
+    // 3. Send X-App-Type header so backend can identify mobile apps
     credentials: "omit",
     headers: {
-      // CRITICAL: X-App-Type header is REQUIRED for mobile apps
-      // Backend uses this to bypass CSRF checks for native apps
       "X-App-Type": ENV.APP_TYPE,
       "X-Platform": Platform.OS,
-      "X-Requested-With": "XMLHttpRequest",
-      // CRITICAL FIX: For native builds (iOS/Android/TestFlight), add explicit Origin and Referer headers
-      // This fixes the 403 [INVALID_ORIGIN] error from Better Auth when Origin header is missing
-      // Better Auth derives origin from host/x-forwarded-proto, which can be localhost:8082 in TestFlight
-      // By sending explicit Origin/Referer headers pointing to the backend URL, we ensure Better Auth
-      // sees the correct origin and doesn't reject the request
-      // DO NOT add these on web - browsers handle Origin/Referer automatically
-      ...(Platform.OS !== "web" ? {
-        "Origin": API_URL,
-        "Referer": API_URL,
-      } : {}),
     },
   },
   // CRITICAL: Use custom fetch to ensure headers are sent with EVERY request
-  // Better Auth sometimes bypasses fetchOptions.headers for certain requests
+  // For native builds, we add Origin/Referer headers ONLY for /api/auth/* requests
   fetch: async (url: string | URL | Request, options?: RequestInit) => {
     const headers = new Headers(options?.headers);
+    const urlString = typeof url === 'string' ? url : url.toString();
     
-    // CRITICAL: Always add X-App-Type header for mobile app identification
-    // Backend requires this to bypass CSRF checks
+    // Always add platform identification headers
     headers.set("X-App-Type", ENV.APP_TYPE);
     headers.set("X-Platform", Platform.OS);
-    headers.set("X-Requested-With", "XMLHttpRequest");
     
     // CRITICAL FIX: For native builds (iOS/Android/TestFlight), add explicit Origin and Referer headers
-    // This fixes the 403 [INVALID_ORIGIN] error from Better Auth when Origin header is missing
-    // Better Auth derives origin from host/x-forwarded-proto, which can be localhost:8082 in TestFlight
-    // By sending explicit Origin/Referer headers pointing to the backend URL, we ensure Better Auth
-    // sees the correct origin and doesn't reject the request
+    // ONLY for /api/auth/* requests to fix INVALID_ORIGIN errors
     // DO NOT add these on web - browsers handle Origin/Referer automatically
-    if (Platform.OS !== "web") {
+    const isAuthRequest = urlString.includes('/api/auth/');
+    if (Platform.OS !== "web" && isAuthRequest) {
       headers.set("Origin", API_URL);
       headers.set("Referer", API_URL);
     }
     
-    // Log the request for debugging
-    const urlString = typeof url === 'string' ? url : url.toString();
-    const xAppType = headers.get('X-App-Type');
-    const xPlatform = headers.get('X-Platform');
-    const origin = headers.get('Origin');
-    const referer = headers.get('Referer');
-    
-    console.log('Auth: Custom fetch -', urlString);
-    console.log('Auth: Headers -', {
-      'X-App-Type': xAppType,
-      'X-Platform': xPlatform,
-      'X-Requested-With': headers.get('X-Requested-With'),
-      'Origin': origin || 'not set',
-      'Referer': referer || 'not set',
-    });
-    
-    // CRITICAL: Verify headers are set correctly for mobile apps
-    if (ENV.IS_STANDALONE && xAppType !== 'standalone') {
-      console.error('⚠️ WARNING: Running in standalone but X-App-Type is not "standalone"!');
+    // Only log in development
+    if (ENV.IS_DEV) {
+      console.log('Auth: Request -', urlString);
+      console.log('Auth: Headers -', {
+        'X-App-Type': headers.get('X-App-Type'),
+        'X-Platform': headers.get('X-Platform'),
+        'Origin': headers.get('Origin') || 'not set',
+        'Referer': headers.get('Referer') || 'not set',
+      });
     }
-    if (ENV.IS_EXPO_GO && xAppType !== 'expo-go') {
-      console.error('⚠️ WARNING: Running in Expo Go but X-App-Type is not "expo-go"!');
-    }
-    
-    // CRITICAL: Verify Origin/Referer headers are set for native builds
-    if (Platform.OS !== "web" && (!origin || !referer)) {
-      console.error('⚠️ WARNING: Native build missing Origin/Referer headers!');
-    }
-    
-    addAuthDebugLog({
-      type: 'request',
-      endpoint: urlString,
-      method: options?.method || 'GET',
-      headers: {
-        'X-App-Type': xAppType || 'none',
-        'X-Platform': xPlatform || 'none',
-        'X-Requested-With': headers.get('X-Requested-With') || 'none',
-        'Origin': origin || 'not set',
-        'Referer': referer || 'not set',
-      },
-      message: `Better Auth request with ${xAppType} app type`,
-    });
     
     return fetch(url, {
       ...options,
@@ -138,26 +82,10 @@ export const authClient = createAuthClient({
   },
 });
 
-// Debug log - client created
-addAuthDebugLog({
-  type: 'info',
-  endpoint: 'auth-initialization',
-  message: 'Auth client created successfully with credentials: omit',
-  headers: {
-    'X-Platform': Platform.OS,
-    'X-App-Type': ENV.APP_TYPE,
-  },
-});
-
 export async function clearAuthTokens() {
-  console.log("clearAuthTokens: Clearing all auth tokens");
-  
-  // Debug log
-  addAuthDebugLog({
-    type: 'info',
-    endpoint: 'clearAuthTokens',
-    message: 'Clearing all auth tokens',
-  });
+  if (ENV.IS_DEV) {
+    console.log("clearAuthTokens: Clearing all auth tokens");
+  }
   
   if (Platform.OS === "web") {
     // Clear all auth-related items from localStorage
@@ -169,14 +97,10 @@ export async function clearAuthTokens() {
       }
     }
     keysToRemove.forEach(key => localStorage.removeItem(key));
-    console.log("clearAuthTokens: Cleared web storage");
     
-    // Debug log
-    addAuthDebugLog({
-      type: 'info',
-      endpoint: 'clearAuthTokens',
-      message: `Cleared ${keysToRemove.length} keys from web storage`,
-    });
+    if (ENV.IS_DEV) {
+      console.log("clearAuthTokens: Cleared web storage");
+    }
   } else {
     // Clear SecureStore items for native
     try {
@@ -188,23 +112,12 @@ export async function clearAuthTokens() {
           // Key might not exist, ignore
         }
       }
-      console.log("clearAuthTokens: Cleared native storage");
       
-      // Debug log
-      addAuthDebugLog({
-        type: 'info',
-        endpoint: 'clearAuthTokens',
-        message: `Cleared ${keys.length} keys from native storage`,
-      });
+      if (ENV.IS_DEV) {
+        console.log("clearAuthTokens: Cleared native storage");
+      }
     } catch (error) {
       console.error("clearAuthTokens: Error clearing native storage:", error);
-      
-      // Debug log
-      addAuthDebugLog({
-        type: 'error',
-        endpoint: 'clearAuthTokens',
-        error: error instanceof Error ? error.message : String(error),
-      });
     }
   }
 }

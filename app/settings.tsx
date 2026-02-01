@@ -33,8 +33,8 @@ export default function SettingsScreen() {
   const [isResettingPassword, setIsResettingPassword] = React.useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = React.useState(false);
 
-  // Show debug panel in dev mode or TestFlight builds
-  const showDebugButton = ENV.IS_DEV || ENV.IS_STANDALONE;
+  // Show debug panel ONLY in dev mode (not in production or TestFlight)
+  const showDebugButton = ENV.IS_DEV;
 
   console.log('Settings screen loaded', { userEmail: user?.email });
 
@@ -404,7 +404,7 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>CoinHub v1.0.0</Text>
+          <Text style={styles.footerText}>CoinHub v{Constants.expoConfig?.version || '1.0.11'}</Text>
           <Text style={styles.footerText}>© 2026 CoinHub. All rights reserved.</Text>
         </View>
       </ScrollView>

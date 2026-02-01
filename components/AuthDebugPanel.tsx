@@ -31,8 +31,13 @@ interface AuthDebugLog {
 const debugLogs: AuthDebugLog[] = [];
 const MAX_LOGS = 100;
 
-// Global function to add debug logs
+// Global function to add debug logs (only in development)
 export function addAuthDebugLog(log: Omit<AuthDebugLog, 'timestamp'>) {
+  // Only log in development mode
+  if (!ENV.IS_DEV) {
+    return;
+  }
+  
   const timestamp = new Date().toISOString();
   debugLogs.unshift({ ...log, timestamp });
   
@@ -41,14 +46,16 @@ export function addAuthDebugLog(log: Omit<AuthDebugLog, 'timestamp'>) {
     debugLogs.pop();
   }
   
-  // Log to console for immediate visibility
+  // Log to console for immediate visibility (only in dev)
   console.log('[AUTH DEBUG]', log.type.toUpperCase(), log.endpoint, log);
 }
 
 // Export function to clear logs
 export function clearAuthDebugLogs() {
   debugLogs.length = 0;
-  console.log('[AUTH DEBUG] Logs cleared');
+  if (ENV.IS_DEV) {
+    console.log('[AUTH DEBUG] Logs cleared');
+  }
 }
 
 interface AuthDebugPanelProps {
