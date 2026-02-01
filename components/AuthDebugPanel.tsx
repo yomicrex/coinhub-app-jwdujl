@@ -67,12 +67,8 @@ interface AuthDebugPanelProps {
 }
 
 export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
-  // CRITICAL: This component should NEVER render in production/TestFlight
-  // It should only be accessible in development mode
-  if (!__DEV__ && process.env.NODE_ENV !== 'development') {
-    return null;
-  }
-  
+  // CRITICAL: Initialize ALL hooks BEFORE any conditional returns
+  // This ensures hooks are called in the same order every render
   const [logs, setLogs] = useState<AuthDebugLog[]>([]);
   const [expandedLogIndex, setExpandedLogIndex] = useState<number | null>(null);
   const [testingHeaders, setTestingHeaders] = useState(false);
@@ -101,6 +97,13 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
 
     return () => clearInterval(interval);
   }, [visible]);
+
+  // CRITICAL: NOW we can do conditional rendering AFTER all hooks are initialized
+  // This component should NEVER render in production/TestFlight
+  // It should only be accessible in development mode
+  if (!__DEV__ && process.env.NODE_ENV !== 'development') {
+    return null;
+  }
 
   const handleCopyDebugReport = async () => {
     const report = generateDebugReport();
