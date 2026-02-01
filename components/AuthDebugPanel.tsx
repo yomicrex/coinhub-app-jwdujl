@@ -34,6 +34,7 @@ const MAX_LOGS = 100;
 // Global function to add debug logs (only in development)
 export function addAuthDebugLog(log: Omit<AuthDebugLog, 'timestamp'>) {
   // CRITICAL: Only log in development mode - NEVER in production/TestFlight
+  // This function is a no-op in production builds
   if (!__DEV__ && process.env.NODE_ENV !== 'development') {
     return;
   }
@@ -53,6 +54,7 @@ export function addAuthDebugLog(log: Omit<AuthDebugLog, 'timestamp'>) {
 // Export function to clear logs
 export function clearAuthDebugLogs() {
   // CRITICAL: Only clear logs in development mode - NEVER in production/TestFlight
+  // This function is a no-op in production builds
   if (!__DEV__ && process.env.NODE_ENV !== 'development') {
     return;
   }

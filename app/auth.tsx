@@ -20,7 +20,6 @@ import { colors } from '@/styles/commonStyles';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { BlurView } from 'expo-blur';
-import { AuthDebugPanel } from '@/components/AuthDebugPanel';
 import ENV from '@/config/env';
 
 const { width, height } = Dimensions.get('window');
@@ -32,10 +31,6 @@ export default function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [showDebugPanel, setShowDebugPanel] = useState(false);
-
-  // CRITICAL: Only show debug button in development mode, NOT in TestFlight or production
-  const showDebugButton = __DEV__ || process.env.NODE_ENV === 'development';
 
   console.log('AuthScreen: Rendered with user:', user?.email, 'needsCompletion:', user?.needsProfileCompletion);
 
@@ -79,26 +74,7 @@ export default function AuthScreen() {
     } catch (error: any) {
       console.error('AuthScreen: Auth error:', error);
       
-      // CRITICAL: Enhanced error display with HTTP status and response body
-      // This helps identify whether "Invalid origin" is from Better Auth or our middleware
       let errorMessage = error.message || 'Authentication failed';
-      let errorDetails = '';
-      
-      // Try to extract status code and response body from error
-      if (error.status || error.statusCode) {
-        errorDetails += `\n\nHTTP Status: ${error.status || error.statusCode}`;
-      }
-      
-      if (error.response) {
-        try {
-          const responseText = typeof error.response === 'string' 
-            ? error.response 
-            : JSON.stringify(error.response);
-          errorDetails += `\n\nResponse: ${responseText.substring(0, 200)}`;
-        } catch (e) {
-          // Ignore JSON stringify errors
-        }
-      }
       
       // Handle specific error cases
       if (errorMessage.includes('User already exists')) {
@@ -106,15 +82,11 @@ export default function AuthScreen() {
       } else if (errorMessage.includes('Invalid credentials') || errorMessage.includes('Incorrect')) {
         errorMessage = 'Invalid email or password. Please try again.';
       } else if (errorMessage.toLowerCase().includes('invalid origin')) {
-        errorMessage = 'Authentication error: Invalid origin detected.';
-        errorDetails += '\n\n⚠️ This is a known issue in TestFlight builds. Please open the Debug panel (top-right button) to see detailed logs and help us diagnose the issue.';
+        errorMessage = 'Authentication error. Please try again or contact support.';
       }
       
-      // Show error with details
-      const fullErrorMessage = errorMessage + errorDetails;
-      console.error('AuthScreen: Full error message:', fullErrorMessage);
-      
-      Alert.alert('Error', fullErrorMessage);
+      console.error('AuthScreen: Authentication error:', errorMessage);
+      Alert.alert('Error', errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -149,17 +121,6 @@ export default function AuthScreen() {
     >
       <View style={styles.overlay} />
       <SafeAreaView style={styles.container} edges={['bottom']}>
-        {/* Debug Button - ONLY in development mode, NOT in TestFlight or production */}
-        {showDebugButton && (
-          <TouchableOpacity
-            style={styles.debugButton}
-            onPress={() => setShowDebugPanel(true)}
-          >
-            <IconSymbol ios_icon_name="ladybug" android_material_icon_name="bug-report" size={24} color="#FFD700" />
-            <Text style={styles.debugButtonText}>Debug</Text>
-          </TouchableOpacity>
-        )}
-
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardView}
@@ -232,14 +193,6 @@ export default function AuthScreen() {
             </BlurView>
           </ScrollView>
         </KeyboardAvoidingView>
-
-        {/* Debug Panel - Only rendered in development mode */}
-        {showDebugButton && (
-          <AuthDebugPanel
-            visible={showDebugPanel}
-            onClose={() => setShowDebugPanel(false)}
-          />
-        )}
       </SafeAreaView>
     </ImageBackground>
   );
@@ -257,24 +210,6 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-  },
-  debugButton: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 60 : 40,
-    right: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    zIndex: 1000,
-    gap: 6,
-  },
-  debugButtonText: {
-    color: '#FFD700',
-    fontSize: 14,
-    fontWeight: '600',
   },
   keyboardView: {
     flex: 1,

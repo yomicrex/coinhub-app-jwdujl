@@ -18,8 +18,6 @@ import {
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { authenticatedFetch } from '@/utils/api';
-import { AuthDebugPanel } from '@/components/AuthDebugPanel';
-import ENV from '@/config/env';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -27,15 +25,10 @@ export default function SettingsScreen() {
   const [showDeleteModal, setShowDeleteModal] = React.useState(false);
   const [showPasswordResetModal, setShowPasswordResetModal] = React.useState(false);
   const [showEmailUpdateModal, setShowEmailUpdateModal] = React.useState(false);
-  const [showDebugPanel, setShowDebugPanel] = React.useState(false);
   const [newEmail, setNewEmail] = React.useState('');
   const [isUpdatingEmail, setIsUpdatingEmail] = React.useState(false);
   const [isResettingPassword, setIsResettingPassword] = React.useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = React.useState(false);
-
-  // CRITICAL: Show debug panel ONLY in development mode
-  // NEVER show in production/TestFlight builds
-  const showDebugButton = __DEV__ || process.env.NODE_ENV === 'development';
 
   console.log('Settings screen loaded', { userEmail: user?.email });
 
@@ -65,6 +58,7 @@ export default function SettingsScreen() {
     setIsResettingPassword(true);
 
     try {
+      const { default: ENV } = await import('@/config/env');
       const response = await fetch(`${ENV.BACKEND_URL}/api/auth/request-password-reset`, {
         method: 'POST',
         headers: {
