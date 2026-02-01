@@ -231,6 +231,57 @@ try {
   throw error;
 }
 
+// CRITICAL: Force safe Origin/Referer for localhost requests BEFORE auth handling
+// TestFlight/proxy may send Host: localhost:8082 with X-Forwarded-Proto: https
+// This causes origin to be computed as https://localhost:8082
+// We must normalize this BEFORE Better Auth validation
+try {
+  app.logger.info('Registering localhost origin normalization middleware');
+
+  const publicBaseURL = 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
+
+  await app.fastify.register(async (fastifyInstance) => {
+    fastifyInstance.addHook('onRequest', async (request, reply) => {
+      const isAuthRoute = request.url.startsWith('/api/auth/');
+      if (!isAuthRoute) {
+        return;
+      }
+
+      const requestHost = request.headers.host || '';
+      const isLocalhostRequest = requestHost.startsWith('localhost') || requestHost.startsWith('127.0.0.1');
+
+      // For localhost requests on auth routes, force Origin/Referer to public base URL
+      // This prevents "Invalid origin" errors when proxy sends localhost:8082
+      if (isLocalhostRequest) {
+        const originalOrigin = request.headers.origin;
+        const originalReferer = request.headers.referer;
+
+        request.headers.origin = publicBaseURL;
+        request.headers.referer = publicBaseURL;
+
+        app.logger.info(
+          {
+            method: request.method,
+            path: request.url,
+            host: requestHost,
+            action: 'Normalized localhost request origin/referer to public base URL',
+            originalOrigin: originalOrigin || 'undefined',
+            normalizedOrigin: publicBaseURL,
+            originalReferer: originalReferer || 'undefined',
+            normalizedReferer: publicBaseURL
+          },
+          '[LOCALHOST_ORIGIN] Localhost request origin/referer normalized for auth'
+        );
+      }
+    });
+  });
+
+  app.logger.info('Localhost origin normalization middleware registered');
+} catch (error) {
+  app.logger.error({ err: error }, 'Failed to register localhost origin normalization middleware');
+  throw error;
+}
+
 // CRITICAL: Register URL fix and CSRF bypass middleware BEFORE Better Auth initialization
 // This ensures mobile app requests are marked before Better Auth's CSRF check runs
 try {
@@ -343,8 +394,8 @@ try {
 // Configure CORS for Better Auth to accept requests from mobile apps and development
 // This must be registered as a plugin BEFORE app.run()
 try {
-  // PRODUCTION HARDENING: Minimal trusted origins for security
-  // Only allow production domain and app schemes
+  // PRODUCTION HARDENING: Expand trusted origins for TestFlight fix
+  // For TestFlight iOS, we need to allow HTTPS localhost variants since proxy may report localhost:8082
   const trustedOrigins: (string | RegExp)[] = [
     // Production backend ONLY
     'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev',
@@ -352,13 +403,25 @@ try {
     // iOS app schemes
     'coinhub://',
     'CoinHub://',
+
+    // HTTPS localhost for TestFlight/proxy scenarios
+    // When behind reverse proxy, backend may see: X-Forwarded-Proto: https, Host: localhost:8082
+    // This results in origin: https://localhost:8082
+    'https://localhost:8082',
+    'https://localhost:8081',
+    'https://127.0.0.1:8082',
+    'https://127.0.0.1:8081',
+
+    // Regex patterns for HTTPS localhost (any port)
+    /^https:\/\/localhost(:\d+)?$/,
+    /^https:\/\/127\.0\.0\.1(:\d+)?$/,
   ];
 
-  // In development, add localhost origins for testing
+  // In development, add additional localhost origins for testing
   if (process.env.NODE_ENV === 'development') {
     app.logger.warn(
       { mode: 'development' },
-      'DEVELOPMENT MODE: Adding localhost origins to trusted origins. This should NEVER appear in production logs.'
+      'DEVELOPMENT MODE: Adding additional localhost origins to trusted origins. This should NEVER appear in production logs.'
     );
     trustedOrigins.push(
       // Development web (HTTP)
@@ -368,20 +431,13 @@ try {
       'http://127.0.0.1:3000',
       'http://127.0.0.1:8081',
       'http://127.0.0.1:8082',
-      // Development web (HTTPS)
-      'https://localhost:3000',
-      'https://localhost:8081',
-      'https://localhost:8082',
-      'https://127.0.0.1:3000',
-      'https://127.0.0.1:8081',
-      'https://127.0.0.1:8082',
       // Expo Go
       'exp://localhost:8081',
       'exp://',
       'exps://',
-      // Regex patterns for localhost (development only)
-      /localhost/,
-      /127\.0\.0\.1/
+      // Regex patterns for HTTP localhost (development only)
+      /^http:\/\/localhost(:\d+)?$/,
+      /^http:\/\/127\.0\.0\.1(:\d+)?$/,
     );
   }
 
@@ -533,19 +589,26 @@ try {
           '[CORS] Request from trusted origin - allowing'
         );
       } else {
-        app.logger.warn(
-          {
-            origin,
-            trustedOriginCount: trustedOrigins.length,
-            path: request.url,
-            method: request.method,
-            appType: (request as any).appType || 'unknown',
-            timestamp: new Date().toISOString(),
-            rawOriginHeader: request.headers.origin,
-            rawRefererHeader: request.headers.referer,
-            xAppTypeHeader: request.headers['x-app-type']
-          },
-          '[CORS] Request from untrusted origin - would be rejected (origin validation result)'
+        // Comprehensive logging for auth failures (origin validation)
+        const failureDetails = {
+          origin,
+          trustedOriginCount: trustedOrigins.length,
+          path: request.url,
+          method: request.method,
+          appType: (request as any).appType || 'unknown',
+          timestamp: new Date().toISOString(),
+          host: request.headers.host || 'undefined',
+          xForwardedProto: request.headers['x-forwarded-proto'] || 'undefined',
+          xForwardedHost: request.headers['x-forwarded-host'] || 'undefined',
+          rawOriginHeader: request.headers.origin || 'undefined',
+          rawRefererHeader: request.headers.referer || 'undefined',
+          xAppTypeHeader: request.headers['x-app-type'] || 'undefined',
+          userAgent: (request.headers['user-agent'] || 'unknown').substring(0, 150)
+        };
+
+        app.logger.error(
+          failureDetails,
+          '[AUTH_FAILURE] INVALID_ORIGIN - Request rejected due to origin validation failure. This will result in 403 [INVALID_ORIGIN] to client.'
         );
       }
 
