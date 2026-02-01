@@ -24,6 +24,24 @@ const storage = Platform.OS === "web"
     }
   : SecureStore;
 
+// CRITICAL: For native builds (iOS/Android/TestFlight), we must set Origin and Referer headers
+// to the backend URL to prevent "Invalid origin" errors from Better Auth
+const isNative = Platform.OS !== "web";
+const authHeaders: Record<string, string> = {
+  "X-App-Type": ENV.APP_TYPE,
+  "X-Platform": Platform.OS,
+};
+
+// Add Origin and Referer headers for native builds ONLY
+if (isNative) {
+  authHeaders["Origin"] = API_URL;
+  authHeaders["Referer"] = API_URL;
+  
+  if (__DEV__ || process.env.NODE_ENV === 'development') {
+    console.log("Auth: Setting Origin and Referer headers for native build:", API_URL);
+  }
+}
+
 export const authClient = createAuthClient({
   baseURL: `${API_URL}/api/auth`,
   plugins: [
@@ -38,14 +56,12 @@ export const authClient = createAuthClient({
     // 1. Use "omit" for credentials to avoid cookie-based auth issues
     // 2. Use Authorization header (Bearer token) instead of cookies
     // 3. Send X-App-Type header so backend can identify mobile apps
+    // 4. Send Origin and Referer headers for native builds to prevent "Invalid origin" errors
     credentials: "omit",
-    headers: {
-      "X-App-Type": ENV.APP_TYPE,
-      "X-Platform": Platform.OS,
-    },
+    headers: authHeaders,
   },
   // CRITICAL: Use custom fetch to ensure headers are sent with EVERY request
-  // For native builds, we add Origin/Referer headers ONLY for /api/auth/* requests
+  // For native builds, we add Origin/Referer headers for ALL requests
   fetch: async (url: string | URL | Request, options?: RequestInit) => {
     const headers = new Headers(options?.headers);
     const urlString = typeof url === 'string' ? url : url.toString();
@@ -55,10 +71,8 @@ export const authClient = createAuthClient({
     headers.set("X-Platform", Platform.OS);
     
     // CRITICAL FIX: For native builds (iOS/Android/TestFlight), add explicit Origin and Referer headers
-    // ONLY for /api/auth/* requests to fix INVALID_ORIGIN errors
-    // DO NOT add these on web - browsers handle Origin/Referer automatically
-    const isAuthRequest = urlString.includes('/api/auth/');
-    if (Platform.OS !== "web" && isAuthRequest) {
+    // to fix INVALID_ORIGIN errors. DO NOT add these on web - browsers handle Origin/Referer automatically
+    if (isNative) {
       headers.set("Origin", API_URL);
       headers.set("Referer", API_URL);
     }
