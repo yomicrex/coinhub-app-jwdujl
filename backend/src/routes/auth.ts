@@ -96,9 +96,9 @@ export function registerAuthRoutes(app: App) {
   /**
    * GET /api/debug/version
    * DEBUG ENDPOINT - Returns backend version and timestamp for deployment verification
-   * DISABLED IN PRODUCTION - Only available in development unless ENABLE_DEBUG=true
+   * DISABLED IN PRODUCTION - Only available in development/staging
    */
-  if (process.env.NODE_ENV === 'development' || process.env.ENABLE_DEBUG === 'true') {
+  if (process.env.NODE_ENV !== 'production') {
     app.fastify.get('/api/debug/version', async (request: FastifyRequest, reply: FastifyReply) => {
       app.logger.info('Debug version endpoint requested');
       return {
@@ -111,9 +111,9 @@ export function registerAuthRoutes(app: App) {
   /**
    * GET /api/debug/headers
    * DEBUG ENDPOINT - Returns raw request headers to debug mobile app auth issues
-   * DISABLED IN PRODUCTION - Only available in development unless ENABLE_DEBUG=true
+   * DISABLED IN PRODUCTION - Only available in development/staging
    */
-  if (process.env.NODE_ENV === 'development' || process.env.ENABLE_DEBUG === 'true') {
+  if (process.env.NODE_ENV !== 'production') {
     app.fastify.get('/api/debug/headers', async (request: FastifyRequest, reply: FastifyReply) => {
     // Truncate user-agent if it's very long
     const userAgent = request.headers['user-agent'] || undefined;
@@ -148,9 +148,9 @@ export function registerAuthRoutes(app: App) {
   /**
    * GET /api/debug/auth-config
    * DEBUG ENDPOINT - Returns authentication configuration status
-   * DISABLED IN PRODUCTION - Only available in development unless ENABLE_DEBUG=true
+   * DISABLED IN PRODUCTION - Only available in development/staging
    */
-  if (process.env.NODE_ENV === 'development' || process.env.ENABLE_DEBUG === 'true') {
+  if (process.env.NODE_ENV !== 'production') {
     app.fastify.get('/api/debug/auth-config', async (request: FastifyRequest, reply: FastifyReply) => {
     app.logger.info('Debug auth-config endpoint requested');
 
@@ -183,9 +183,9 @@ export function registerAuthRoutes(app: App) {
   /**
    * GET /api/debug/auth-request-url
    * DEBUG ENDPOINT - Shows what URL/origin Better Auth will receive
-   * DISABLED IN PRODUCTION - Only available in development unless ENABLE_DEBUG=true
+   * DISABLED IN PRODUCTION - Only available in development/staging
    */
-  if (process.env.NODE_ENV === 'development' || process.env.ENABLE_DEBUG === 'true') {
+  if (process.env.NODE_ENV !== 'production') {
     app.fastify.get('/api/debug/auth-request-url', async (request: FastifyRequest, reply: FastifyReply) => {
     app.logger.info('Debug auth-request-url endpoint requested');
 
@@ -209,9 +209,9 @@ export function registerAuthRoutes(app: App) {
   /**
    * GET /api/debug/auth-signin-headers
    * DEBUG ENDPOINT - Shows normalized headers for sign-in requests
-   * DISABLED IN PRODUCTION - Only available in development unless ENABLE_DEBUG=true
+   * DISABLED IN PRODUCTION - Only available in development/staging
    */
-  if (process.env.NODE_ENV === 'development' || process.env.ENABLE_DEBUG === 'true') {
+  if (process.env.NODE_ENV !== 'production') {
     app.fastify.get('/api/debug/auth-signin-headers', async (request: FastifyRequest, reply: FastifyReply) => {
     app.logger.info('Debug auth-signin-headers endpoint requested');
 
@@ -244,9 +244,9 @@ export function registerAuthRoutes(app: App) {
   /**
    * GET /api/debug/auth-handler-input
    * DEBUG ENDPOINT - Shows what values Better Auth receives for validation
-   * DISABLED IN PRODUCTION - Only available in development unless ENABLE_DEBUG=true
+   * DISABLED IN PRODUCTION - Only available in development/staging
    */
-  if (process.env.NODE_ENV === 'development' || process.env.ENABLE_DEBUG === 'true') {
+  if (process.env.NODE_ENV !== 'production') {
     app.fastify.get('/api/debug/auth-handler-input', async (request: FastifyRequest, reply: FastifyReply) => {
     app.logger.info('Debug auth-handler-input endpoint requested');
 
