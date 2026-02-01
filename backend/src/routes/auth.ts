@@ -95,24 +95,26 @@ export function registerAuthRoutes(app: App) {
 
   /**
    * GET /api/debug/version
-   * PUBLIC DEBUG ENDPOINT - Returns backend version and timestamp for deployment verification
-   * No authentication required
+   * DEBUG ENDPOINT - Returns backend version and timestamp for deployment verification
+   * DISABLED IN PRODUCTION - Only available in development unless ENABLE_DEBUG=true
    */
-  app.fastify.get('/api/debug/version', async (request: FastifyRequest, reply: FastifyReply) => {
-    app.logger.info('Debug version endpoint requested');
-    return {
-      backendVersion: '1.0.16-auth-handler-host-fix',
-      timestamp: new Date().toISOString(),
-    };
-  });
+  if (process.env.NODE_ENV === 'development' || process.env.ENABLE_DEBUG === 'true') {
+    app.fastify.get('/api/debug/version', async (request: FastifyRequest, reply: FastifyReply) => {
+      app.logger.info('Debug version endpoint requested');
+      return {
+        backendVersion: '2026-01-31-production-hardening-v1',
+        timestamp: new Date().toISOString(),
+      };
+    });
+  }
 
   /**
    * GET /api/debug/headers
-   * PUBLIC DEBUG ENDPOINT - Returns raw request headers to debug mobile app auth issues
-   * Helps diagnose what iOS/TestFlight/Expo is actually sending
-   * No authentication required
+   * DEBUG ENDPOINT - Returns raw request headers to debug mobile app auth issues
+   * DISABLED IN PRODUCTION - Only available in development unless ENABLE_DEBUG=true
    */
-  app.fastify.get('/api/debug/headers', async (request: FastifyRequest, reply: FastifyReply) => {
+  if (process.env.NODE_ENV === 'development' || process.env.ENABLE_DEBUG === 'true') {
+    app.fastify.get('/api/debug/headers', async (request: FastifyRequest, reply: FastifyReply) => {
     // Truncate user-agent if it's very long
     const userAgent = request.headers['user-agent'] || undefined;
     const truncatedUserAgent = userAgent && userAgent.length > 200 ? userAgent.substring(0, 200) + '...' : userAgent;
@@ -140,15 +142,16 @@ export function registerAuthRoutes(app: App) {
       'user-agent': truncatedUserAgent,
       hasAuthorization: !!request.headers.authorization
     };
-  });
+    });
+  }
 
   /**
    * GET /api/debug/auth-config
-   * PUBLIC DEBUG ENDPOINT - Returns authentication configuration status
-   * Helps verify that mobile app authentication fixes are deployed
-   * No authentication required
+   * DEBUG ENDPOINT - Returns authentication configuration status
+   * DISABLED IN PRODUCTION - Only available in development unless ENABLE_DEBUG=true
    */
-  app.fastify.get('/api/debug/auth-config', async (request: FastifyRequest, reply: FastifyReply) => {
+  if (process.env.NODE_ENV === 'development' || process.env.ENABLE_DEBUG === 'true') {
+    app.fastify.get('/api/debug/auth-config', async (request: FastifyRequest, reply: FastifyReply) => {
     app.logger.info('Debug auth-config endpoint requested');
 
     // Configuration values for mobile app authentication
@@ -174,15 +177,16 @@ export function registerAuthRoutes(app: App) {
 
     app.logger.info({ config }, 'DEBUG: Auth configuration returned');
     return config;
-  });
+    });
+  }
 
   /**
    * GET /api/debug/auth-request-url
-   * PUBLIC DEBUG ENDPOINT - Shows what URL/origin Better Auth will receive
-   * Helps verify that Better Auth is getting the correct public BASE URL, not localhost
-   * No authentication required
+   * DEBUG ENDPOINT - Shows what URL/origin Better Auth will receive
+   * DISABLED IN PRODUCTION - Only available in development unless ENABLE_DEBUG=true
    */
-  app.fastify.get('/api/debug/auth-request-url', async (request: FastifyRequest, reply: FastifyReply) => {
+  if (process.env.NODE_ENV === 'development' || process.env.ENABLE_DEBUG === 'true') {
+    app.fastify.get('/api/debug/auth-request-url', async (request: FastifyRequest, reply: FastifyReply) => {
     app.logger.info('Debug auth-request-url endpoint requested');
 
     const publicBaseURL = 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
@@ -199,15 +203,16 @@ export function registerAuthRoutes(app: App) {
       isMobileApp: appType === 'standalone' || appType === 'expo-go',
       note: 'constructedUrlUsedForAuthHandler should be the public base URL, never localhost'
     };
-  });
+    });
+  }
 
   /**
    * GET /api/debug/auth-signin-headers
-   * PUBLIC DEBUG ENDPOINT - Shows normalized headers for sign-in requests
-   * Specifically for debugging mobile sign-in origin validation errors
-   * No authentication required
+   * DEBUG ENDPOINT - Shows normalized headers for sign-in requests
+   * DISABLED IN PRODUCTION - Only available in development unless ENABLE_DEBUG=true
    */
-  app.fastify.get('/api/debug/auth-signin-headers', async (request: FastifyRequest, reply: FastifyReply) => {
+  if (process.env.NODE_ENV === 'development' || process.env.ENABLE_DEBUG === 'true') {
+    app.fastify.get('/api/debug/auth-signin-headers', async (request: FastifyRequest, reply: FastifyReply) => {
     app.logger.info('Debug auth-signin-headers endpoint requested');
 
     const publicBaseURL = 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
@@ -233,15 +238,16 @@ export function registerAuthRoutes(app: App) {
       },
       note: 'For mobile apps (x-app-type=standalone or expo-go), origin and referer are normalized to the public base URL'
     };
-  });
+    });
+  }
 
   /**
    * GET /api/debug/auth-handler-input
-   * PUBLIC DEBUG ENDPOINT - Shows what values Better Auth receives for validation
-   * Specifically for debugging INVALID_ORIGIN errors
-   * No authentication required
+   * DEBUG ENDPOINT - Shows what values Better Auth receives for validation
+   * DISABLED IN PRODUCTION - Only available in development unless ENABLE_DEBUG=true
    */
-  app.fastify.get('/api/debug/auth-handler-input', async (request: FastifyRequest, reply: FastifyReply) => {
+  if (process.env.NODE_ENV === 'development' || process.env.ENABLE_DEBUG === 'true') {
+    app.fastify.get('/api/debug/auth-handler-input', async (request: FastifyRequest, reply: FastifyReply) => {
     app.logger.info('Debug auth-handler-input endpoint requested');
 
     const publicBaseURL = 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
@@ -265,7 +271,8 @@ export function registerAuthRoutes(app: App) {
       rawRefererFromRequest: request.headers.referer || 'undefined',
       note: 'All values shown are what Better Auth will see. Host must be the public domain, not localhost. Full URL must include the pathname (e.g., /api/auth/sign-in)'
     };
-  });
+    });
+  }
 
   /**
    * GET /api/auth/debug/users

@@ -343,49 +343,49 @@ try {
 // Configure CORS for Better Auth to accept requests from mobile apps and development
 // This must be registered as a plugin BEFORE app.run()
 try {
+  // PRODUCTION HARDENING: Minimal trusted origins for security
+  // Only allow production domain and app schemes
   const trustedOrigins: (string | RegExp)[] = [
-    // Development web (HTTP)
-    'http://localhost:3000',
-    'http://localhost:8081',
-    'http://localhost:8082',
-    'http://127.0.0.1:3000',
-    'http://127.0.0.1:8081',
-    'http://127.0.0.1:8082',
-
-    // Development web (HTTPS)
-    'https://localhost:3000',
-    'https://localhost:8081',
-    'https://localhost:8082',
-    'https://127.0.0.1:3000',
-    'https://127.0.0.1:8081',
-    'https://127.0.0.1:8082',
-
-    // Expo Go mobile app
-    'exp://localhost:8081',
-    'exp://',
-    'exps://',
-
-    // Production backend
+    // Production backend ONLY
     'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev',
 
     // iOS app schemes
     'coinhub://',
     'CoinHub://',
-    'com.coinhub.app://',
-
-    // Android app schemes (common patterns)
-    'android-app://',
-
-    // Hybrid mobile app origins
-    'capacitor://',
-    'ionic://',
-
-    // Allow any origin containing 'localhost' or '127.0.0.1'
-    /localhost/,
-    /127\.0\.0\.1/,
   ];
 
-  // Add custom origins from environment variable if provided
+  // In development, add localhost origins for testing
+  if (process.env.NODE_ENV === 'development') {
+    app.logger.warn(
+      { mode: 'development' },
+      'DEVELOPMENT MODE: Adding localhost origins to trusted origins. This should NEVER appear in production logs.'
+    );
+    trustedOrigins.push(
+      // Development web (HTTP)
+      'http://localhost:3000',
+      'http://localhost:8081',
+      'http://localhost:8082',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:8081',
+      'http://127.0.0.1:8082',
+      // Development web (HTTPS)
+      'https://localhost:3000',
+      'https://localhost:8081',
+      'https://localhost:8082',
+      'https://127.0.0.1:3000',
+      'https://127.0.0.1:8081',
+      'https://127.0.0.1:8082',
+      // Expo Go
+      'exp://localhost:8081',
+      'exp://',
+      'exps://',
+      // Regex patterns for localhost (development only)
+      /localhost/,
+      /127\.0\.0\.1/
+    );
+  }
+
+  // Add custom origins from environment variable if provided (override for special cases)
   if (process.env.TRUSTED_ORIGINS) {
     const customOrigins = process.env.TRUSTED_ORIGINS.split(',').map((o) => o.trim());
     trustedOrigins.push(...customOrigins);
