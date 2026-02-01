@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "CoinHub",
@@ -24,7 +25,38 @@
         "backgroundColor": "#1a1a1a"
       },
       "package": "com.coinhub.app",
-      "versionCode": 11
+      "versionCode": 11,
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "coinhub.app",
+              "pathPrefix": "/"
+            },
+            {
+              "scheme": "coinhub"
+            },
+            {
+              "scheme": "CoinHub"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -37,6 +69,13 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#1a1a1a"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "CoinHub needs access to your photos to upload coin images.",
+          "cameraPermission": "CoinHub needs access to your camera to take photos of coins."
         }
       ]
     ],
