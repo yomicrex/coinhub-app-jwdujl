@@ -9,7 +9,6 @@ import {
   RefreshControl,
   ActivityIndicator,
   Image,
-  Alert,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -76,10 +75,10 @@ export default function TradesScreen() {
     } catch (error: any) {
       console.error('TradesScreen: Error fetching trades:', error);
       
-      // Only show error if user is still authenticated
+      // Only set error if user is still authenticated
+      // Don't show Alert - we have proper error UI
       if (user) {
         setError(error.message || 'Failed to load trades');
-        Alert.alert('Error', 'Failed to load trades. Please try again.');
       }
     } finally {
       setLoading(false);
