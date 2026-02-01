@@ -52,8 +52,16 @@ export default function TradesScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchTrades = useCallback(async () => {
+    // Don't fetch if user is not authenticated
+    if (!user) {
+      console.log('TradesScreen: User not authenticated, skipping fetch');
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
     try {
-      console.log('TradesScreen: Fetching trades from API');
+      console.log('TradesScreen: Fetching trades from API for user:', user.username);
       setError(null);
       
       const data = await authenticatedFetchJSON<{ trades?: Trade[] } | Trade[]>('/api/trades');
@@ -67,20 +75,39 @@ export default function TradesScreen() {
       setTrades(tradesData);
     } catch (error: any) {
       console.error('TradesScreen: Error fetching trades:', error);
-      setError(error.message || 'Failed to load trades');
-      Alert.alert('Error', 'Failed to load trades. Please try again.');
+      
+      // Only show error if user is still authenticated
+      if (user) {
+        setError(error.message || 'Failed to load trades');
+        Alert.alert('Error', 'Failed to load trades. Please try again.');
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
-    console.log('TradesScreen: Component mounted, user:', user?.username);
-    fetchTrades();
-  }, [fetchTrades, user?.username]);
+    console.log('TradesScreen: Component mounted/updated, user:', user?.username);
+    
+    // Only fetch if user is authenticated
+    if (user) {
+      fetchTrades();
+    } else {
+      console.log('TradesScreen: No user, clearing trades and stopping loading');
+      setTrades([]);
+      setLoading(false);
+      setError(null);
+    }
+  }, [fetchTrades, user]);
 
   const onRefresh = () => {
+    // Don't refresh if user is not authenticated
+    if (!user) {
+      console.log('TradesScreen: User not authenticated, skipping refresh');
+      return;
+    }
+
     console.log('TradesScreen: User initiated refresh');
     setRefreshing(true);
     fetchTrades();
@@ -213,6 +240,7 @@ export default function TradesScreen() {
     );
   };
 
+  // Show loading state
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -227,7 +255,8 @@ export default function TradesScreen() {
     );
   }
 
-  if (error) {
+  // Show error state (only if user is authenticated)
+  if (error && user) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
@@ -250,6 +279,32 @@ export default function TradesScreen() {
             }}
           >
             <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Show not authenticated state
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Trades</Text>
+        </View>
+        <View style={styles.emptyContainer}>
+          <IconSymbol
+            ios_icon_name="person.fill.xmark"
+            android_material_icon_name="person-off"
+            size={64}
+            color={colors.textSecondary}
+          />
+          <Text style={styles.emptyText}>Please sign in to view your trades</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => router.push('/auth')}
+          >
+            <Text style={styles.retryButtonText}>Sign In</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
