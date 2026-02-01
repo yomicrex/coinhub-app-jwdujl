@@ -66,9 +66,11 @@ function getAppType(): 'standalone' | 'expo-go' | 'unknown' {
 
 /**
  * Check if running in development mode
+ * CRITICAL: This determines if debug features are available
+ * Returns true ONLY in development, false in production/TestFlight
  */
 function isDevelopment(): boolean {
-  return __DEV__;
+  return __DEV__ || process.env.NODE_ENV === 'development';
 }
 
 /**

@@ -33,8 +33,9 @@ export default function SettingsScreen() {
   const [isResettingPassword, setIsResettingPassword] = React.useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = React.useState(false);
 
-  // Show debug panel ONLY in dev mode (not in production or TestFlight)
-  const showDebugButton = ENV.IS_DEV;
+  // CRITICAL: Show debug panel ONLY in development mode
+  // NEVER show in production/TestFlight builds
+  const showDebugButton = __DEV__ || process.env.NODE_ENV === 'development';
 
   console.log('Settings screen loaded', { userEmail: user?.email });
 
@@ -240,7 +241,7 @@ export default function SettingsScreen() {
         }}
       />
       <ScrollView style={styles.scrollView}>
-        {/* Debug Section (only in dev/TestFlight) */}
+        {/* Debug Section - ONLY in development mode, NEVER in production/TestFlight */}
         {showDebugButton && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Developer Tools</Text>
@@ -409,11 +410,13 @@ export default function SettingsScreen() {
         </View>
       </ScrollView>
 
-      {/* Auth Debug Panel */}
-      <AuthDebugPanel
-        visible={showDebugPanel}
-        onClose={() => setShowDebugPanel(false)}
-      />
+      {/* Auth Debug Panel - ONLY in development mode */}
+      {showDebugButton && (
+        <AuthDebugPanel
+          visible={showDebugPanel}
+          onClose={() => setShowDebugPanel(false)}
+        />
+      )}
 
       {/* Email Update Modal */}
       <Modal

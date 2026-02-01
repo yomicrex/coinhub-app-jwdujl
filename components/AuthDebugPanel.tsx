@@ -33,8 +33,8 @@ const MAX_LOGS = 100;
 
 // Global function to add debug logs (only in development)
 export function addAuthDebugLog(log: Omit<AuthDebugLog, 'timestamp'>) {
-  // Only log in development mode
-  if (!ENV.IS_DEV) {
+  // CRITICAL: Only log in development mode - NEVER in production/TestFlight
+  if (!__DEV__ && process.env.NODE_ENV !== 'development') {
     return;
   }
   
@@ -52,10 +52,13 @@ export function addAuthDebugLog(log: Omit<AuthDebugLog, 'timestamp'>) {
 
 // Export function to clear logs
 export function clearAuthDebugLogs() {
-  debugLogs.length = 0;
-  if (ENV.IS_DEV) {
-    console.log('[AUTH DEBUG] Logs cleared');
+  // CRITICAL: Only clear logs in development mode - NEVER in production/TestFlight
+  if (!__DEV__ && process.env.NODE_ENV !== 'development') {
+    return;
   }
+  
+  debugLogs.length = 0;
+  console.log('[AUTH DEBUG] Logs cleared');
 }
 
 interface AuthDebugPanelProps {
@@ -64,6 +67,12 @@ interface AuthDebugPanelProps {
 }
 
 export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
+  // CRITICAL: This component should NEVER render in production/TestFlight
+  // It should only be accessible in development mode
+  if (!__DEV__ && process.env.NODE_ENV !== 'development') {
+    return null;
+  }
+  
   const [logs, setLogs] = useState<AuthDebugLog[]>([]);
   const [expandedLogIndex, setExpandedLogIndex] = useState<number | null>(null);
   const [testingHeaders, setTestingHeaders] = useState(false);

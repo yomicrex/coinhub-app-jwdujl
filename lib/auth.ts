@@ -8,8 +8,8 @@ import ENV from "@/config/env";
 const API_URL = ENV.BACKEND_URL;
 const APP_SCHEME = ENV.APP_SCHEME;
 
-// Only log in development
-if (ENV.IS_DEV) {
+// CRITICAL: Only log in development mode - NEVER in production/TestFlight
+if (__DEV__ || process.env.NODE_ENV === 'development') {
   console.log("Auth: Using backend URL:", API_URL);
   console.log("Auth: Using app scheme:", APP_SCHEME);
   console.log("Auth: Platform:", Platform.OS);
@@ -63,8 +63,8 @@ export const authClient = createAuthClient({
       headers.set("Referer", API_URL);
     }
     
-    // Only log in development
-    if (ENV.IS_DEV) {
+    // CRITICAL: Only log in development mode - NEVER in production/TestFlight
+    if (__DEV__ || process.env.NODE_ENV === 'development') {
       console.log('Auth: Request -', urlString);
       console.log('Auth: Headers -', {
         'X-App-Type': headers.get('X-App-Type'),
@@ -83,7 +83,8 @@ export const authClient = createAuthClient({
 });
 
 export async function clearAuthTokens() {
-  if (ENV.IS_DEV) {
+  // CRITICAL: Only log in development mode - NEVER in production/TestFlight
+  if (__DEV__ || process.env.NODE_ENV === 'development') {
     console.log("clearAuthTokens: Clearing all auth tokens");
   }
   
@@ -98,7 +99,7 @@ export async function clearAuthTokens() {
     }
     keysToRemove.forEach(key => localStorage.removeItem(key));
     
-    if (ENV.IS_DEV) {
+    if (__DEV__ || process.env.NODE_ENV === 'development') {
       console.log("clearAuthTokens: Cleared web storage");
     }
   } else {
@@ -113,7 +114,7 @@ export async function clearAuthTokens() {
         }
       }
       
-      if (ENV.IS_DEV) {
+      if (__DEV__ || process.env.NODE_ENV === 'development') {
         console.log("clearAuthTokens: Cleared native storage");
       }
     } catch (error) {
