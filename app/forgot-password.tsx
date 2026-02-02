@@ -50,16 +50,20 @@ export default function ForgotPasswordScreen() {
 
     setIsLoading(true);
     try {
-      const response = await fetch(`${ENV.BACKEND_URL}/api/auth/forgot-password`, {
+      // FIXED: Use correct endpoint /api/auth/request-password-reset
+      const response = await fetch(`${ENV.BACKEND_URL}/api/auth/request-password-reset`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-App-Type': ENV.APP_TYPE,
+          'X-Platform': ENV.PLATFORM,
         },
+        credentials: 'omit',
         body: JSON.stringify({ email: email.trim().toLowerCase() }),
       });
 
       const data = await response.json();
-      console.log('ForgotPasswordScreen: Forgot password response:', data);
+      console.log('ForgotPasswordScreen: Password reset request response:', data);
 
       if (response.ok) {
         // In development, the backend returns the token
@@ -70,7 +74,7 @@ export default function ForgotPasswordScreen() {
         setStep('token');
       } else {
         setErrorTitle('Request Failed');
-        setErrorMessage(data.message || 'Failed to request password reset. Please try again.');
+        setErrorMessage(data.message || data.error || 'Failed to request password reset. Please try again.');
         setShowErrorModal(true);
       }
     } catch (error: any) {
@@ -120,7 +124,10 @@ export default function ForgotPasswordScreen() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-App-Type': ENV.APP_TYPE,
+          'X-Platform': ENV.PLATFORM,
         },
+        credentials: 'omit',
         body: JSON.stringify({
           email: email.trim().toLowerCase(),
           token: token.trim(),
@@ -135,7 +142,7 @@ export default function ForgotPasswordScreen() {
         setStep('success');
       } else {
         setErrorTitle('Reset Failed');
-        setErrorMessage(data.message || 'Failed to reset password. Please check your code and try again.');
+        setErrorMessage(data.message || data.error || 'Failed to reset password. Please check your code and try again.');
         setShowErrorModal(true);
       }
     } catch (error: any) {
