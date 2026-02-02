@@ -94,6 +94,27 @@ export function registerAuthRoutes(app: App) {
   });
 
   /**
+   * GET /api/auth/_debug
+   * Non-sensitive debug endpoint that confirms auth routes are accessible
+   * Returns list of available auth endpoints and current timestamp
+   */
+  app.fastify.get('/api/auth/_debug', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.info('GET /api/auth/_debug - Debug info requested');
+    return {
+      message: 'Auth routes are accessible',
+      routes: [
+        '/api/auth/sign-in/email',
+        '/api/auth/sign-up/email',
+        '/api/auth/session',
+        '/api/auth/sign-out',
+        '/api/auth/get-session',
+        '/api/auth/complete-profile'
+      ],
+      timestamp: new Date().toISOString()
+    };
+  });
+
+  /**
    * POST /api/auth/sign-in/email
    * ALIAS ROUTE for backward compatibility with mobile app
    * Sign in with email and password (same as /api/auth/sign-in/username-email but accepts email only)
@@ -290,6 +311,45 @@ export function registerAuthRoutes(app: App) {
       app.logger.error({ err: error }, 'POST /api/auth/sign-in/email - unexpected error');
       return reply.status(500).send({ error: 'An error occurred during sign-in' });
     }
+  });
+
+  /**
+   * POST /api/auth/sign-up/email
+   * Standard Better Auth endpoint for email/password registration
+   * This endpoint is handled by Better Auth framework
+   * Request body: { email: string, password: string, name: string }
+   * Returns: { user: { id, email, name, ... }, session: { token, ... } }
+   */
+  app.fastify.post('/api/auth/sign-up/email', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.info({ email: (request.body as any)?.email }, 'POST /api/auth/sign-up/email - Standard Better Auth sign-up endpoint');
+    // This endpoint is handled by Better Auth middleware
+    // If we reach here, Better Auth didn't handle it, return 404
+    return reply.status(404).send({ error: 'Not Found' });
+  });
+
+  /**
+   * GET /api/auth/session
+   * Standard Better Auth endpoint for getting current session
+   * This is an alias for /api/auth/get-session to match Better Auth naming
+   *
+   * Headers: Authorization: Bearer <token> OR Cookie: session=<token>
+   * Returns: { user: { id, email, ... }, session: { token, expiresAt } }
+   * Returns 401 if session is invalid or expired
+   */
+  app.fastify.get('/api/auth/session', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.info('GET /api/auth/session - Standard Better Auth session endpoint');
+    // Delegate to the get-session alias handler
+    return app.fastify.inject({
+      method: 'GET',
+      url: '/api/auth/get-session',
+      headers: request.headers,
+    }).then(response => {
+      reply.status(response.statusCode);
+      reply.send(JSON.parse(response.body));
+    }).catch(error => {
+      app.logger.error({ err: error }, 'GET /api/auth/session - delegation failed');
+      reply.status(500).send({ error: 'Internal server error' });
+    });
   });
 
   /**
