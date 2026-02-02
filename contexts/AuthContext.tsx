@@ -258,11 +258,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const timeout = setTimeout(() => {
       console.log('AuthContext: Auth initialization timeout - forcing loading to false');
       setLoading(false);
-    }, 3000);
+    }, 5000); // Increased timeout to 5 seconds for slower connections
     
-    fetchUser().finally(() => {
-      clearTimeout(timeout);
-    });
+    fetchUser()
+      .catch((error) => {
+        console.error('AuthContext: Critical error during initialization:', error);
+        // Even if there's an error, we need to stop loading
+        setLoading(false);
+      })
+      .finally(() => {
+        clearTimeout(timeout);
+      });
 
     return () => {
       clearTimeout(timeout);

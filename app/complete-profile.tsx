@@ -8,10 +8,10 @@ import {
   TextInput,
   TouchableOpacity,
   Image,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
@@ -29,8 +29,17 @@ export default function CompleteProfileScreen() {
   const [agency, setAgency] = useState('');
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorTitle, setErrorTitle] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
   console.log('CompleteProfileScreen: Rendered for user:', user?.email);
+
+  const showError = (title: string, message: string) => {
+    setErrorTitle(title);
+    setErrorMessage(message);
+    setShowErrorModal(true);
+  };
 
   const pickImage = async () => {
     console.log('CompleteProfileScreen: User tapped to pick profile image');
@@ -54,7 +63,7 @@ export default function CompleteProfileScreen() {
     const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
     
     if (!permissionResult.granted) {
-      Alert.alert('Permission Required', 'Camera permission is required to take photos.');
+      showError('Permission Required', 'Camera permission is required to take photos.');
       return;
     }
 
@@ -74,19 +83,19 @@ export default function CompleteProfileScreen() {
     console.log('CompleteProfileScreen: User tapped Complete Profile button');
     
     if (!username.trim()) {
-      Alert.alert('Error', 'Username is required');
+      showError('Missing Information', 'Username is required');
       return;
     }
 
     if (!displayName.trim()) {
-      Alert.alert('Error', 'Display name is required');
+      showError('Missing Information', 'Display name is required');
       return;
     }
 
     // Validate username format
     const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
     if (!usernameRegex.test(username)) {
-      Alert.alert(
+      showError(
         'Invalid Username',
         'Username must be 3-20 characters and can only contain letters, numbers, and underscores.'
       );
@@ -113,13 +122,18 @@ export default function CompleteProfileScreen() {
     } catch (error: any) {
       console.error('CompleteProfileScreen: Error completing profile:', error);
       
-      let errorMessage = error.message || 'Failed to complete profile';
+      let displayErrorMessage = error.message || 'Failed to complete profile';
+      let displayErrorTitle = 'Error';
       
-      if (errorMessage.includes('already exists') || errorMessage.includes('duplicate')) {
-        errorMessage = 'This username is already taken. Please choose another one.';
+      if (displayErrorMessage.includes('already exists') || displayErrorMessage.includes('duplicate')) {
+        displayErrorTitle = 'Username Taken';
+        displayErrorMessage = 'This username is already taken. Please choose another one.';
+      } else if (displayErrorMessage.toLowerCase().includes('network') || displayErrorMessage.toLowerCase().includes('fetch')) {
+        displayErrorTitle = 'Connection Error';
+        displayErrorMessage = 'Unable to connect to the server. Please check your internet connection and try again.';
       }
       
-      Alert.alert('Error', errorMessage);
+      showError(displayErrorTitle, displayErrorMessage);
     } finally {
       setLoading(false);
     }
@@ -258,6 +272,32 @@ export default function CompleteProfileScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={showErrorModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowErrorModal(false)}
+      >
+        <View style={styles.errorModalOverlay}>
+          <View style={styles.errorModalContent}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle.fill"
+              android_material_icon_name="error"
+              size={48}
+              color="#FF3B30"
+            />
+            <Text style={styles.errorModalTitle}>{errorTitle}</Text>
+            <Text style={styles.errorModalMessage}>{errorMessage}</Text>
+            <TouchableOpacity
+              style={styles.errorModalButton}
+              onPress={() => setShowErrorModal(false)}
+            >
+              <Text style={styles.errorModalButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -382,5 +422,48 @@ const styles = StyleSheet.create({
     color: colors.background,
     fontSize: 16,
     fontWeight: '600',
+  },
+  errorModalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    padding: 24,
+  },
+  errorModalContent: {
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    padding: 32,
+    alignItems: 'center',
+    minWidth: 300,
+    maxWidth: 400,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  errorModalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  errorModalMessage: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+  errorModalButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 48,
+  },
+  errorModalButtonText: {
+    color: colors.background,
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

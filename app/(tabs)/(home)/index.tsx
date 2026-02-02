@@ -64,6 +64,11 @@ export default function FeedScreen() {
   const [selectedCoinId, setSelectedCoinId] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorTitle, setErrorTitle] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   const fetchCoins = useCallback(async () => {
     console.log('FeedScreen: Fetching public coins feed');
@@ -190,7 +195,9 @@ export default function FeedScreen() {
         )
       );
       
-      Alert.alert('Error', 'Failed to update like status. Please try again.');
+      setErrorTitle('Error');
+      setErrorMessage('Failed to update like status. Please try again.');
+      setShowErrorModal(true);
     }
   };
 
@@ -242,10 +249,13 @@ export default function FeedScreen() {
       setCommentText('');
       setSelectedCoinId(null);
       
-      Alert.alert('Success', 'Comment posted!');
+      setSuccessMessage('Comment posted!');
+      setShowSuccessModal(true);
     } catch (error) {
       console.error('FeedScreen: Error submitting comment:', error);
-      Alert.alert('Error', 'Failed to post comment. Please try again.');
+      setErrorTitle('Error');
+      setErrorMessage('Failed to post comment. Please try again.');
+      setShowErrorModal(true);
     } finally {
       setSubmittingComment(false);
     }
@@ -617,6 +627,58 @@ export default function FeedScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <Modal
+        visible={showErrorModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowErrorModal(false)}
+      >
+        <View style={styles.alertModalOverlay}>
+          <View style={styles.alertModalContent}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle.fill"
+              android_material_icon_name="error"
+              size={48}
+              color="#FF3B30"
+            />
+            <Text style={styles.alertModalTitle}>{errorTitle}</Text>
+            <Text style={styles.alertModalMessage}>{errorMessage}</Text>
+            <TouchableOpacity
+              style={styles.alertModalButton}
+              onPress={() => setShowErrorModal(false)}
+            >
+              <Text style={styles.alertModalButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showSuccessModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSuccessModal(false)}
+      >
+        <View style={styles.alertModalOverlay}>
+          <View style={styles.alertModalContent}>
+            <IconSymbol
+              ios_icon_name="checkmark.circle.fill"
+              android_material_icon_name="check-circle"
+              size={48}
+              color="#34C759"
+            />
+            <Text style={styles.alertModalTitle}>Success</Text>
+            <Text style={styles.alertModalMessage}>{successMessage}</Text>
+            <TouchableOpacity
+              style={styles.alertModalButton}
+              onPress={() => setShowSuccessModal(false)}
+            >
+              <Text style={styles.alertModalButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -916,5 +978,48 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.background,
+  },
+  alertModalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    padding: 24,
+  },
+  alertModalContent: {
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    padding: 32,
+    alignItems: 'center',
+    minWidth: 300,
+    maxWidth: 400,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  alertModalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  alertModalMessage: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+  alertModalButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 48,
+  },
+  alertModalButtonText: {
+    color: colors.background,
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
