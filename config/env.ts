@@ -17,7 +17,6 @@ import { Platform } from 'react-native';
  * 2. Hardcoded production URL as fallback
  */
 function getBackendUrl(): string {
-  // Try to get from app.json extra config
   const configUrl = Constants.expoConfig?.extra?.backendUrl;
   
   if (configUrl) {
@@ -25,7 +24,6 @@ function getBackendUrl(): string {
     return configUrl;
   }
   
-  // Fallback to hardcoded production URL
   const fallbackUrl = 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev';
   console.log('[ENV] Using fallback backend URL:', fallbackUrl);
   
@@ -86,13 +84,10 @@ function isExpoGo(): boolean {
  * This ensures TestFlight builds are always correctly identified as standalone
  */
 function isStandalone(): boolean {
-  // Explicit standalone check
   if (Constants.appOwnership === 'standalone') {
     return true;
   }
   
-  // In production builds, if appOwnership is not 'expo', assume standalone
-  // This handles edge cases where appOwnership might be undefined in TestFlight
   if (!__DEV__ && Constants.appOwnership !== 'expo') {
     console.log('[ENV] Production build with non-expo appOwnership, treating as standalone');
     return true;
@@ -101,7 +96,6 @@ function isStandalone(): boolean {
   return false;
 }
 
-// Export configuration
 export const ENV = {
   BACKEND_URL: getBackendUrl(),
   APP_SCHEME: getAppScheme(),
@@ -113,7 +107,6 @@ export const ENV = {
   PLATFORM: Platform.OS,
 };
 
-// Log configuration on import (helps with debugging)
 console.log('[ENV] Configuration loaded:', {
   backendUrl: ENV.BACKEND_URL,
   appScheme: ENV.APP_SCHEME,

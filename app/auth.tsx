@@ -10,7 +10,6 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
-  Alert,
   ImageBackground,
   Dimensions,
   Modal,
@@ -21,7 +20,8 @@ import { colors } from '@/styles/commonStyles';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { BlurView } from 'expo-blur';
-import ENV from '@/config/env';
+
+const { width, height } = Dimensions.get('window');
 
 export default function AuthScreen() {
   const router = useRouter();
@@ -39,14 +39,12 @@ export default function AuthScreen() {
   useEffect(() => {
     console.log('AuthScreen: Auth state changed - loading:', loading, 'user:', user?.email, 'needsCompletion:', user?.needsProfileCompletion);
     
-    // If user needs profile completion, redirect to complete-profile screen
     if (!loading && user && user.needsProfileCompletion) {
       console.log('AuthScreen: User needs profile completion, redirecting to complete-profile screen');
       router.replace('/complete-profile');
       return;
     }
     
-    // Only redirect if user is authenticated AND has a complete profile
     if (!loading && user && !user.needsProfileCompletion) {
       console.log('AuthScreen: User authenticated with complete profile, redirecting to home');
       router.replace('/(tabs)/(home)');
@@ -74,14 +72,12 @@ export default function AuthScreen() {
         await signIn(email, password);
         console.log('AuthScreen: Sign in successful');
       }
-      // Don't redirect here - let the useEffect handle it based on user state
     } catch (error: any) {
       console.error('AuthScreen: Auth error:', error);
       
       let displayErrorMessage = error.message || 'Authentication failed';
       let displayErrorTitle = 'Error';
       
-      // Handle specific error cases with helpful messages
       if (displayErrorMessage.includes('User already exists')) {
         displayErrorTitle = 'Account Exists';
         displayErrorMessage = 'This email is already registered. Please sign in instead.';
@@ -128,7 +124,6 @@ export default function AuthScreen() {
 
   const subtitleText = isSignUp ? 'Create an account to get started' : 'Sign in to continue';
 
-  // Show login/signup form
   return (
     <ImageBackground
       source={require('@/assets/images/26cac5f5-2d6c-4146-99c5-e453b78c1c46.png')}
@@ -222,7 +217,6 @@ export default function AuthScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
 
-        {/* Error Modal */}
         <Modal
           visible={showErrorModal}
           transparent
