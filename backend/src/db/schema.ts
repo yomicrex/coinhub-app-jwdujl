@@ -273,6 +273,21 @@ export const subscriptionReceipts = pgTable('subscription_receipts', {
   expiresDateIdx: index('idx_receipt_expires_date').on(table.expiresDate),
 }));
 
+// Password reset tokens table
+export const passwordResetTokens = pgTable('password_reset_tokens', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  token: text('token').notNull().unique(),
+  expiresAt: timestamp('expires_at').notNull(),
+  used: boolean('used').notNull().default(false),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => ({
+  userIdIdx: index('idx_password_reset_user_id').on(table.userId),
+  tokenIdx: index('idx_password_reset_token').on(table.token),
+  usedIdx: index('idx_password_reset_used').on(table.used),
+  expiresAtIdx: index('idx_password_reset_expires_at').on(table.expiresAt),
+}));
+
 // Relations
 export const usersRelations = relations(users, ({ many, one }) => ({
   coins: many(coins),
@@ -458,4 +473,11 @@ export const subscriptionReceiptsRelations = relations(subscriptionReceipts, ({ 
 
 export const inviteCodesRelations = relations(inviteCodes, ({ many }) => ({
   // No direct relation to users in the schema, but could be referenced
+}));
+
+export const passwordResetTokensRelations = relations(passwordResetTokens, ({ one }) => ({
+  user: one(users, {
+    fields: [passwordResetTokens.userId],
+    references: [users.id],
+  }),
 }));

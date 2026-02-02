@@ -2,6 +2,7 @@ import { createApplication, runMigrations } from "@specific-dev/framework";
 import * as appSchema from './db/schema.js';
 import * as authSchema from './db/auth-schema.js';
 import { registerAuthRoutes } from './routes/auth.js';
+import { registerPasswordResetRoutes } from './routes/password-reset.js';
 import { registerInviteCodesRoutes } from './routes/invite-codes.js';
 import { registerProfileRoutes } from './routes/profiles.js';
 import { registerCoinsRoutes } from './routes/coins.js';
@@ -753,6 +754,10 @@ try {
   app.logger.info('Registering authentication routes');
   registerAuthRoutes(app);
   app.logger.info('Authentication routes registered');
+
+  app.logger.info('Registering password reset routes');
+  registerPasswordResetRoutes(app);
+  app.logger.info('Password reset routes registered');
 
   app.logger.info('Registering CoinHub routes');
   registerInviteCodesRoutes(app);
