@@ -1,8 +1,9 @@
+
 {
   "expo": {
     "name": "CoinHub",
     "slug": "CoinHub",
-    "version": "1.0.12",
+    "version": "1.0.13",
     "orientation": "portrait",
     "icon": "./assets/images/final_quest_240x240.png",
     "scheme": "CoinHub",
@@ -16,7 +17,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.coinhub.app",
-      "buildNumber": "12"
+      "buildNumber": "13"
     },
     "android": {
       "adaptiveIcon": {
@@ -24,7 +25,7 @@
         "backgroundColor": "#1a1a1a"
       },
       "package": "com.coinhub.app",
-      "versionCode": 12,
+      "versionCode": 13,
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
