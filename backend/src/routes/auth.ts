@@ -99,18 +99,61 @@ export function registerAuthRoutes(app: App) {
    * Returns list of available auth endpoints and current timestamp
    */
   app.fastify.get('/api/auth/_debug', async (request: FastifyRequest, reply: FastifyReply) => {
-    app.logger.info('GET /api/auth/_debug - Debug info requested');
+    app.logger.info(
+      {
+        route: 'GET /api/auth/_debug',
+        timestamp: new Date().toISOString()
+      },
+      '[AUTH_ROUTE] GET /api/auth/_debug - Debug endpoint requested'
+    );
     return {
       message: 'Auth routes are accessible',
-      routes: [
-        '/api/auth/sign-in/email',
-        '/api/auth/sign-up/email',
-        '/api/auth/session',
-        '/api/auth/sign-out',
-        '/api/auth/get-session',
-        '/api/auth/complete-profile'
-      ],
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      routes: {
+        'sign-in': [
+          'POST /api/auth/sign-in/email',
+          'POST /api/auth/sign-in/username-email',
+          'POST /api/auth/email/signin'
+        ],
+        'sign-up': [
+          'POST /api/auth/sign-up/email'
+        ],
+        'session': [
+          'GET /api/auth/session',
+          'GET /api/auth/get-session',
+          'GET /api/auth/me'
+        ],
+        'profile': [
+          'POST /api/auth/complete-profile',
+          'PATCH /api/auth/profile',
+          'GET /api/auth/check-username/:username'
+        ],
+        'password-reset': [
+          'POST /api/auth/request-password-reset',
+          'POST /api/auth/reset-password',
+          'GET /api/auth/verify-reset-token/:token'
+        ],
+        'utilities': [
+          'POST /api/auth/validate-invite',
+          'GET /api/auth/health',
+          'GET /api/auth/_debug'
+        ],
+        'admin': [
+          'GET /api/admin/check-account/:email',
+          'POST /api/admin/fix-password',
+          'POST /api/admin/create-test-user'
+        ]
+      },
+      configuration: {
+        publicBaseUrl: 'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev',
+        trustedOrigins: [
+          'coinhub://',
+          'CoinHub://',
+          'https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev'
+        ],
+        mobileAppDetection: 'X-App-Type header (values: standalone, expo-go)',
+        csrfBypass: 'Enabled for mobile apps (X-App-Type header)'
+      }
     };
   });
 
@@ -126,14 +169,30 @@ export function registerAuthRoutes(app: App) {
    * The response includes both user data and session token for bearer token authentication
    */
   app.fastify.post('/api/auth/sign-in/email', async (request: FastifyRequest, reply: FastifyReply) => {
-    app.logger.info({ email: (request.body as any)?.email }, 'POST /api/auth/sign-in/email - alias route for mobile app');
+    app.logger.info(
+      {
+        route: 'POST /api/auth/sign-in/email',
+        email: (request.body as any)?.email,
+        timestamp: new Date().toISOString(),
+        appType: request.headers['x-app-type'] || 'unknown'
+      },
+      '[AUTH_ROUTE] POST /api/auth/sign-in/email - Request received'
+    );
 
     try {
       const body = request.body as { email?: string; password?: string };
 
       // Validate input
       if (!body.email || !body.password) {
-        app.logger.warn({ hasEmail: !!body.email, hasPassword: !!body.password }, 'POST /api/auth/sign-in/email - missing required fields');
+        app.logger.warn(
+          {
+            route: 'POST /api/auth/sign-in/email',
+            hasEmail: !!body.email,
+            hasPassword: !!body.password,
+            status: 400
+          },
+          '[AUTH_ROUTE] POST /api/auth/sign-in/email - Validation failed'
+        );
         return reply.status(400).send({
           error: 'Validation failed',
           details: 'Email and password are required'
@@ -267,7 +326,16 @@ export function registerAuthRoutes(app: App) {
 
         // If user has completed profile, return full user data
         if (hasProfile) {
-          app.logger.info({ userId: authUser.id, email }, 'POST /api/auth/sign-in/email - Sign-in successful with profile');
+          app.logger.info(
+            {
+              route: 'POST /api/auth/sign-in/email',
+              userId: authUser.id,
+              email,
+              status: 200,
+              profile: 'complete'
+            },
+            '[AUTH_ROUTE] POST /api/auth/sign-in/email - Sign-in successful with profile (200)'
+          );
           return {
             user: {
               id: coinHubUser.id,
@@ -289,7 +357,16 @@ export function registerAuthRoutes(app: App) {
           };
         } else {
           // User has account but hasn't completed profile yet
-          app.logger.info({ userId: authUser.id, email }, 'POST /api/auth/sign-in/email - Sign-in successful but profile incomplete');
+          app.logger.info(
+            {
+              route: 'POST /api/auth/sign-in/email',
+              userId: authUser.id,
+              email,
+              status: 200,
+              profile: 'incomplete'
+            },
+            '[AUTH_ROUTE] POST /api/auth/sign-in/email - Sign-in successful but profile incomplete (200)'
+          );
           return {
             user: {
               id: authUser.id,
@@ -304,11 +381,17 @@ export function registerAuthRoutes(app: App) {
           };
         }
       } catch (dbError) {
-        app.logger.error({ err: dbError, email }, 'POST /api/auth/sign-in/email - database error');
+        app.logger.error(
+          { err: dbError, email, route: 'POST /api/auth/sign-in/email', status: 500 },
+          '[AUTH_ROUTE] POST /api/auth/sign-in/email - database error (500)'
+        );
         return reply.status(500).send({ error: 'Authentication error' });
       }
     } catch (error) {
-      app.logger.error({ err: error }, 'POST /api/auth/sign-in/email - unexpected error');
+      app.logger.error(
+        { err: error, route: 'POST /api/auth/sign-in/email', status: 500 },
+        '[AUTH_ROUTE] POST /api/auth/sign-in/email - unexpected error (500)'
+      );
       return reply.status(500).send({ error: 'An error occurred during sign-in' });
     }
   });
@@ -321,9 +404,20 @@ export function registerAuthRoutes(app: App) {
    * Returns: { user: { id, email, name, ... }, session: { token, ... } }
    */
   app.fastify.post('/api/auth/sign-up/email', async (request: FastifyRequest, reply: FastifyReply) => {
-    app.logger.info({ email: (request.body as any)?.email }, 'POST /api/auth/sign-up/email - Standard Better Auth sign-up endpoint');
+    app.logger.info(
+      {
+        route: 'POST /api/auth/sign-up/email',
+        email: (request.body as any)?.email,
+        timestamp: new Date().toISOString()
+      },
+      '[AUTH_ROUTE] POST /api/auth/sign-up/email - Request received (Better Auth handled)'
+    );
     // This endpoint is handled by Better Auth middleware
     // If we reach here, Better Auth didn't handle it, return 404
+    app.logger.warn(
+      { route: 'POST /api/auth/sign-up/email', status: 404 },
+      '[AUTH_ROUTE] POST /api/auth/sign-up/email - Not handled by Better Auth (404)'
+    );
     return reply.status(404).send({ error: 'Not Found' });
   });
 
@@ -337,19 +431,35 @@ export function registerAuthRoutes(app: App) {
    * Returns 401 if session is invalid or expired
    */
   app.fastify.get('/api/auth/session', async (request: FastifyRequest, reply: FastifyReply) => {
-    app.logger.info('GET /api/auth/session - Standard Better Auth session endpoint');
+    app.logger.info(
+      {
+        route: 'GET /api/auth/session',
+        timestamp: new Date().toISOString(),
+        hasAuth: !!request.headers.authorization
+      },
+      '[AUTH_ROUTE] GET /api/auth/session - Request received'
+    );
     // Delegate to the get-session alias handler
-    return app.fastify.inject({
-      method: 'GET',
-      url: '/api/auth/get-session',
-      headers: request.headers,
-    }).then(response => {
-      reply.status(response.statusCode);
+    try {
+      const response = await app.fastify.inject({
+        method: 'GET',
+        url: '/api/auth/get-session',
+        headers: request.headers,
+      });
+      const statusCode = response.statusCode;
+      app.logger.info(
+        { route: 'GET /api/auth/session', status: statusCode },
+        `[AUTH_ROUTE] GET /api/auth/session - Delegated to get-session (${statusCode})`
+      );
+      reply.status(statusCode);
       reply.send(JSON.parse(response.body));
-    }).catch(error => {
-      app.logger.error({ err: error }, 'GET /api/auth/session - delegation failed');
+    } catch (error) {
+      app.logger.error(
+        { err: error, route: 'GET /api/auth/session', status: 500 },
+        '[AUTH_ROUTE] GET /api/auth/session - delegation failed (500)'
+      );
       reply.status(500).send({ error: 'Internal server error' });
-    });
+    }
   });
 
   /**
@@ -364,14 +474,24 @@ export function registerAuthRoutes(app: App) {
    * This endpoint validates the Bearer token and returns both user profile and session data
    */
   app.fastify.get('/api/auth/get-session', async (request: FastifyRequest, reply: FastifyReply) => {
-    app.logger.info('GET /api/auth/get-session - alias route for mobile app');
+    app.logger.info(
+      {
+        route: 'GET /api/auth/get-session',
+        timestamp: new Date().toISOString(),
+        hasAuth: !!request.headers.authorization
+      },
+      '[AUTH_ROUTE] GET /api/auth/get-session - Request received'
+    );
 
     try {
       // Extract session token from Authorization header or cookies
       const sessionToken = extractSessionToken(request);
 
       if (!sessionToken) {
-        app.logger.warn('GET /api/auth/get-session - no session token provided');
+        app.logger.warn(
+          { route: 'GET /api/auth/get-session', status: 401 },
+          '[AUTH_ROUTE] GET /api/auth/get-session - No session token provided (401)'
+        );
         return reply.status(401).send({
           error: 'Unauthorized',
           message: 'No session token provided'
@@ -384,7 +504,10 @@ export function registerAuthRoutes(app: App) {
       });
 
       if (!sessionRecord) {
-        app.logger.warn({ tokenLength: sessionToken.length }, 'GET /api/auth/get-session - session token not found');
+        app.logger.warn(
+          { route: 'GET /api/auth/get-session', tokenLength: sessionToken.length, status: 401 },
+          '[AUTH_ROUTE] GET /api/auth/get-session - Session token not found (401)'
+        );
         return reply.status(401).send({
           error: 'Unauthorized',
           message: 'Session not found'
@@ -395,7 +518,10 @@ export function registerAuthRoutes(app: App) {
       const expiresAt = new Date(sessionRecord.expiresAt);
       const now = new Date();
       if (expiresAt < now) {
-        app.logger.warn({ expiresAt, now }, 'GET /api/auth/get-session - session expired');
+        app.logger.warn(
+          { route: 'GET /api/auth/get-session', expiresAt, now, status: 401 },
+          '[AUTH_ROUTE] GET /api/auth/get-session - Session expired (401)'
+        );
         return reply.status(401).send({
           error: 'Unauthorized',
           message: 'Session expired'
@@ -408,7 +534,10 @@ export function registerAuthRoutes(app: App) {
       });
 
       if (!userRecord) {
-        app.logger.warn({ userId: sessionRecord.userId }, 'GET /api/auth/get-session - user not found');
+        app.logger.warn(
+          { route: 'GET /api/auth/get-session', userId: sessionRecord.userId, status: 401 },
+          '[AUTH_ROUTE] GET /api/auth/get-session - User not found (401)'
+        );
         return reply.status(401).send({
           error: 'Unauthorized',
           message: 'User not found'
@@ -437,8 +566,14 @@ export function registerAuthRoutes(app: App) {
         }
 
         app.logger.info(
-          { userId: userRecord.id, username: profile.username },
-          'GET /api/auth/get-session - session validated successfully with profile'
+          {
+            route: 'GET /api/auth/get-session',
+            userId: userRecord.id,
+            username: profile.username,
+            status: 200,
+            profile: 'complete'
+          },
+          '[AUTH_ROUTE] GET /api/auth/get-session - Session validated with complete profile (200)'
         );
 
         return {
@@ -463,8 +598,14 @@ export function registerAuthRoutes(app: App) {
       } else {
         // User has session but hasn't completed profile yet
         app.logger.info(
-          { userId: userRecord.id, email: userRecord.email },
-          'GET /api/auth/get-session - session validated but profile incomplete'
+          {
+            route: 'GET /api/auth/get-session',
+            userId: userRecord.id,
+            email: userRecord.email,
+            status: 200,
+            profile: 'incomplete'
+          },
+          '[AUTH_ROUTE] GET /api/auth/get-session - Session validated but profile incomplete (200)'
         );
 
         return {
@@ -481,7 +622,10 @@ export function registerAuthRoutes(app: App) {
         };
       }
     } catch (error) {
-      app.logger.error({ err: error }, 'GET /api/auth/get-session - unexpected error');
+      app.logger.error(
+        { err: error, route: 'GET /api/auth/get-session', status: 500 },
+        '[AUTH_ROUTE] GET /api/auth/get-session - Unexpected error (500)'
+      );
       return reply.status(500).send({
         error: 'Failed to get session',
         message: String(error)

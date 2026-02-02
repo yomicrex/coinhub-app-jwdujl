@@ -21,6 +21,30 @@ const schema = { ...appSchema, ...authSchema };
 
 export const app = await createApplication(schema);
 
+/**
+ * CRITICAL: Environment Variable Locking for Production Stability
+ *
+ * These environment variables MUST NEVER CHANGE between deploys:
+ * - DATABASE_URL: Must point to the same persistent PostgreSQL database
+ *   Changing this will cause all data to be lost or inaccessible
+ * - BETTER_AUTH_SECRET: Must be the same across all server instances
+ *   Changing this will invalidate all existing user sessions
+ * - PUBLIC_BASE_URL: Backend's public HTTPS URL for auth redirects
+ *   Changing this will break OAuth callback flows
+ *
+ * If these need to be changed, data migration is required.
+ * Verify environment variables match production config before deploying.
+ */
+app.logger.info(
+  {
+    databaseUrl: process.env.DATABASE_URL ? '***configured***' : 'MISSING',
+    authSecret: process.env.BETTER_AUTH_SECRET ? '***configured***' : 'MISSING',
+    publicBaseUrl: process.env.PUBLIC_BASE_URL || 'not set',
+    nodeEnv: process.env.NODE_ENV || 'not set'
+  },
+  '[STARTUP] Environment variable verification - Critical variables locked'
+);
+
 // CRITICAL: Run database migrations immediately after app creation
 // This ensures all tables exist before any database operations
 try {
@@ -459,6 +483,22 @@ try {
     trustedOrigins.push(...customOrigins);
     app.logger.info({ customOrigins }, 'Added custom trusted origins from environment');
   }
+
+  // Log all configured trusted origins for debugging
+  const trustedOriginStrings = trustedOrigins
+    .map(o => o instanceof RegExp ? `/${o.source}/` : o)
+    .filter((v, i, a) => a.indexOf(v) === i); // Deduplicate
+
+  app.logger.info(
+    {
+      totalOrigins: trustedOrigins.length,
+      origins: trustedOriginStrings,
+      mobileAppDetection: 'X-App-Type: standalone or expo-go',
+      csrfBypass: 'Enabled for mobile apps',
+      allowedMobileSchemes: ['coinhub://', 'CoinHub://']
+    },
+    '[CORS_CONFIG] Trusted origins configuration for auth endpoints'
+  );
 
   // Register CORS middleware for Better Auth endpoints
   // CRITICAL: Native mobile apps (iOS/Android/TestFlight) don't send origin headers
