@@ -171,8 +171,12 @@ export function registerAuthRoutes(app: App) {
         }
 
         if (!accountRecord || !accountRecord.password) {
-          app.logger.warn({ userId: authUser.id, email }, 'POST /api/auth/sign-in/email - no account with password found');
-          return reply.status(401).send({ error: 'Invalid email or password' });
+          app.logger.warn({ userId: authUser.id, email, accountExists: !!accountRecord }, 'POST /api/auth/sign-in/email - no account with password found');
+          return reply.status(401).send({
+            error: 'Authentication failed',
+            message: 'This account does not have a password set. Please use password reset or contact support.',
+            code: 'NO_PASSWORD_ACCOUNT'
+          });
         }
 
         // Verify password
@@ -181,14 +185,21 @@ export function registerAuthRoutes(app: App) {
 
         if (!isBcryptHash) {
           app.logger.error({ userId: authUser.id, email }, 'POST /api/auth/sign-in/email - invalid password hash format');
-          return reply.status(500).send({ error: 'Authentication error' });
+          return reply.status(500).send({
+            error: 'Authentication error',
+            message: 'Account password is corrupted. Please use password reset.'
+          });
         }
 
         const passwordMatch = await bcrypt.compare(password, accountRecord.password);
 
         if (!passwordMatch) {
           app.logger.warn({ userId: authUser.id, email }, 'POST /api/auth/sign-in/email - incorrect password');
-          return reply.status(401).send({ error: 'Invalid email or password' });
+          return reply.status(401).send({
+            error: 'Authentication failed',
+            message: 'Invalid email or password. If you forgot your password, use the password reset option.',
+            code: 'INVALID_PASSWORD'
+          });
         }
 
         // Create session
@@ -1942,6 +1953,278 @@ export function registerAuthRoutes(app: App) {
     }
   });
 
+  /**
+   * ADMIN ENDPOINTS FOR ACCOUNT RECOVERY
+   * These endpoints help diagnose and fix authentication issues
+   * TODO: In production, these should be protected with admin authentication
+   */
+
+  /**
+   * GET /api/admin/check-account/:email
+   * Diagnostic endpoint to check account status
+   * Returns: { exists: boolean, hasValidAccount: boolean, hasPassword: boolean, accountDetails?: string }
+   */
+  app.fastify.get('/api/admin/check-account/:email', async (request: FastifyRequest, reply: FastifyReply) => {
+    const email = (request.params as any).email;
+    app.logger.info({ email }, 'Admin: Checking account status');
+
+    try {
+      // Check if user exists in Better Auth table
+      const authUser = await app.db.query.user.findFirst({
+        where: sql`LOWER(${authSchema.user.email}) = LOWER(${email})`
+      });
+
+      if (!authUser) {
+        app.logger.info({ email }, 'Admin: User not found in auth table');
+        return {
+          exists: false,
+          hasValidAccount: false,
+          email: email
+        };
+      }
+
+      // Check if user has a password account
+      const accounts = await app.db.query.account.findMany({
+        where: eq(authSchema.account.userId, authUser.id)
+      });
+
+      const passwordAccount = accounts.find(a => a.password);
+      const hasPassword = !!passwordAccount;
+
+      // Check if CoinHub profile exists
+      const profile = await app.db.query.users.findFirst({
+        where: eq(schema.users.id, authUser.id)
+      });
+
+      app.logger.info(
+        {
+          email,
+          userId: authUser.id,
+          hasPassword,
+          hasProfile: !!profile,
+          accountCount: accounts.length,
+          providers: accounts.map(a => a.providerId)
+        },
+        'Admin: Account check complete'
+      );
+
+      return {
+        exists: true,
+        hasValidAccount: hasPassword,
+        hasPassword: hasPassword,
+        hasCoinHubProfile: !!profile,
+        userId: authUser.id,
+        authEmail: authUser.email,
+        accountDetails: {
+          accounts: accounts.length,
+          providers: accounts.map(a => a.providerId),
+          hasPasswordCredential: hasPassword
+        }
+      };
+    } catch (error) {
+      app.logger.error({ err: error, email }, 'Admin: Failed to check account');
+      return reply.status(500).send({
+        error: 'Failed to check account',
+        message: String(error)
+      });
+    }
+  });
+
+  /**
+   * POST /api/admin/fix-password
+   * Fix or reset a user's password
+   * Body: { email: string, newPassword: string }
+   * Returns: { success: boolean, message: string, userId?: string }
+   *
+   * WARNING: This is an admin endpoint for account recovery. In production, this should be protected.
+   */
+  app.fastify.post('/api/admin/fix-password', async (request: FastifyRequest, reply: FastifyReply) => {
+    const body = request.body as { email?: string; newPassword?: string };
+    const email = body.email?.toLowerCase().trim();
+    const newPassword = body.newPassword?.trim();
+
+    app.logger.info({ email }, 'Admin: Fix password endpoint called');
+
+    try {
+      // Validate input
+      if (!email || !newPassword) {
+        app.logger.warn({ hasEmail: !!email, hasPassword: !!newPassword }, 'Admin: Missing required fields');
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: 'Email and newPassword are required'
+        });
+      }
+
+      if (newPassword.length < 6) {
+        app.logger.warn({ email }, 'Admin: Password too short');
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: 'Password must be at least 6 characters'
+        });
+      }
+
+      // Find user by email
+      const authUser = await app.db.query.user.findFirst({
+        where: sql`LOWER(${authSchema.user.email}) = LOWER(${email})`
+      });
+
+      if (!authUser) {
+        app.logger.warn({ email }, 'Admin: User not found');
+        return reply.status(404).send({
+          error: 'Not found',
+          details: 'User with this email does not exist'
+        });
+      }
+
+      // Hash the new password
+      const bcrypt = await import('bcryptjs') as any;
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+      // Find or create password account
+      let account = await app.db.query.account.findFirst({
+        where: and(
+          eq(authSchema.account.userId, authUser.id),
+          eq(authSchema.account.providerId, 'credential')
+        )
+      });
+
+      if (account) {
+        // Update existing password account
+        await app.db
+          .update(authSchema.account)
+          .set({
+            password: hashedPassword,
+            updatedAt: new Date()
+          })
+          .where(eq(authSchema.account.id, account.id));
+
+        app.logger.info({ email, userId: authUser.id }, 'Admin: Password updated successfully');
+        return {
+          success: true,
+          message: `Password updated successfully for ${email}`,
+          userId: authUser.id
+        };
+      } else {
+        // Create new password account
+        const accountId = randomUUID();
+        await app.db
+          .insert(authSchema.account)
+          .values({
+            id: accountId,
+            accountId: randomUUID(),
+            providerId: 'credential',
+            userId: authUser.id,
+            password: hashedPassword,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          });
+
+        app.logger.info({ email, userId: authUser.id }, 'Admin: Password account created successfully');
+        return {
+          success: true,
+          message: `Password account created successfully for ${email}`,
+          userId: authUser.id
+        };
+      }
+    } catch (error) {
+      app.logger.error({ err: error, email }, 'Admin: Failed to fix password');
+      return reply.status(500).send({
+        error: 'Failed to fix password',
+        message: String(error)
+      });
+    }
+  });
+
+  /**
+   * POST /api/admin/create-test-user
+   * Create a test user with email and password for testing
+   * Body: { email: string, password: string, name: string }
+   * Returns: { success: boolean, userId?: string, message: string }
+   *
+   * WARNING: This is a test endpoint. Remove in production.
+   */
+  app.fastify.post('/api/admin/create-test-user', async (request: FastifyRequest, reply: FastifyReply) => {
+    const body = request.body as { email?: string; password?: string; name?: string };
+    const email = body.email?.toLowerCase().trim();
+    const password = body.password?.trim();
+    const name = body.name?.trim();
+
+    app.logger.info({ email, name }, 'Admin: Create test user endpoint called');
+
+    try {
+      // Validate input
+      if (!email || !password || !name) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: 'Email, password, and name are required'
+        });
+      }
+
+      if (password.length < 6) {
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: 'Password must be at least 6 characters'
+        });
+      }
+
+      // Check if user already exists
+      const existingUser = await app.db.query.user.findFirst({
+        where: sql`LOWER(${authSchema.user.email}) = LOWER(${email})`
+      });
+
+      if (existingUser) {
+        app.logger.warn({ email }, 'Admin: User already exists');
+        return reply.status(409).send({
+          error: 'Conflict',
+          details: 'User with this email already exists'
+        });
+      }
+
+      // Create user in Better Auth table
+      const userId = randomUUID();
+      const bcrypt = await import('bcryptjs') as any;
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      await app.db
+        .insert(authSchema.user)
+        .values({
+          id: userId,
+          email: email,
+          name: name,
+          emailVerified: false,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+
+      // Create password account
+      const accountId = randomUUID();
+      await app.db
+        .insert(authSchema.account)
+        .values({
+          id: accountId,
+          accountId: randomUUID(),
+          providerId: 'credential',
+          userId: userId,
+          password: hashedPassword,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+
+      app.logger.info({ email, userId }, 'Admin: Test user created successfully');
+      return {
+        success: true,
+        userId: userId,
+        message: `Test user created successfully: ${email}`
+      };
+    } catch (error) {
+      app.logger.error({ err: error, email }, 'Admin: Failed to create test user');
+      return reply.status(500).send({
+        error: 'Failed to create test user',
+        message: String(error)
+      });
+    }
+  });
+
   // Log that auth alias routes have been registered for mobile app compatibility
   app.logger.info(
     {
@@ -1949,8 +2232,13 @@ export function registerAuthRoutes(app: App) {
         'POST /api/auth/sign-in/email',
         'GET /api/auth/get-session'
       ],
-      description: 'Mobile app backward-compatibility alias routes'
+      adminEndpoints: [
+        'GET /api/admin/check-account/:email',
+        'POST /api/admin/fix-password',
+        'POST /api/admin/create-test-user'
+      ],
+      description: 'Mobile app backward-compatibility alias routes and admin recovery endpoints'
     },
-    'Auth alias routes registered: POST /api/auth/sign-in/email, GET /api/auth/get-session'
+    'Auth routes registered: alias routes + admin recovery endpoints'
   );
 }
