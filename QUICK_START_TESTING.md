@@ -1,285 +1,143 @@
 
-# Quick Start Testing Guide 🚀
+# CoinHub Auth Fix - Quick Start Testing Guide
 
-**For:** Immediate testing of password hash fix integration  
-**Time Required:** 5-10 minutes
+## Current Status
+✅ Backend build is processing (comprehensive auth fix)
+✅ Frontend is already correctly configured
+⏳ Waiting for backend deployment to complete
 
----
+## What Was Fixed
 
-## 🎯 Goal
+### Backend Changes (Processing)
+1. **Better Auth Handler Mounted** - All Better Auth routes now accessible at `/api/auth/*`
+2. **Database Migration** - Duplicate emails cleaned up, UNIQUE constraint reinstated
+3. **Mobile CSRF Bypass** - Mobile apps no longer blocked by "Invalid origin" errors
+4. **Health Endpoints** - `/api/health` and `/api/auth/_debug` added for monitoring
+5. **Admin Tools** - Password recovery endpoints for corrupted accounts
 
-Verify that the password hash fix integration is working correctly by:
-1. Testing admin diagnostic tools
-2. Fixing a known broken account (user4@gmail.com)
-3. Verifying improved error messages
+### Frontend (Already Correct)
+- ✅ Better Auth client configured for mobile
+- ✅ Bearer token authentication
+- ✅ Platform headers sent correctly
+- ✅ Profile completion flow working
 
----
+## Quick Test (After Backend Deploys)
 
-## 📋 Prerequisites
-
-- ✅ App running in development mode
-- ✅ Backend deployed at: https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev
-- ✅ Access to AuthDebugPanel (development builds only)
-
----
-
-## 🧪 Test Sequence
-
-### Test 1: Verify Admin Tools Are Visible (30 seconds)
-
-**Steps:**
-1. Open app in development mode
-2. Navigate to a screen with AuthDebugPanel access
-3. Look for "🔧 Admin Tools (Password Hash Fix)" section
-
-**Expected Result:**
-- ✅ Admin tools section is visible
-- ✅ Three buttons present: "Check Account", "Fix Password", "Create Test User"
-
-**If Not Visible:**
-- Verify `__DEV__ === true` (check console logs)
-- Verify you're not in production build
-
----
-
-### Test 2: Check Account Status (1 minute)
-
-**Steps:**
-1. Tap "Check Account" button
-2. Enter email: `user4@gmail.com`
-3. Tap "Check"
-
-**Expected Result:**
+### 1. Check Health
+```bash
+curl https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev/api/health
 ```
-✅ Account Check Result:
+Expected: `{"status":"healthy","timestamp":"..."}`
 
-Email: user4@gmail.com
+### 2. Check Auth Routes
+```bash
+curl https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev/api/auth/_debug
+```
+Expected: List of available auth routes
 
-Exists: ✅ Yes
-Has Valid Password Hash: ❌ No
-Provider ID: credential
+### 3. Test iOS App
+1. Open CoinHub on iOS
+2. Try to sign in with existing account
+3. Expected: Sign in successful (no 404 or "Invalid origin" errors)
 
-⚠️ Password hash is INVALID! Use "Fix Password" to repair this account.
+## Fix Corrupted Passwords (user2, user4)
+
+### Check Account Status
+```bash
+curl https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev/api/admin/check-account/user4@gmail.com
 ```
 
-**If Different:**
-- If "Exists: ❌ No" → Account doesn't exist, try different email
-- If "Has Valid Password Hash: ✅ Yes" → Account already fixed or never broken
-
----
-
-### Test 3: Create Test User (1 minute)
-
-**Steps:**
-1. Tap "Create Test User" button
-2. Tap "Create User"
-3. **IMPORTANT:** Copy the generated credentials immediately
-
-**Expected Result:**
-```
-✅ Test User Created!
-
-Email: testuser_1738512345@test.com
-Password: TestPassword123!
-User ID: abc123def456...
-
-You can now sign in with these credentials.
+### Fix Password
+```bash
+curl -X POST https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev/api/admin/fix-password \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user4@gmail.com","newPassword":"newpassword123"}'
 ```
 
-**Save These Credentials:**
-```
-Email: ___________________________
-Password: _________________________
-```
+### Notify User
+"Your password has been reset to: newpassword123. Please sign in and change it in settings."
+
+## Monitoring
+
+### Check Backend Status
+Use the tool: `get_backend_status()`
+
+### Check Backend Logs
+Use the tool: `get_backend_logs(limit=50)`
+
+### Look For
+- ✅ No more 404 errors on `/api/auth/sign-in/email`
+- ✅ No more "Invalid origin" errors
+- ✅ Successful sign-in logs
+- ✅ Session creation logs
+
+## Expected Results
+
+### Before Fix
+- ❌ POST /api/auth/sign-in/email → 404 Not Found
+- ❌ Mobile apps → "Invalid origin" error
+- ❌ user2, user4 → "Invalid password hash" error
+
+### After Fix
+- ✅ POST /api/auth/sign-in/email → 200 OK or 400 Bad Request
+- ✅ Mobile apps → Successful authentication
+- ✅ user2, user4 → Can sign in after password reset
+
+## Next Steps
+
+1. **Wait for Backend Build**
+   - Check status every few minutes
+   - Look for `state: "idle"` (build complete)
+
+2. **Test Endpoints**
+   - Run the curl commands above
+   - Verify all return 200 (not 404)
+
+3. **Test iOS App**
+   - Sign in with existing account
+   - Sign up new account
+   - Verify session persists
+
+4. **Fix Affected Users**
+   - Reset passwords for user2 and user4
+   - Notify them to sign in again
+
+5. **Monitor**
+   - Check logs for any errors
+   - Verify no more 404s or "Invalid origin" errors
+
+## Troubleshooting
+
+### If Sign-In Still Fails
+1. Check backend logs: `get_backend_logs()`
+2. Look for the specific error message
+3. Check if request reached backend (should see log entry)
+4. If 404: Backend build may not be complete yet
+5. If "Invalid origin": Check X-App-Type header is being sent
+
+### If Password Hash Error
+1. Use admin tool to check account: `/api/admin/check-account/:email`
+2. Use admin tool to fix password: `/api/admin/fix-password`
+3. Notify user of new password
+
+### If Session Not Persisting
+1. Check if session token is being stored (check SecureStore)
+2. Check if token is being sent in Authorization header
+3. Check backend logs for session validation
+
+## Contact
+
+If issues persist after backend deployment:
+1. Share backend logs (`get_backend_logs()`)
+2. Share frontend logs (from app console)
+3. Share specific error messages
+4. Share steps to reproduce
 
 ---
 
-### Test 4: Test Sign In with Test User (2 minutes)
-
-**Steps:**
-1. Sign out of current account (if signed in)
-2. Go to auth screen
-3. Enter test user credentials from Test 3
-4. Tap "Sign In"
-
-**Expected Result:**
-- ✅ Sign in successful
-- ✅ Redirected to complete profile screen (new user)
-- ✅ No errors
-
-**If Fails:**
-- Check credentials are correct
-- Check backend logs
-- Verify test user was created successfully
-
----
-
-### Test 5: Fix Broken Account (2 minutes)
-
-**Steps:**
-1. Open AuthDebugPanel
-2. Tap "Fix Password" button
-3. Enter email: `user4@gmail.com`
-4. Enter new password: `FixedPassword123!`
-5. Tap "Fix Password"
-
-**Expected Result:**
+**Status Check Command:**
 ```
-✅ Password Fixed Successfully!
-
-Email: user4@gmail.com
-
-Password has been reset and properly hashed.
-
-You can now sign in with the new password.
-```
-
-**Save These Credentials:**
-```
-Email: user4@gmail.com
-Password: FixedPassword123!
-```
-
----
-
-### Test 6: Verify Fixed Account Works (2 minutes)
-
-**Steps:**
-1. Sign out of current account
-2. Go to auth screen
-3. Enter: `user4@gmail.com` / `FixedPassword123!`
-4. Tap "Sign In"
-
-**Expected Result:**
-- ✅ Sign in successful
-- ✅ No "invalid password hash format" error
-- ✅ User profile loads correctly
-
-**If Fails:**
-- Verify password was fixed in Test 5
-- Check account status again using "Check Account"
-- Check backend logs for errors
-
----
-
-### Test 7: Verify Error Message Display (1 minute)
-
-**Steps:**
-1. Find another account with corrupted password hash (or use user2@gmail.com)
-2. Try to sign in with that account
-3. Observe the error message
-
-**Expected Result:**
-- ✅ Custom modal appears (not Alert.alert)
-- ✅ Error title: "🔧 Account Issue Detected"
-- ✅ Error message mentions password hash issue
-- ✅ Error message provides support contact: support@coinhub.app
-- ✅ "OK" button to dismiss
-
-**If Different:**
-- If Alert.alert appears → Integration not complete
-- If generic error → Error detection not working
-
----
-
-## ✅ Success Criteria
-
-All tests should pass:
-- [x] Admin tools visible in development
-- [x] Check account tool works
-- [x] Create test user works
-- [x] Test user can sign in
-- [x] Fix password tool works
-- [x] Fixed account can sign in
-- [x] Error messages are user-friendly
-
----
-
-## 🐛 Common Issues & Solutions
-
-### Issue: Admin tools not visible
-**Solution:** 
-- Verify `__DEV__ === true`
-- Check console: `console.log('DEV MODE:', __DEV__)`
-- Rebuild app if necessary
-
-### Issue: "Endpoint not found" error
-**Solution:**
-- Verify backend URL: https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev
-- Test endpoint directly: `curl https://qjj7hh75bj9rj8tez54zsh74jpn3wv24.app.specular.dev/api/admin/check-account/test@test.com`
-- Check backend deployment status
-
-### Issue: Fix password fails
-**Solution:**
-- Verify account exists first using "Check Account"
-- Check email is correct (case-insensitive)
-- Check backend logs for detailed error
-
-### Issue: Test user creation fails
-**Solution:**
-- Check backend logs
-- Verify database connection
-- Try again (might be temporary issue)
-
----
-
-## 📊 Test Results Template
-
-```
-Date: _______________
-Tester: _______________
-
-Test 1 - Admin Tools Visible: ☐ PASS ☐ FAIL
-Test 2 - Check Account: ☐ PASS ☐ FAIL
-Test 3 - Create Test User: ☐ PASS ☐ FAIL
-Test 4 - Test User Sign In: ☐ PASS ☐ FAIL
-Test 5 - Fix Password: ☐ PASS ☐ FAIL
-Test 6 - Fixed Account Sign In: ☐ PASS ☐ FAIL
-Test 7 - Error Message Display: ☐ PASS ☐ FAIL
-
-Overall Status: ☐ ALL PASS ☐ SOME FAIL
-
-Notes:
-_________________________________
-_________________________________
-_________________________________
+get_backend_status()
 ```
 
----
-
-## 🎯 Next Steps After Testing
-
-### If All Tests Pass ✅
-1. Document test results
-2. Fix remaining broken accounts (user2@gmail.com, etc.)
-3. Proceed with TestFlight build
-4. Monitor for user reports
-
-### If Some Tests Fail ❌
-1. Document which tests failed
-2. Check console logs for errors
-3. Review integration code
-4. Contact backend team if endpoint issues
-5. Re-test after fixes
-
----
-
-## 📞 Support
-
-**For Testing Issues:**
-- Check console logs first
-- Review error messages
-- Check backend logs
-- Contact development team
-
-**For User Account Issues:**
-- Use admin tools to diagnose
-- Use "Fix Password" to repair
-- Document all fixes
-
----
-
-**Testing Time:** ~10 minutes  
-**Difficulty:** Easy  
-**Prerequisites:** Development build, backend deployed  
-**Status:** ✅ Ready to test
+**When `state: "idle"`, the fix is deployed and ready to test!**
