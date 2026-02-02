@@ -18,7 +18,6 @@ import {
   ScrollView,
   NativeScrollEvent,
   NativeSyntheticEvent,
-  Alert,
   TextInput,
   Modal,
   KeyboardAvoidingView,
