@@ -1,4 +1,4 @@
-import { createApplication } from "@specific-dev/framework";
+import { createApplication, runMigrations } from "@specific-dev/framework";
 import * as appSchema from './db/schema.js';
 import * as authSchema from './db/auth-schema.js';
 import { registerAuthRoutes } from './routes/auth.js';
@@ -19,6 +19,17 @@ import { seedDatabase } from './db/seed.js';
 const schema = { ...appSchema, ...authSchema };
 
 export const app = await createApplication(schema);
+
+// CRITICAL: Run database migrations immediately after app creation
+// This ensures all tables exist before any database operations
+try {
+  app.logger.info('Running database migrations...');
+  await runMigrations({ logger: app.logger });
+  app.logger.info('Database migrations completed successfully');
+} catch (error) {
+  app.logger.error({ err: error }, 'Failed to run database migrations - database tables may not exist');
+  throw error;
+}
 
 // CRITICAL: Enable proxy trust to read X-Forwarded-* headers correctly
 // This must be done IMMEDIATELY after app creation to ensure Fastify reads forwarded headers
@@ -703,6 +714,37 @@ try {
   app.logger.info('Storage system initialized successfully');
 } catch (error) {
   app.logger.error({ err: error }, 'Failed to initialize storage');
+  throw error;
+}
+
+// Register public health check endpoint
+try {
+  app.logger.info('Registering public health check endpoint');
+  app.fastify.get('/api/health', async (request, reply) => {
+    try {
+      // Test database connectivity
+      const testQuery = await app.db.query.users.findMany({ limit: 1 });
+      const timestamp = new Date().toISOString();
+      app.logger.debug({ timestamp }, 'Health check passed - database is operational');
+      return {
+        status: 'healthy',
+        database: 'connected',
+        timestamp,
+      };
+    } catch (dbError) {
+      app.logger.error({ err: dbError }, 'Health check failed - database connection issue');
+      reply.status(503);
+      return {
+        status: 'unhealthy',
+        database: 'disconnected',
+        error: 'Database connection failed',
+        timestamp: new Date().toISOString(),
+      };
+    }
+  });
+  app.logger.info('Public health check endpoint registered at GET /api/health');
+} catch (error) {
+  app.logger.error({ err: error }, 'Failed to register health check endpoint');
   throw error;
 }
 
