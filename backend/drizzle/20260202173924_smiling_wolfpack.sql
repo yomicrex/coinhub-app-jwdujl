@@ -1,0 +1,1 @@
+-- This migration is a no-op: the unique constraint on transaction_id is already enforced by the unique index created in migration 20260127015218_eager_spectrum

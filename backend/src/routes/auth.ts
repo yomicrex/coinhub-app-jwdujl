@@ -93,6 +93,298 @@ export function registerAuthRoutes(app: App) {
     }
   });
 
+  /**
+   * POST /api/auth/sign-in/email
+   * ALIAS ROUTE for backward compatibility with mobile app
+   * Sign in with email and password (same as /api/auth/sign-in/username-email but accepts email only)
+   *
+   * Request body: { email: string, password: string }
+   * Returns: { user: { id, email, username, displayName, avatarUrl, ... }, session: { token, expiresAt } }
+   *
+   * This is an alias/wrapper for the existing sign-in logic, accepting email-only format
+   * The response includes both user data and session token for bearer token authentication
+   */
+  app.fastify.post('/api/auth/sign-in/email', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.info({ email: (request.body as any)?.email }, 'POST /api/auth/sign-in/email - alias route for mobile app');
+
+    try {
+      const body = request.body as { email?: string; password?: string };
+
+      // Validate input
+      if (!body.email || !body.password) {
+        app.logger.warn({ hasEmail: !!body.email, hasPassword: !!body.password }, 'POST /api/auth/sign-in/email - missing required fields');
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: 'Email and password are required'
+        });
+      }
+
+      const email = body.email.trim().toLowerCase();
+      const password = body.password.trim();
+
+      // Look up user by email in Better Auth table using case-insensitive comparison
+      try {
+        const authUser = await app.db.query.user.findFirst({
+          where: sql`LOWER(${authSchema.user.email}) = LOWER(${email})`,
+        });
+
+        if (!authUser) {
+          app.logger.warn({ email }, 'POST /api/auth/sign-in/email - user not found');
+          return reply.status(401).send({ error: 'Invalid email or password' });
+        }
+
+        // Look up CoinHub profile by user ID
+        const coinHubUser = await app.db.query.users.findFirst({
+          where: eq(schema.users.id, authUser.id),
+          columns: {
+            id: true,
+            email: true,
+            username: true,
+            displayName: true,
+            avatarUrl: true,
+            bio: true,
+            location: true,
+            collectionPrivacy: true,
+            role: true,
+            inviteCodeUsed: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        });
+
+        if (!coinHubUser) {
+          app.logger.warn({ userId: authUser.id, email }, 'POST /api/auth/sign-in/email - CoinHub profile not found');
+          return reply.status(401).send({ error: 'Invalid email or password' });
+        }
+
+        // Get account with password
+        let accountRecord = await app.db.query.account.findFirst({
+          where: and(
+            eq(authSchema.account.userId, authUser.id),
+            eq(authSchema.account.providerId, 'credential')
+          ),
+        });
+
+        // If credential provider not found, try any account with password
+        if (!accountRecord) {
+          const allAccounts = await app.db.query.account.findMany({
+            where: eq(authSchema.account.userId, authUser.id)
+          });
+          accountRecord = allAccounts.find(a => a.password);
+        }
+
+        if (!accountRecord || !accountRecord.password) {
+          app.logger.warn({ userId: authUser.id, email }, 'POST /api/auth/sign-in/email - no account with password found');
+          return reply.status(401).send({ error: 'Invalid email or password' });
+        }
+
+        // Verify password
+        const bcrypt = await import('bcryptjs') as any;
+        const isBcryptHash = /^\$2[aby]\$\d+\$/.test(accountRecord.password);
+
+        if (!isBcryptHash) {
+          app.logger.error({ userId: authUser.id, email }, 'POST /api/auth/sign-in/email - invalid password hash format');
+          return reply.status(500).send({ error: 'Authentication error' });
+        }
+
+        const passwordMatch = await bcrypt.compare(password, accountRecord.password);
+
+        if (!passwordMatch) {
+          app.logger.warn({ userId: authUser.id, email }, 'POST /api/auth/sign-in/email - incorrect password');
+          return reply.status(401).send({ error: 'Invalid email or password' });
+        }
+
+        // Create session
+        const sessionToken = randomUUID();
+        const sessionId = randomUUID();
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+        const session = await app.db
+          .insert(authSchema.session)
+          .values({
+            id: sessionId,
+            userId: authUser.id,
+            expiresAt: expiresAt,
+            token: sessionToken,
+            ipAddress: request.ip,
+            userAgent: request.headers['user-agent'],
+          })
+          .returning();
+
+        app.logger.info(
+          {
+            userId: authUser.id,
+            email,
+            sessionToken: session[0].token.substring(0, 20),
+            expiresAt: session[0].expiresAt,
+          },
+          'POST /api/auth/sign-in/email - Sign-in successful'
+        );
+
+        // Set secure HTTP-only cookie
+        const cookieOptions = [
+          `session=${sessionToken}`,
+          'HttpOnly',
+          'Path=/',
+          'SameSite=Lax',
+          `Max-Age=${7 * 24 * 60 * 60}`, // 7 days
+        ];
+        if (process.env.NODE_ENV === 'production') {
+          cookieOptions.push('Secure');
+        }
+        const setCookieHeader = cookieOptions.join('; ');
+        reply.header('Set-Cookie', setCookieHeader);
+        reply.header('Access-Control-Allow-Credentials', 'true');
+
+        return {
+          user: {
+            id: coinHubUser.id,
+            email: coinHubUser.email,
+            username: coinHubUser.username,
+            displayName: coinHubUser.displayName,
+            avatarUrl: coinHubUser.avatarUrl,
+            bio: coinHubUser.bio,
+            location: coinHubUser.location,
+            collectionPrivacy: coinHubUser.collectionPrivacy,
+            role: coinHubUser.role,
+            createdAt: coinHubUser.createdAt,
+            updatedAt: coinHubUser.updatedAt,
+          },
+          session: {
+            token: sessionToken,
+            expiresAt: expiresAt,
+          },
+        };
+      } catch (dbError) {
+        app.logger.error({ err: dbError, email }, 'POST /api/auth/sign-in/email - database error');
+        return reply.status(500).send({ error: 'Authentication error' });
+      }
+    } catch (error) {
+      app.logger.error({ err: error }, 'POST /api/auth/sign-in/email - unexpected error');
+      return reply.status(500).send({ error: 'An error occurred during sign-in' });
+    }
+  });
+
+  /**
+   * GET /api/auth/get-session
+   * ALIAS ROUTE for backward compatibility with mobile app
+   * Get current user session data using Bearer token
+   *
+   * Headers: Authorization: Bearer <token>
+   * Returns: { user: { id, email, username, displayName, avatarUrl, ... }, session: { token, expiresAt } }
+   * Returns 401 if token is invalid or expired
+   *
+   * This endpoint validates the Bearer token and returns both user profile and session data
+   */
+  app.fastify.get('/api/auth/get-session', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.info('GET /api/auth/get-session - alias route for mobile app');
+
+    try {
+      // Extract session token from Authorization header or cookies
+      const sessionToken = extractSessionToken(request);
+
+      if (!sessionToken) {
+        app.logger.warn('GET /api/auth/get-session - no session token provided');
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          message: 'No session token provided'
+        });
+      }
+
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken)
+      });
+
+      if (!sessionRecord) {
+        app.logger.warn({ tokenLength: sessionToken.length }, 'GET /api/auth/get-session - session token not found');
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          message: 'Session not found'
+        });
+      }
+
+      // Check if session is expired
+      const expiresAt = new Date(sessionRecord.expiresAt);
+      const now = new Date();
+      if (expiresAt < now) {
+        app.logger.warn({ expiresAt, now }, 'GET /api/auth/get-session - session expired');
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          message: 'Session expired'
+        });
+      }
+
+      // Get user record from Better Auth
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId)
+      });
+
+      if (!userRecord) {
+        app.logger.warn({ userId: sessionRecord.userId }, 'GET /api/auth/get-session - user not found');
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          message: 'User not found'
+        });
+      }
+
+      // Get CoinHub user profile
+      const profile = await app.db.query.users.findFirst({
+        where: eq(schema.users.id, userRecord.id),
+      });
+
+      if (!profile) {
+        app.logger.info({ userId: userRecord.id }, 'GET /api/auth/get-session - profile not found');
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          message: 'User profile not found'
+        });
+      }
+
+      // Generate signed URL for avatar if it exists
+      let avatarUrl = profile.avatarUrl;
+      if (avatarUrl) {
+        try {
+          const { url } = await app.storage.getSignedUrl(avatarUrl);
+          avatarUrl = url;
+        } catch (urlError) {
+          app.logger.warn({ err: urlError, userId: userRecord.id }, 'GET /api/auth/get-session - failed to generate avatar URL');
+          avatarUrl = null;
+        }
+      }
+
+      app.logger.info(
+        { userId: userRecord.id, username: profile.username },
+        'GET /api/auth/get-session - session validated successfully'
+      );
+
+      return {
+        user: {
+          id: userRecord.id,
+          email: userRecord.email,
+          username: profile.username,
+          displayName: profile.displayName,
+          avatarUrl: avatarUrl,
+          bio: profile.bio || null,
+          location: profile.location || null,
+          collectionPrivacy: profile.collectionPrivacy,
+          role: profile.role,
+          createdAt: profile.createdAt,
+          updatedAt: profile.updatedAt,
+        },
+        session: {
+          token: sessionToken,
+          expiresAt: sessionRecord.expiresAt,
+        },
+      };
+    } catch (error) {
+      app.logger.error({ err: error }, 'GET /api/auth/get-session - unexpected error');
+      return reply.status(500).send({
+        error: 'Failed to get session',
+        message: String(error)
+      });
+    }
+  });
 
   /**
    * IMPORTANT: Sign-in and Sign-up endpoints are automatically provided by Better Auth
@@ -1616,4 +1908,16 @@ export function registerAuthRoutes(app: App) {
       });
     }
   });
+
+  // Log that auth alias routes have been registered for mobile app compatibility
+  app.logger.info(
+    {
+      aliasRoutes: [
+        'POST /api/auth/sign-in/email',
+        'GET /api/auth/get-session'
+      ],
+      description: 'Mobile app backward-compatibility alias routes'
+    },
+    'Auth alias routes registered: POST /api/auth/sign-in/email, GET /api/auth/get-session'
+  );
 }
