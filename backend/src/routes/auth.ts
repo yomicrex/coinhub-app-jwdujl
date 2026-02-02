@@ -133,7 +133,7 @@ export function registerAuthRoutes(app: App) {
           return reply.status(401).send({ error: 'Invalid email or password' });
         }
 
-        // Look up CoinHub profile by user ID
+        // Look up CoinHub profile by user ID (optional - user may not have completed profile yet)
         const coinHubUser = await app.db.query.users.findFirst({
           where: eq(schema.users.id, authUser.id),
           columns: {
@@ -152,10 +152,7 @@ export function registerAuthRoutes(app: App) {
           },
         });
 
-        if (!coinHubUser) {
-          app.logger.warn({ userId: authUser.id, email }, 'POST /api/auth/sign-in/email - CoinHub profile not found');
-          return reply.status(401).send({ error: 'Invalid email or password' });
-        }
+        const hasProfile = !!coinHubUser;
 
         // Get account with password
         let accountRecord = await app.db.query.account.findFirst({
@@ -236,25 +233,44 @@ export function registerAuthRoutes(app: App) {
         reply.header('Set-Cookie', setCookieHeader);
         reply.header('Access-Control-Allow-Credentials', 'true');
 
-        return {
-          user: {
-            id: coinHubUser.id,
-            email: coinHubUser.email,
-            username: coinHubUser.username,
-            displayName: coinHubUser.displayName,
-            avatarUrl: coinHubUser.avatarUrl,
-            bio: coinHubUser.bio,
-            location: coinHubUser.location,
-            collectionPrivacy: coinHubUser.collectionPrivacy,
-            role: coinHubUser.role,
-            createdAt: coinHubUser.createdAt,
-            updatedAt: coinHubUser.updatedAt,
-          },
-          session: {
-            token: sessionToken,
-            expiresAt: expiresAt,
-          },
-        };
+        // If user has completed profile, return full user data
+        if (hasProfile) {
+          app.logger.info({ userId: authUser.id, email }, 'POST /api/auth/sign-in/email - Sign-in successful with profile');
+          return {
+            user: {
+              id: coinHubUser.id,
+              email: coinHubUser.email,
+              username: coinHubUser.username,
+              displayName: coinHubUser.displayName,
+              avatarUrl: coinHubUser.avatarUrl,
+              bio: coinHubUser.bio,
+              location: coinHubUser.location,
+              collectionPrivacy: coinHubUser.collectionPrivacy,
+              role: coinHubUser.role,
+              createdAt: coinHubUser.createdAt,
+              updatedAt: coinHubUser.updatedAt,
+            },
+            session: {
+              token: sessionToken,
+              expiresAt: expiresAt,
+            },
+          };
+        } else {
+          // User has account but hasn't completed profile yet
+          app.logger.info({ userId: authUser.id, email }, 'POST /api/auth/sign-in/email - Sign-in successful but profile incomplete');
+          return {
+            user: {
+              id: authUser.id,
+              email: authUser.email,
+              hasProfile: false,
+            },
+            session: {
+              token: sessionToken,
+              expiresAt: expiresAt,
+            },
+            needsProfileCompletion: true,
+          };
+        }
       } catch (dbError) {
         app.logger.error({ err: dbError, email }, 'POST /api/auth/sign-in/email - database error');
         return reply.status(500).send({ error: 'Authentication error' });
@@ -328,55 +344,71 @@ export function registerAuthRoutes(app: App) {
         });
       }
 
-      // Get CoinHub user profile
+      // Get CoinHub user profile (optional - user may not have completed profile yet)
       const profile = await app.db.query.users.findFirst({
         where: eq(schema.users.id, userRecord.id),
       });
 
-      if (!profile) {
-        app.logger.info({ userId: userRecord.id }, 'GET /api/auth/get-session - profile not found');
-        return reply.status(401).send({
-          error: 'Unauthorized',
-          message: 'User profile not found'
-        });
-      }
+      const hasProfile = !!profile;
 
-      // Generate signed URL for avatar if it exists
-      let avatarUrl = profile.avatarUrl;
-      if (avatarUrl) {
-        try {
-          const { url } = await app.storage.getSignedUrl(avatarUrl);
-          avatarUrl = url;
-        } catch (urlError) {
-          app.logger.warn({ err: urlError, userId: userRecord.id }, 'GET /api/auth/get-session - failed to generate avatar URL');
-          avatarUrl = null;
+      // If user has completed profile, return full user data
+      if (hasProfile) {
+        // Generate signed URL for avatar if it exists
+        let avatarUrl = profile.avatarUrl;
+        if (avatarUrl) {
+          try {
+            const { url } = await app.storage.getSignedUrl(avatarUrl);
+            avatarUrl = url;
+          } catch (urlError) {
+            app.logger.warn({ err: urlError, userId: userRecord.id }, 'GET /api/auth/get-session - failed to generate avatar URL');
+            avatarUrl = null;
+          }
         }
+
+        app.logger.info(
+          { userId: userRecord.id, username: profile.username },
+          'GET /api/auth/get-session - session validated successfully with profile'
+        );
+
+        return {
+          user: {
+            id: userRecord.id,
+            email: userRecord.email,
+            username: profile.username,
+            displayName: profile.displayName,
+            avatarUrl: avatarUrl,
+            bio: profile.bio || null,
+            location: profile.location || null,
+            collectionPrivacy: profile.collectionPrivacy,
+            role: profile.role,
+            createdAt: profile.createdAt,
+            updatedAt: profile.updatedAt,
+          },
+          session: {
+            token: sessionToken,
+            expiresAt: sessionRecord.expiresAt,
+          },
+        };
+      } else {
+        // User has session but hasn't completed profile yet
+        app.logger.info(
+          { userId: userRecord.id, email: userRecord.email },
+          'GET /api/auth/get-session - session validated but profile incomplete'
+        );
+
+        return {
+          user: {
+            id: userRecord.id,
+            email: userRecord.email,
+            hasProfile: false,
+          },
+          session: {
+            token: sessionToken,
+            expiresAt: sessionRecord.expiresAt,
+          },
+          needsProfileCompletion: true,
+        };
       }
-
-      app.logger.info(
-        { userId: userRecord.id, username: profile.username },
-        'GET /api/auth/get-session - session validated successfully'
-      );
-
-      return {
-        user: {
-          id: userRecord.id,
-          email: userRecord.email,
-          username: profile.username,
-          displayName: profile.displayName,
-          avatarUrl: avatarUrl,
-          bio: profile.bio || null,
-          location: profile.location || null,
-          collectionPrivacy: profile.collectionPrivacy,
-          role: profile.role,
-          createdAt: profile.createdAt,
-          updatedAt: profile.updatedAt,
-        },
-        session: {
-          token: sessionToken,
-          expiresAt: sessionRecord.expiresAt,
-        },
-      };
     } catch (error) {
       app.logger.error({ err: error }, 'GET /api/auth/get-session - unexpected error');
       return reply.status(500).send({
@@ -590,6 +622,7 @@ export function registerAuthRoutes(app: App) {
           id: userRecord.id,
           email: userRecord.email,
           hasProfile: false,
+          needsProfileCompletion: true,
           message: 'Profile not yet completed. Please complete your profile using POST /api/profiles/complete'
         });
       }
