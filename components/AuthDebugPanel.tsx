@@ -86,15 +86,10 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
   const [authRequestUrlTestResult, setAuthRequestUrlTestResult] = useState<string | null>(null);
   const [authSigninHeadersTestResult, setAuthSigninHeadersTestResult] = useState<string | null>(null);
   const [authHandlerInputTestResult, setAuthHandlerInputTestResult] = useState<string | null>(null);
-  const [testingCheckAccount, setTestingCheckAccount] = useState(false);
   const [testingFixPassword, setTestingFixPassword] = useState(false);
-  const [testingCreateTestUser, setTestingCreateTestUser] = useState(false);
-  const [checkAccountEmail, setCheckAccountEmail] = useState('');
   const [fixPasswordEmail, setFixPasswordEmail] = useState('');
   const [fixPasswordNewPassword, setFixPasswordNewPassword] = useState('');
-  const [showCheckAccountModal, setShowCheckAccountModal] = useState(false);
   const [showFixPasswordModal, setShowFixPasswordModal] = useState(false);
-  const [showCreateTestUserModal, setShowCreateTestUserModal] = useState(false);
 
   // Refresh logs every second when visible
   useEffect(() => {
@@ -562,64 +557,10 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
       return;
     }
 
-    console.log('[AUTH DEBUG] Checking account:', checkAccountEmail);
-    setTestingCheckAccount(true);
-
-    try {
-      const url = `${ENV.BACKEND_URL}/api/admin/check-account/${encodeURIComponent(checkAccountEmail)}`;
-      
-      addAuthDebugLog({
-        type: 'info',
-        endpoint: url,
-        method: 'GET',
-        message: `Checking account status for: ${checkAccountEmail}`,
-      });
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'X-App-Type': ENV.APP_TYPE,
-          'X-Platform': Platform.OS,
-        },
-        credentials: 'omit',
-      });
-
-      const data = await response.json();
-      
-      console.log('[AUTH DEBUG] Check account response:', data);
-      
-      addAuthDebugLog({
-        type: 'response',
-        endpoint: url,
-        method: 'GET',
-        status: response.status,
-        body: JSON.stringify(data, null, 2),
-      });
-
-      if (response.ok) {
-        const resultText = `✅ Account Check Result:\n\nEmail: ${checkAccountEmail}\n\nExists: ${data.exists ? '✅ Yes' : '❌ No'}\nHas Valid Password Hash: ${data.hasValidPasswordHash ? '✅ Yes' : '❌ No'}\nProvider ID: ${data.providerId || 'N/A'}\n\n${!data.hasValidPasswordHash ? '⚠️ Password hash is INVALID! Use "Fix Password" to repair this account.' : '✅ Account is healthy!'}`;
-        alert(resultText);
-        setShowCheckAccountModal(false);
-        setCheckAccountEmail('');
-      } else {
-        const errorText = `❌ Check Account Failed:\n\n${data.error || data.message || 'Unknown error'}`;
-        alert(errorText);
-      }
-    } catch (error) {
-      console.error('[AUTH DEBUG] Check account failed:', error);
-      
-      addAuthDebugLog({
-        type: 'error',
-        endpoint: `${ENV.BACKEND_URL}/api/admin/check-account/${encodeURIComponent(checkAccountEmail)}`,
-        method: 'GET',
-        error: error instanceof Error ? error.message : String(error),
-      });
-
-      const errorText = `❌ Check Account Failed:\n\n${error instanceof Error ? error.message : String(error)}`;
-      alert(errorText);
-    } finally {
-      setTestingCheckAccount(false);
-    }
+    console.log('[AUTH DEBUG] Note: Check Account endpoint removed. Use Forgot Password flow instead.');
+    alert('ℹ️ Account Check Removed\n\nThe check account endpoint has been removed for security.\n\nTo reset a password:\n1. Use the "Forgot Password" link on the login screen\n2. Or use the "Fix Password" tool in development mode');
+    setShowCheckAccountModal(false);
+    setCheckAccountEmail('');
   };
 
   const handleFixPassword = async () => {
@@ -637,13 +578,13 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
     setTestingFixPassword(true);
 
     try {
-      const url = `${ENV.BACKEND_URL}/api/admin/fix-password`;
+      const url = `${ENV.BACKEND_URL}/api/admin/fix-corrupted-password`;
       
       addAuthDebugLog({
         type: 'info',
         endpoint: url,
         method: 'POST',
-        message: `Fixing password for: ${fixPasswordEmail}`,
+        message: `Fixing corrupted password for: ${fixPasswordEmail}`,
       });
 
       const response = await fetch(url, {
@@ -687,7 +628,7 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
       
       addAuthDebugLog({
         type: 'error',
-        endpoint: `${ENV.BACKEND_URL}/api/admin/fix-password`,
+        endpoint: `${ENV.BACKEND_URL}/api/admin/fix-corrupted-password`,
         method: 'POST',
         error: error instanceof Error ? error.message : String(error),
       });
@@ -700,64 +641,9 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
   };
 
   const handleCreateTestUser = async () => {
-    console.log('[AUTH DEBUG] Creating test user...');
-    setTestingCreateTestUser(true);
-
-    try {
-      const url = `${ENV.BACKEND_URL}/api/admin/create-test-user`;
-      
-      addAuthDebugLog({
-        type: 'info',
-        endpoint: url,
-        method: 'POST',
-        message: 'Creating test user with proper password hashing',
-      });
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-App-Type': ENV.APP_TYPE,
-          'X-Platform': Platform.OS,
-        },
-        credentials: 'omit',
-      });
-
-      const data = await response.json();
-      
-      console.log('[AUTH DEBUG] Create test user response:', data);
-      
-      addAuthDebugLog({
-        type: 'response',
-        endpoint: url,
-        method: 'POST',
-        status: response.status,
-        body: JSON.stringify(data, null, 2),
-      });
-
-      if (response.ok) {
-        const resultText = `✅ Test User Created!\n\nEmail: ${data.email}\nPassword: ${data.password}\nUser ID: ${data.userId}\n\n${data.message || 'Test user created successfully with proper password hashing.'}\n\nYou can now sign in with these credentials.`;
-        alert(resultText);
-        setShowCreateTestUserModal(false);
-      } else {
-        const errorText = `❌ Create Test User Failed:\n\n${data.error || data.message || 'Unknown error'}`;
-        alert(errorText);
-      }
-    } catch (error) {
-      console.error('[AUTH DEBUG] Create test user failed:', error);
-      
-      addAuthDebugLog({
-        type: 'error',
-        endpoint: `${ENV.BACKEND_URL}/api/admin/create-test-user`,
-        method: 'POST',
-        error: error instanceof Error ? error.message : String(error),
-      });
-
-      const errorText = `❌ Create Test User Failed:\n\n${error instanceof Error ? error.message : String(error)}`;
-      alert(errorText);
-    } finally {
-      setTestingCreateTestUser(false);
-    }
+    console.log('[AUTH DEBUG] Note: Create Test User endpoint removed. Use standard signup instead.');
+    alert('ℹ️ Create Test User Removed\n\nThe create test user endpoint has been removed.\n\nTo create a new account:\n1. Use the standard "Sign Up" flow on the auth screen\n2. All new accounts will have properly hashed passwords');
+    setShowCreateTestUserModal(false);
   };
 
   const generateDebugReport = (): string => {
@@ -939,30 +825,17 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
 
         {/* Admin Tools Section */}
         <View style={styles.adminSection}>
-          <Text style={styles.adminSectionTitle}>🔧 Admin Tools (Password Hash Fix)</Text>
+          <Text style={styles.adminSectionTitle}>🔧 Password Recovery Tools (Dev Only)</Text>
+          <Text style={styles.adminSectionDescription}>
+            For corrupted passwords, use the "Fix Password" tool below or the "Forgot Password" link on the login screen.
+          </Text>
           <View style={styles.actionButtons}>
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.adminButton]} 
-              onPress={() => setShowCheckAccountModal(true)}
-            >
-              <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={20} color="#FFF" />
-              <Text style={styles.actionButtonText}>Check Account</Text>
-            </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.actionButton, styles.adminButton]} 
               onPress={() => setShowFixPasswordModal(true)}
             >
               <IconSymbol ios_icon_name="wrench.and.screwdriver" android_material_icon_name="build" size={20} color="#FFF" />
-              <Text style={styles.actionButtonText}>Fix Password</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.actionButtons}>
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.adminButton]} 
-              onPress={() => setShowCreateTestUserModal(true)}
-            >
-              <IconSymbol ios_icon_name="person.badge.plus" android_material_icon_name="person-add" size={20} color="#FFF" />
-              <Text style={styles.actionButtonText}>Create Test User</Text>
+              <Text style={styles.actionButtonText}>Fix Corrupted Password</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1057,55 +930,6 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
           </ScrollView>
         </View>
 
-        {/* Check Account Modal */}
-        <Modal
-          visible={showCheckAccountModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => !testingCheckAccount && setShowCheckAccountModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Check Account Status</Text>
-              <Text style={styles.modalDescription}>
-                Enter an email address to check if the account exists and if the password hash is valid.
-              </Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="user@example.com"
-                placeholderTextColor={colors.textSecondary}
-                value={checkAccountEmail}
-                onChangeText={setCheckAccountEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                editable={!testingCheckAccount}
-              />
-              <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.modalButtonCancel]}
-                  onPress={() => {
-                    setShowCheckAccountModal(false);
-                    setCheckAccountEmail('');
-                  }}
-                  disabled={testingCheckAccount}
-                >
-                  <Text style={styles.modalButtonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.modalButtonConfirm]}
-                  onPress={handleCheckAccount}
-                  disabled={testingCheckAccount}
-                >
-                  <Text style={styles.modalButtonText}>
-                    {testingCheckAccount ? 'Checking...' : 'Check'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
-
         {/* Fix Password Modal */}
         <Modal
           visible={showFixPasswordModal}
@@ -1115,9 +939,9 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
         >
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Fix Password Hash</Text>
+              <Text style={styles.modalTitle}>Fix Corrupted Password</Text>
               <Text style={styles.modalDescription}>
-                This will reset the password for an account with a corrupted password hash. Enter the email and a new password.
+                This development tool directly resets a corrupted password. For production, users should use the "Forgot Password" flow on the login screen.
               </Text>
               <TextInput
                 style={styles.modalInput}
@@ -1159,41 +983,6 @@ export function AuthDebugPanel({ visible, onClose }: AuthDebugPanelProps) {
                 >
                   <Text style={styles.modalButtonText}>
                     {testingFixPassword ? 'Fixing...' : 'Fix Password'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
-
-        {/* Create Test User Modal */}
-        <Modal
-          visible={showCreateTestUserModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => !testingCreateTestUser && setShowCreateTestUserModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Create Test User</Text>
-              <Text style={styles.modalDescription}>
-                This will create a new test user with a properly hashed password. The credentials will be displayed after creation.
-              </Text>
-              <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.modalButtonCancel]}
-                  onPress={() => setShowCreateTestUserModal(false)}
-                  disabled={testingCreateTestUser}
-                >
-                  <Text style={styles.modalButtonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.modalButtonConfirm]}
-                  onPress={handleCreateTestUser}
-                  disabled={testingCreateTestUser}
-                >
-                  <Text style={styles.modalButtonText}>
-                    {testingCreateTestUser ? 'Creating...' : 'Create User'}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1308,7 +1097,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
+    marginBottom: 8,
+  },
+  adminSectionDescription: {
+    fontSize: 13,
+    color: colors.textSecondary,
     marginBottom: 12,
+    lineHeight: 18,
   },
   modalOverlay: {
     flex: 1,
