@@ -1,3 +1,4 @@
+
 {
   "build": {
     "development": {
@@ -41,9 +42,9 @@
         "track": "internal"
       },
       "ios": {
-        "appleId": "your-apple-id@example.com",
-        "ascAppId": "your-asc-app-id",
-        "appleTeamId": "your-team-id"
+        "appleId": "YOUR_APPLE_ID_HERE",
+        "ascAppId": "YOUR_ASC_APP_ID_HERE",
+        "appleTeamId": "YOUR_APPLE_TEAM_ID_HERE"
       }
     }
   }
