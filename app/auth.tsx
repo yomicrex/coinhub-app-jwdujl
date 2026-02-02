@@ -13,6 +13,7 @@ import {
   Alert,
   ImageBackground,
   Dimensions,
+  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -22,8 +23,6 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { BlurView } from 'expo-blur';
 import ENV from '@/config/env';
 
-const { width, height } = Dimensions.get('window');
-
 export default function AuthScreen() {
   const router = useRouter();
   const { user, loading, signIn, signUp } = useAuth();
@@ -31,6 +30,9 @@ export default function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorTitle, setErrorTitle] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
   console.log('AuthScreen: Rendered with user:', user?.email, 'needsCompletion:', user?.needsProfileCompletion);
 
@@ -55,7 +57,9 @@ export default function AuthScreen() {
     console.log('AuthScreen: User tapped', isSignUp ? 'Sign Up' : 'Sign In', 'button');
     
     if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+      setErrorTitle('Missing Information');
+      setErrorMessage('Please fill in all fields');
+      setShowErrorModal(true);
       return;
     }
 
@@ -74,19 +78,31 @@ export default function AuthScreen() {
     } catch (error: any) {
       console.error('AuthScreen: Auth error:', error);
       
-      let errorMessage = error.message || 'Authentication failed';
+      let displayErrorMessage = error.message || 'Authentication failed';
+      let displayErrorTitle = 'Error';
       
-      // Handle specific error cases
-      if (errorMessage.includes('User already exists')) {
-        errorMessage = 'This email is already registered. Please sign in instead.';
-      } else if (errorMessage.includes('Invalid credentials') || errorMessage.includes('Incorrect')) {
-        errorMessage = 'Invalid email or password. Please try again.';
-      } else if (errorMessage.toLowerCase().includes('invalid origin')) {
-        errorMessage = 'Authentication error. Please try again or contact support.';
+      // Handle specific error cases with helpful messages
+      if (displayErrorMessage.includes('User already exists')) {
+        displayErrorTitle = 'Account Exists';
+        displayErrorMessage = 'This email is already registered. Please sign in instead.';
+      } else if (displayErrorMessage.includes('Invalid credentials') || displayErrorMessage.includes('Incorrect') || displayErrorMessage.includes('Invalid email or password')) {
+        displayErrorTitle = 'Login Failed';
+        displayErrorMessage = 'Invalid email or password. Please check your credentials and try again.';
+      } else if (displayErrorMessage.toLowerCase().includes('invalid origin')) {
+        displayErrorTitle = 'Authentication Error';
+        displayErrorMessage = 'There was a problem with authentication. Please try again or contact support if the issue persists.';
+      } else if (displayErrorMessage.toLowerCase().includes('authentication error') || displayErrorMessage.toLowerCase().includes('invalid password hash') || displayErrorMessage.toLowerCase().includes('password hash format')) {
+        displayErrorTitle = '🔧 Account Issue Detected';
+        displayErrorMessage = 'There is an issue with your account password. This can happen if your account was created during a system update.\n\n📧 Please contact support at support@coinhub.app for immediate assistance. Our team can quickly fix this issue for you.\n\n⚠️ We apologize for the inconvenience and appreciate your patience.';
+      } else if (displayErrorMessage.toLowerCase().includes('network') || displayErrorMessage.toLowerCase().includes('fetch')) {
+        displayErrorTitle = 'Connection Error';
+        displayErrorMessage = 'Unable to connect to the server. Please check your internet connection and try again.';
       }
       
-      console.error('AuthScreen: Authentication error:', errorMessage);
-      Alert.alert('Error', errorMessage);
+      console.error('AuthScreen: Authentication error:', displayErrorTitle, '-', displayErrorMessage);
+      setErrorTitle(displayErrorTitle);
+      setErrorMessage(displayErrorMessage);
+      setShowErrorModal(true);
     } finally {
       setIsLoading(false);
     }
@@ -193,6 +209,35 @@ export default function AuthScreen() {
             </BlurView>
           </ScrollView>
         </KeyboardAvoidingView>
+
+        {/* Error Modal */}
+        <Modal
+          visible={showErrorModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowErrorModal(false)}
+        >
+          <View style={styles.errorModalOverlay}>
+            <BlurView intensity={80} tint="dark" style={styles.errorModalBlur}>
+              <View style={styles.errorModalContent}>
+                <IconSymbol
+                  ios_icon_name="exclamationmark.triangle.fill"
+                  android_material_icon_name="error"
+                  size={48}
+                  color="#FF3B30"
+                />
+                <Text style={styles.errorModalTitle}>{errorTitle}</Text>
+                <Text style={styles.errorModalMessage}>{errorMessage}</Text>
+                <TouchableOpacity
+                  style={styles.errorModalButton}
+                  onPress={() => setShowErrorModal(false)}
+                >
+                  <Text style={styles.errorModalButtonText}>OK</Text>
+                </TouchableOpacity>
+              </View>
+            </BlurView>
+          </View>
+        </Modal>
       </SafeAreaView>
     </ImageBackground>
   );
@@ -302,5 +347,56 @@ const styles = StyleSheet.create({
     color: '#FFD700',
     fontSize: 14,
     fontWeight: '600',
+  },
+  errorModalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    padding: 24,
+  },
+  errorModalBlur: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 59, 48, 0.3)',
+  },
+  errorModalContent: {
+    padding: 32,
+    alignItems: 'center',
+    minWidth: 300,
+    maxWidth: 400,
+  },
+  errorModalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginTop: 16,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  errorModalMessage: {
+    fontSize: 16,
+    color: '#FFFFFF',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+  errorModalButton: {
+    backgroundColor: '#FFD700',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 48,
+    shadowColor: '#FFD700',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  errorModalButtonText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
 });
