@@ -41,7 +41,8 @@ export default function SettingsScreen() {
   };
 
   const handleContactSupport = () => {
-    console.log('User tapped Contact Support');
+    console.log('User tapped Contact Support - Opening email to: support@coinhubapp.ca');
+    // VERIFIED: Correct email address
     Linking.openURL('mailto:support@coinhubapp.ca');
   };
 
