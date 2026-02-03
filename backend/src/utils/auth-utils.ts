@@ -70,6 +70,7 @@ export async function validateSession(
   const sessionToken = extractSessionToken(request);
 
   if (!sessionToken) {
+    app.logger.debug('validateSession: No session token found');
     return null;
   }
 
@@ -80,11 +81,15 @@ export async function validateSession(
     });
 
     if (!sessionRecord) {
+      app.logger.debug({ tokenLength: sessionToken.length }, 'validateSession: Session token not found in database');
       return null;
     }
 
     // Check if session is expired
-    if (new Date(sessionRecord.expiresAt) < new Date()) {
+    const expiresAt = new Date(sessionRecord.expiresAt);
+    const now = new Date();
+    if (expiresAt < now) {
+      app.logger.debug({ expiresAt, now }, 'validateSession: Session expired');
       return null;
     }
 
@@ -94,8 +99,14 @@ export async function validateSession(
     });
 
     if (!userRecord) {
+      app.logger.debug({ userId: sessionRecord.userId }, 'validateSession: User not found');
       return null;
     }
+
+    app.logger.debug(
+      { userId: userRecord.id, expiresIn: Math.floor((expiresAt.getTime() - now.getTime()) / 1000) },
+      'validateSession: Session valid'
+    );
 
     return {
       user: {
@@ -104,7 +115,8 @@ export async function validateSession(
       },
       session: sessionRecord,
     };
-  } catch {
+  } catch (error) {
+    app.logger.debug({ err: error }, 'validateSession: Unexpected error');
     return null;
   }
 }

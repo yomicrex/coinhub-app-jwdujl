@@ -113,7 +113,8 @@ export function registerAuthRoutes(app: App) {
         'session': [
           'GET /api/auth/session',
           'GET /api/auth/get-session',
-          'GET /api/auth/me'
+          'GET /api/auth/me',
+          'POST /api/auth/validate-session'
         ],
         'profile': [
           'POST /api/auth/complete-profile',
@@ -763,6 +764,132 @@ export function registerAuthRoutes(app: App) {
   });
 
   /**
+   * POST /api/auth/validate-session
+   * Validate current session and ensure it's still valid
+   *
+   * Headers: Authorization: Bearer <token> OR Cookie: session=<token>
+   * Returns: { valid: true, user: {...}, session: {...} } if valid
+   * Returns: { valid: false, error: string } if invalid or expired
+   */
+  app.fastify.post('/api/auth/validate-session', async (request: FastifyRequest, reply: FastifyReply) => {
+    app.logger.info(
+      {
+        route: 'POST /api/auth/validate-session',
+        timestamp: new Date().toISOString(),
+        hasAuth: !!request.headers.authorization,
+        hasCookie: !!request.headers.cookie
+      },
+      '[AUTH_ROUTE] POST /api/auth/validate-session - Request received'
+    );
+
+    try {
+      // Extract session token
+      const sessionToken = extractSessionToken(request);
+
+      if (!sessionToken) {
+        app.logger.info(
+          { route: 'POST /api/auth/validate-session', status: 200 },
+          '[AUTH_ROUTE] POST /api/auth/validate-session - No session token (200)'
+        );
+        return {
+          valid: false,
+          code: 'NO_SESSION',
+          message: 'No active session'
+        };
+      }
+
+      // Look up session in database
+      const sessionRecord = await app.db.query.session.findFirst({
+        where: eq(authSchema.session.token, sessionToken)
+      });
+
+      if (!sessionRecord) {
+        app.logger.info(
+          { route: 'POST /api/auth/validate-session', status: 200 },
+          '[AUTH_ROUTE] POST /api/auth/validate-session - Session token not found (200)'
+        );
+        return {
+          valid: false,
+          code: 'INVALID_SESSION',
+          message: 'Session not found'
+        };
+      }
+
+      // Check if session is expired
+      const expiresAt = new Date(sessionRecord.expiresAt);
+      const now = new Date();
+      if (expiresAt < now) {
+        app.logger.info(
+          { route: 'POST /api/auth/validate-session', status: 200 },
+          '[AUTH_ROUTE] POST /api/auth/validate-session - Session expired (200)'
+        );
+        return {
+          valid: false,
+          code: 'SESSION_EXPIRED',
+          message: 'Session has expired'
+        };
+      }
+
+      // Get user record
+      const userRecord = await app.db.query.user.findFirst({
+        where: eq(authSchema.user.id, sessionRecord.userId)
+      });
+
+      if (!userRecord) {
+        app.logger.info(
+          { route: 'POST /api/auth/validate-session', status: 200 },
+          '[AUTH_ROUTE] POST /api/auth/validate-session - User not found (200)'
+        );
+        return {
+          valid: false,
+          code: 'USER_NOT_FOUND',
+          message: 'User not found'
+        };
+      }
+
+      // Get CoinHub profile
+      const profile = await app.db.query.users.findFirst({
+        where: eq(schema.users.id, userRecord.id)
+      });
+
+      app.logger.info(
+        {
+          route: 'POST /api/auth/validate-session',
+          userId: userRecord.id,
+          hasProfile: !!profile,
+          status: 200
+        },
+        '[AUTH_ROUTE] POST /api/auth/validate-session - Session valid (200)'
+      );
+
+      return {
+        valid: true,
+        user: {
+          id: userRecord.id,
+          email: userRecord.email,
+          name: userRecord.name,
+          hasProfile: !!profile
+        },
+        session: {
+          token: sessionToken,
+          expiresAt: sessionRecord.expiresAt,
+          expiresIn: Math.floor((expiresAt.getTime() - now.getTime()) / 1000) // seconds remaining
+        }
+      };
+    } catch (error) {
+      app.logger.error(
+        { err: error, route: 'POST /api/auth/validate-session', status: 500 },
+        '[AUTH_ROUTE] POST /api/auth/validate-session - Unexpected error (500)'
+      );
+      return reply.status(500).send({
+        error: 'Server error',
+        code: 'SERVER_ERROR',
+        message: 'Failed to validate session'
+      });
+    }
+  });
+
+  /**
    * IMPORTANT: Sign-in and Sign-up endpoints are automatically provided by Better Auth
    *
    * POST /api/auth/sign-in/email
@@ -878,10 +1005,14 @@ export function registerAuthRoutes(app: App) {
       );
 
       if (!sessionToken) {
-        app.logger.warn('GET /api/auth/me - No session token found in request');
+        app.logger.warn(
+          { route: 'GET /api/auth/me', status: 401 },
+          '[AUTH_ROUTE] GET /api/auth/me - No session token found (401)'
+        );
         return reply.status(401).send({
           error: 'Unauthorized',
-          message: 'No active session'
+          code: 'NO_SESSION',
+          message: 'No active session. Please sign in.'
         });
       }
 
@@ -893,12 +1024,13 @@ export function registerAuthRoutes(app: App) {
 
       if (!sessionRecord) {
         app.logger.warn(
-          { tokenLength: sessionToken.length, tokenStart: sessionToken.substring(0, 20) },
-          'GET /api/auth/me - Session token not found in database'
+          { route: 'GET /api/auth/me', tokenLength: sessionToken.length, status: 401 },
+          '[AUTH_ROUTE] GET /api/auth/me - Session token not found (401)'
         );
         return reply.status(401).send({
           error: 'Unauthorized',
-          message: 'Session not found'
+          code: 'INVALID_SESSION',
+          message: 'Session not found. Please sign in again.'
         });
       }
 
@@ -909,12 +1041,13 @@ export function registerAuthRoutes(app: App) {
       const now = new Date();
       if (expiresAt < now) {
         app.logger.warn(
-          { expiresAt, now },
-          'GET /api/auth/me - Session has expired'
+          { route: 'GET /api/auth/me', expiresAt, now, status: 401 },
+          '[AUTH_ROUTE] GET /api/auth/me - Session expired (401)'
         );
         return reply.status(401).send({
           error: 'Unauthorized',
-          message: 'Session expired'
+          code: 'SESSION_EXPIRED',
+          message: 'Your session has expired. Please sign in again.'
         });
       }
 
@@ -926,12 +1059,13 @@ export function registerAuthRoutes(app: App) {
 
       if (!userRecord) {
         app.logger.warn(
-          { userId: sessionRecord.userId },
-          'GET /api/auth/me - User not found for valid session'
+          { route: 'GET /api/auth/me', userId: sessionRecord.userId, status: 401 },
+          '[AUTH_ROUTE] GET /api/auth/me - User not found (401)'
         );
         return reply.status(401).send({
           error: 'Unauthorized',
-          message: 'User not found'
+          code: 'USER_NOT_FOUND',
+          message: 'User account not found.'
         });
       }
 
@@ -1029,23 +1163,33 @@ export function registerAuthRoutes(app: App) {
    * Returns 400 if validation fails, 409 if username already taken, 500 for database errors
    */
   app.fastify.post('/api/auth/complete-profile', async (request: FastifyRequest, reply: FastifyReply) => {
-    app.logger.info('POST /api/auth/complete-profile - starting profile completion');
+    app.logger.info(
+      {
+        route: 'POST /api/auth/complete-profile',
+        timestamp: new Date().toISOString(),
+        hasAuth: !!request.headers.authorization,
+        hasCookie: !!request.headers.cookie
+      },
+      '[AUTH_ROUTE] POST /api/auth/complete-profile - Request received'
+    );
 
     let userRecord: any;
     let requestBody: Record<string, any> | undefined;
 
     try {
-      // Get session token from cookie header
-      const cookieHeader = request.headers.cookie || '';
-      const sessionToken = cookieHeader
-        .split(';')
-        .find(cookie => cookie.trim().startsWith('session='))
-        ?.split('=')[1]
-        ?.trim();
+      // Extract session token using utility function (supports both Authorization header and cookies)
+      const sessionToken = extractSessionToken(request);
 
       if (!sessionToken) {
-        app.logger.warn('Profile completion attempted without authentication');
-        return reply.status(401).send({ error: 'Unauthorized', message: 'Authentication required' });
+        app.logger.warn(
+          { route: 'POST /api/auth/complete-profile', status: 401 },
+          '[AUTH_ROUTE] POST /api/auth/complete-profile - No session token provided (401)'
+        );
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          code: 'NO_SESSION',
+          message: 'Authentication required. Please sign in first.'
+        });
       }
 
       // Look up session in database
@@ -1054,14 +1198,30 @@ export function registerAuthRoutes(app: App) {
       });
 
       if (!sessionRecord) {
-        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session not found for profile completion');
-        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid' });
+        app.logger.warn(
+          { route: 'POST /api/auth/complete-profile', tokenLength: sessionToken.length, status: 401 },
+          '[AUTH_ROUTE] POST /api/auth/complete-profile - Session token not found (401)'
+        );
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          code: 'INVALID_SESSION',
+          message: 'Session not found. Please sign in again.'
+        });
       }
 
       // Check if session is expired
-      if (new Date(sessionRecord.expiresAt) < new Date()) {
-        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session expired for profile completion');
-        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      const expiresAt = new Date(sessionRecord.expiresAt);
+      const now = new Date();
+      if (expiresAt < now) {
+        app.logger.warn(
+          { route: 'POST /api/auth/complete-profile', expiresAt, now, status: 401 },
+          '[AUTH_ROUTE] POST /api/auth/complete-profile - Session expired (401)'
+        );
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          code: 'SESSION_EXPIRED',
+          message: 'Your session has expired. Please sign in again.'
+        });
       }
 
       // Get user record
@@ -1070,8 +1230,15 @@ export function registerAuthRoutes(app: App) {
       });
 
       if (!userRecord) {
-        app.logger.warn({ userId: sessionRecord.userId }, 'User not found for profile completion');
-        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+        app.logger.warn(
+          { route: 'POST /api/auth/complete-profile', userId: sessionRecord.userId, status: 401 },
+          '[AUTH_ROUTE] POST /api/auth/complete-profile - User not found (401)'
+        );
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          code: 'USER_NOT_FOUND',
+          message: 'User account not found.'
+        });
       }
 
       app.logger.info({ userId: userRecord.id, email: userRecord.email }, 'Session validated for profile completion');
@@ -1313,20 +1480,30 @@ export function registerAuthRoutes(app: App) {
    * Returns 400 if validation fails, 401 if not authenticated
    */
   app.fastify.patch('/api/auth/profile', async (request: FastifyRequest, reply: FastifyReply) => {
-    app.logger.info('PATCH /api/auth/profile - updating profile');
+    app.logger.info(
+      {
+        route: 'PATCH /api/auth/profile',
+        timestamp: new Date().toISOString(),
+        hasAuth: !!request.headers.authorization,
+        hasCookie: !!request.headers.cookie
+      },
+      '[AUTH_ROUTE] PATCH /api/auth/profile - Request received'
+    );
 
     try {
-      // Get session token from cookie header
-      const cookieHeader = request.headers.cookie || '';
-      const sessionToken = cookieHeader
-        .split(';')
-        .find(cookie => cookie.trim().startsWith('session='))
-        ?.split('=')[1]
-        ?.trim();
+      // Extract session token using utility function (supports both Authorization header and cookies)
+      const sessionToken = extractSessionToken(request);
 
       if (!sessionToken) {
-        app.logger.warn('Profile update attempted without authentication');
-        return reply.status(401).send({ error: 'Unauthorized', message: 'Authentication required' });
+        app.logger.warn(
+          { route: 'PATCH /api/auth/profile', status: 401 },
+          '[AUTH_ROUTE] PATCH /api/auth/profile - No session token provided (401)'
+        );
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          code: 'NO_SESSION',
+          message: 'Authentication required. Please sign in first.'
+        });
       }
 
       // Look up session in database
@@ -1335,14 +1512,30 @@ export function registerAuthRoutes(app: App) {
       });
 
       if (!sessionRecord) {
-        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session not found for profile update');
-        return reply.status(401).send({ error: 'Unauthorized', message: 'Session invalid' });
+        app.logger.warn(
+          { route: 'PATCH /api/auth/profile', tokenLength: sessionToken.length, status: 401 },
+          '[AUTH_ROUTE] PATCH /api/auth/profile - Session token not found (401)'
+        );
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          code: 'INVALID_SESSION',
+          message: 'Session not found. Please sign in again.'
+        });
       }
 
       // Check if session is expired
-      if (new Date(sessionRecord.expiresAt) < new Date()) {
-        app.logger.warn({ token: sessionToken.substring(0, 20) }, 'Session expired for profile update');
-        return reply.status(401).send({ error: 'Unauthorized', message: 'Session expired' });
+      const expiresAt = new Date(sessionRecord.expiresAt);
+      const now = new Date();
+      if (expiresAt < now) {
+        app.logger.warn(
+          { route: 'PATCH /api/auth/profile', expiresAt, now, status: 401 },
+          '[AUTH_ROUTE] PATCH /api/auth/profile - Session expired (401)'
+        );
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          code: 'SESSION_EXPIRED',
+          message: 'Your session has expired. Please sign in again.'
+        });
       }
 
       // Get user record
@@ -1351,8 +1544,15 @@ export function registerAuthRoutes(app: App) {
       });
 
       if (!userRecord) {
-        app.logger.warn({ userId: sessionRecord.userId }, 'User not found for profile update');
-        return reply.status(401).send({ error: 'Unauthorized', message: 'User not found' });
+        app.logger.warn(
+          { route: 'PATCH /api/auth/profile', userId: sessionRecord.userId, status: 401 },
+          '[AUTH_ROUTE] PATCH /api/auth/profile - User not found (401)'
+        );
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          code: 'USER_NOT_FOUND',
+          message: 'User account not found.'
+        });
       }
 
       app.logger.info({ userId: userRecord.id }, 'Profile update started');
@@ -1379,24 +1579,46 @@ export function registerAuthRoutes(app: App) {
         .returning();
 
       app.logger.info(
-        { userId: userRecord.id, updatedFields: Object.keys(updates) },
-        'Profile updated successfully'
+        {
+          route: 'PATCH /api/auth/profile',
+          userId: userRecord.id,
+          updatedFields: Object.keys(updates),
+          status: 200
+        },
+        '[AUTH_ROUTE] PATCH /api/auth/profile - Profile updated successfully (200)'
       );
-      return profile[0];
+
+      // Return updated profile with session confirmation
+      return {
+        user: profile[0],
+        session: {
+          token: sessionToken,
+          expiresAt: sessionRecord.expiresAt,
+          valid: true
+        }
+      };
     } catch (error) {
       if (error instanceof z.ZodError) {
         app.logger.warn(
-          { error: error.issues },
-          'Profile update validation error'
+          { route: 'PATCH /api/auth/profile', errors: error.issues, status: 400 },
+          '[AUTH_ROUTE] PATCH /api/auth/profile - Validation error (400)'
         );
         return reply.status(400).send({
           error: 'Validation failed',
+          code: 'INVALID_INPUT',
           details: error.issues,
           message: 'Please check the fields and try again'
         });
       }
-      app.logger.error({ err: error }, 'Failed to update profile');
-      return reply.status(500).send({ error: 'Server error', message: 'Failed to update profile' });
+      app.logger.error(
+        { err: error, route: 'PATCH /api/auth/profile', status: 500 },
+        '[AUTH_ROUTE] PATCH /api/auth/profile - Server error (500)'
+      );
+      return reply.status(500).send({
+        error: 'Server error',
+        code: 'SERVER_ERROR',
+        message: 'Failed to update profile. Please try again later.'
+      });
     }
   });
 
