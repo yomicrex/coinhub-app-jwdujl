@@ -8,8 +8,8 @@ import {
   TextInput,
   TouchableOpacity,
   Image,
-  Alert,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
@@ -26,6 +26,10 @@ export default function EditProfileScreen() {
   const [location, setLocation] = useState('');
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+  const [modalType, setModalType] = useState<'success' | 'error'>('success');
   const router = useRouter();
 
   useEffect(() => {
@@ -49,6 +53,27 @@ export default function EditProfileScreen() {
     if (!result.canceled) {
       console.log('EditProfileScreen: Image selected');
       setAvatarUri(result.assets[0].uri);
+    }
+  };
+
+  const showSuccessModal = (title: string, message: string) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalType('success');
+    setShowModal(true);
+  };
+
+  const showErrorModal = (title: string, message: string) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalType('error');
+    setShowModal(true);
+  };
+
+  const handleModalClose = () => {
+    setShowModal(false);
+    if (modalType === 'success') {
+      router.back();
     }
   };
 
@@ -99,9 +124,7 @@ export default function EditProfileScreen() {
       if (response.ok) {
         console.log('EditProfileScreen: Profile updated successfully');
         await refreshUser();
-        Alert.alert('Success', 'Profile updated!', [
-          { text: 'OK', onPress: () => router.back() },
-        ]);
+        showSuccessModal('Success', 'Profile updated successfully!');
       } else {
         const errorText = await response.text();
         console.error('EditProfileScreen: Profile update failed:', errorText);
@@ -109,7 +132,7 @@ export default function EditProfileScreen() {
       }
     } catch (error: any) {
       console.error('EditProfileScreen: Error updating profile:', error);
-      Alert.alert('Error', error.message || 'Failed to update profile');
+      showErrorModal('Error', error.message || 'Failed to update profile. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -183,6 +206,33 @@ export default function EditProfileScreen() {
           />
         </View>
       </ScrollView>
+
+      {/* Success/Error Modal */}
+      <Modal
+        visible={showModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handleModalClose}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <IconSymbol
+              ios_icon_name={modalType === 'success' ? 'checkmark.circle.fill' : 'exclamationmark.triangle.fill'}
+              android_material_icon_name={modalType === 'success' ? 'check-circle' : 'error'}
+              size={48}
+              color={modalType === 'success' ? colors.primary : '#FF3B30'}
+            />
+            <Text style={styles.modalTitle}>{modalTitle}</Text>
+            <Text style={styles.modalMessage}>{modalMessage}</Text>
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={handleModalClose}
+            >
+              <Text style={styles.modalButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -248,5 +298,48 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 16,
     fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    minWidth: 300,
+    maxWidth: 400,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+  modalButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 48,
+  },
+  modalButtonText: {
+    color: colors.background,
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

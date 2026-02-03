@@ -65,7 +65,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('AuthContext: No valid session token found - user not authenticated');
         setUser(null);
         
-        // Debug log
         addAuthDebugLog({
           type: 'error',
           endpoint: '/api/auth/me',
@@ -81,7 +80,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const queryParams = forceRefresh ? `?_t=${Date.now()}` : '';
       const url = `${API_URL}/api/auth/me${queryParams}`;
       
-      // Debug log - request
       addAuthDebugLog({
         type: 'request',
         endpoint: url,
@@ -106,7 +104,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       console.log('AuthContext: /me response status:', response.status);
       
-      // Get response body for logging
       const responseClone = response.clone();
       let responseBody = '';
       try {
@@ -118,7 +115,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!response.ok) {
         console.error('AuthContext: /me request failed with status:', response.status);
         
-        // Debug log - error response
         addAuthDebugLog({
           type: 'error',
           endpoint: url,
@@ -138,7 +134,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(`Failed to fetch user profile: ${response.status} - ${errorText}`);
       }
       
-      // Debug log - success response
       addAuthDebugLog({
         type: 'response',
         endpoint: url,
@@ -161,9 +156,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         message: data?.message,
       });
       
-      // CRITICAL FIX: Handle backend response format for users without profiles
-      // Backend returns: { id, email, hasProfile: false, message: "Profile not yet completed..." }
-      // OR: { id, email, needsProfileCompletion: true }
       if (data.hasProfile === false || data.needsProfileCompletion === true) {
         const userWithoutProfile: User = {
           id: data.id,
@@ -175,8 +167,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return userWithoutProfile;
       }
       
-      // Check if user has complete profile (new backend format)
-      // Backend returns: { id, email, username, displayName, avatarUrl, bio, location, hasProfile: true }
       if (data.hasProfile === true && data.username) {
         const combinedUser: User = {
           id: data.id,
@@ -193,7 +183,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return combinedUser;
       }
       
-      // Legacy format support (old backend response)
       if (data.user && data.profile) {
         const combinedUser: User = {
           id: data.user.id,
@@ -219,14 +208,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return userWithoutProfile;
       }
       
-      // No valid user data found
       console.log('AuthContext: No valid user data in response - clearing user state');
       setUser(null);
       return null;
     } catch (error) {
       console.error('AuthContext: Error fetching user profile:', error);
       
-      // Debug log
       addAuthDebugLog({
         type: 'error',
         endpoint: '/api/auth/me',
@@ -258,12 +245,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const timeout = setTimeout(() => {
       console.log('AuthContext: Auth initialization timeout - forcing loading to false');
       setLoading(false);
-    }, 5000); // Increased timeout to 5 seconds for slower connections
+    }, 5000);
     
     fetchUser()
       .catch((error) => {
         console.error('AuthContext: Critical error during initialization:', error);
-        // Even if there's an error, we need to stop loading
         setLoading(false);
       })
       .finally(() => {
@@ -278,7 +264,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (email: string, password: string) => {
     console.log('AuthContext: SignIn - Attempting to sign in with email:', email);
     
-    // Debug log
     addAuthDebugLog({
       type: 'info',
       endpoint: '/api/auth/sign-in',
@@ -298,8 +283,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (result.error) {
         console.error('AuthContext: SignIn - Failed with error:', result.error);
         
-        // CRITICAL: Enhanced error logging to capture HTTP status and response body
-        // This helps identify whether "Invalid origin" is from Better Auth or our middleware
         const errorMessage = result.error.message || 'Sign in failed';
         const errorStatus = (result.error as any).status || (result.error as any).statusCode || 'unknown';
         const errorCode = (result.error as any).code || 'unknown';
@@ -312,7 +295,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           fullError: errorBody,
         });
         
-        // Debug log with enhanced details
         addAuthDebugLog({
           type: 'error',
           endpoint: '/api/auth/sign-in',
@@ -327,7 +309,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       console.log('AuthContext: SignIn - Better Auth sign-in successful');
       
-      // Debug log
       addAuthDebugLog({
         type: 'response',
         endpoint: '/api/auth/sign-in',
@@ -342,8 +323,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('AuthContext: SignIn - Fetching fresh user profile with forced refresh');
       const userData = await fetchUserProfile(true);
       
-      // CRITICAL FIX: If user data indicates profile needs completion, stop here
-      // The fetchUserProfile function will have already set the user state with needsProfileCompletion flag
       if (!userData || userData.needsProfileCompletion) {
         console.log('AuthContext: SignIn - User needs to complete profile, stopping here');
         return;
@@ -353,7 +332,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error: any) {
       console.error('AuthContext: SignIn - Error:', error);
       
-      // CRITICAL: Enhanced error logging for exceptions
       const errorMessage = error.message || 'Sign in failed';
       const errorName = error.name || 'Error';
       const errorStack = error.stack?.substring(0, 500) || 'No stack trace';
@@ -364,7 +342,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         stack: errorStack,
       });
       
-      // Debug log with enhanced details
       addAuthDebugLog({
         type: 'error',
         endpoint: '/api/auth/sign-in',
@@ -381,7 +358,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUp = async (email: string, password: string) => {
     console.log('AuthContext: SignUp - Attempting to sign up with email:', email);
     
-    // Debug log
     addAuthDebugLog({
       type: 'info',
       endpoint: '/api/auth/sign-up',
@@ -402,7 +378,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (result.error) {
         console.error('AuthContext: SignUp - Failed with error:', result.error);
         
-        // Debug log
         addAuthDebugLog({
           type: 'error',
           endpoint: '/api/auth/sign-up',
@@ -415,8 +390,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       console.log('AuthContext: SignUp - Better Auth sign-up successful');
       
-      // After sign-up, user always needs to complete profile
-      // Set user with needsProfileCompletion flag
       const resultData = result.data as any;
       const userWithoutProfile: User = {
         id: resultData?.user?.id || resultData?.id,
@@ -426,7 +399,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       setUser(userWithoutProfile);
       
-      // Debug log
       addAuthDebugLog({
         type: 'response',
         endpoint: '/api/auth/sign-up',
@@ -439,7 +411,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error: any) {
       console.error('AuthContext: SignUp - Error:', error);
       
-      // Debug log
       addAuthDebugLog({
         type: 'error',
         endpoint: '/api/auth/sign-up',
@@ -455,7 +426,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const completeProfile = async (username: string, displayName: string) => {
     console.log('AuthContext: CompleteProfile - Completing profile with username:', username);
     
-    // Debug log
     addAuthDebugLog({
       type: 'info',
       endpoint: '/api/profiles/complete',
@@ -469,7 +439,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!sessionToken) {
         console.error('AuthContext: CompleteProfile - No valid session found');
         
-        // Debug log
         addAuthDebugLog({
           type: 'error',
           endpoint: '/api/profiles/complete',
@@ -480,8 +449,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error('Not authenticated. Please sign in again.');
       }
       
-      // CRITICAL: Use /api/profiles/complete endpoint
-      // This endpoint handles profile completion for authenticated users
       const response = await fetch(`${API_URL}/api/profiles/complete`, {
         method: 'POST',
         headers: {
@@ -498,7 +465,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const errorData = await response.json().catch(() => ({}));
         console.error('AuthContext: CompleteProfile - Failed with status:', response.status, errorData);
         
-        // Debug log
         addAuthDebugLog({
           type: 'error',
           endpoint: '/api/profiles/complete',
@@ -514,7 +480,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       console.log('AuthContext: CompleteProfile - Successful, profile created');
       
-      // Debug log
       addAuthDebugLog({
         type: 'response',
         endpoint: '/api/profiles/complete',
@@ -533,7 +498,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error: any) {
       console.error('AuthContext: CompleteProfile - Error:', error);
       
-      // Debug log
       addAuthDebugLog({
         type: 'error',
         endpoint: '/api/profiles/complete',
@@ -548,7 +512,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     console.log('AuthContext: SignOut - Signing out user');
     
-    // Debug log
     addAuthDebugLog({
       type: 'info',
       endpoint: '/api/auth/sign-out',
@@ -564,7 +527,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       console.log('AuthContext: SignOut - Better Auth signOut complete');
       
-      // Debug log
       addAuthDebugLog({
         type: 'response',
         endpoint: '/api/auth/sign-out',
@@ -575,7 +537,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('AuthContext: SignOut - Error during signOut:', error);
       
-      // Debug log
       addAuthDebugLog({
         type: 'error',
         endpoint: '/api/auth/sign-out',
@@ -592,7 +553,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshUser = async () => {
     console.log('AuthContext: RefreshUser - Refreshing user data');
     
-    // Debug log
     addAuthDebugLog({
       type: 'info',
       endpoint: 'refreshUser',

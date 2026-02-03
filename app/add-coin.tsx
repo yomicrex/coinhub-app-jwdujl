@@ -8,10 +8,10 @@ import {
   TextInput,
   TouchableOpacity,
   Image,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
@@ -47,6 +47,10 @@ export default function AddCoinScreen() {
   const [checkingLimit, setCheckingLimit] = useState(true);
   const [canUpload, setCanUpload] = useState(true);
   const [uploadLimit, setUploadLimit] = useState<{ coinsUploadedThisMonth: number; limit: number | null } | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+  const [modalType, setModalType] = useState<'success' | 'error'>('success');
 
   useEffect(() => {
     checkUploadLimit();
@@ -112,16 +116,37 @@ export default function AddCoinScreen() {
     setImages(images.filter((_, i) => i !== index));
   };
 
+  const showSuccessModal = (title: string, message: string) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalType('success');
+    setShowModal(true);
+  };
+
+  const showErrorModal = (title: string, message: string) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalType('error');
+    setShowModal(true);
+  };
+
+  const handleModalClose = () => {
+    setShowModal(false);
+    if (modalType === 'success') {
+      router.back();
+    }
+  };
+
   const handleSubmit = async () => {
     console.log('AddCoinScreen: User tapped submit button');
 
     if (!title.trim() || !country.trim() || !year.trim()) {
-      Alert.alert('Missing Information', 'Please fill in title, country, and year');
+      showErrorModal('Missing Information', 'Please fill in title, country, and year');
       return;
     }
 
     if (images.length === 0) {
-      Alert.alert('No Images', 'Please add at least one image of your coin');
+      showErrorModal('No Images', 'Please add at least one image of your coin');
       return;
     }
 
@@ -173,7 +198,7 @@ export default function AddCoinScreen() {
           errorMessage = errorData.error;
         }
         
-        Alert.alert('Error', errorMessage);
+        showErrorModal('Error', errorMessage);
         return;
       }
 
@@ -230,15 +255,10 @@ export default function AddCoinScreen() {
         // Non-critical error, continue
       }
 
-      Alert.alert('Success', 'Your coin has been added!', [
-        {
-          text: 'OK',
-          onPress: () => router.back(),
-        },
-      ]);
+      showSuccessModal('Success', 'Your coin has been added successfully!');
     } catch (error) {
       console.error('AddCoinScreen: Error creating coin:', error);
-      Alert.alert('Error', 'An error occurred while adding your coin');
+      showErrorModal('Error', 'An error occurred while adding your coin. Please try again.');
     } finally {
       setUploading(false);
     }
@@ -543,6 +563,33 @@ export default function AddCoinScreen() {
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Success/Error Modal */}
+      <Modal
+        visible={showModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handleModalClose}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <IconSymbol
+              ios_icon_name={modalType === 'success' ? 'checkmark.circle.fill' : 'exclamationmark.triangle.fill'}
+              android_material_icon_name={modalType === 'success' ? 'check-circle' : 'error'}
+              size={48}
+              color={modalType === 'success' ? colors.primary : '#FF3B30'}
+            />
+            <Text style={styles.modalTitle}>{modalTitle}</Text>
+            <Text style={styles.modalMessage}>{modalMessage}</Text>
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={handleModalClose}
+            >
+              <Text style={styles.modalButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -720,5 +767,48 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: colors.background,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    minWidth: 300,
+    maxWidth: 400,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+  modalButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 48,
+  },
+  modalButtonText: {
+    color: colors.background,
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
