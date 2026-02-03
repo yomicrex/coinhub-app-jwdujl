@@ -61,6 +61,22 @@ export default function AuthScreen() {
       return;
     }
 
+    // Validate email format
+    if (!email.includes('@') || !email.includes('.')) {
+      setErrorTitle('Invalid Email');
+      setErrorMessage('Please enter a valid email address');
+      setShowErrorModal(true);
+      return;
+    }
+
+    // Validate password length (backend requires minimum 6 characters)
+    if (password.length < 6) {
+      setErrorTitle('Password Too Short');
+      setErrorMessage('Password must be at least 6 characters long');
+      setShowErrorModal(true);
+      return;
+    }
+
     setIsLoading(true);
     try {
       if (isSignUp) {
@@ -84,6 +100,9 @@ export default function AuthScreen() {
       } else if (displayErrorMessage.includes('Invalid credentials') || displayErrorMessage.includes('Incorrect') || displayErrorMessage.includes('Invalid email or password')) {
         displayErrorTitle = 'Login Failed';
         displayErrorMessage = 'Invalid email or password. Please check your credentials and try again.';
+      } else if (displayErrorMessage.toLowerCase().includes('password') && (displayErrorMessage.toLowerCase().includes('short') || displayErrorMessage.toLowerCase().includes('6 characters') || displayErrorMessage.toLowerCase().includes('at least'))) {
+        displayErrorTitle = 'Password Too Short';
+        displayErrorMessage = 'Password must be at least 6 characters long. Please choose a longer password.';
       } else if (displayErrorMessage.toLowerCase().includes('invalid origin')) {
         displayErrorTitle = 'Authentication Error';
         displayErrorMessage = 'There was a problem with authentication. Please try again or contact support if the issue persists.';
@@ -176,6 +195,11 @@ export default function AuthScreen() {
                     autoCapitalize="none"
                   />
                 </View>
+                {isSignUp && (
+                  <Text style={styles.passwordHint}>
+                    Password must be at least 6 characters
+                  </Text>
+                )}
 
                 <TouchableOpacity
                   style={[styles.button, isLoading && styles.buttonDisabled]}
@@ -310,6 +334,13 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     fontSize: 16,
     color: '#FFFFFF',
+  },
+  passwordHint: {
+    fontSize: 12,
+    color: 'rgba(255, 215, 0, 0.7)',
+    marginTop: -8,
+    marginBottom: 8,
+    marginLeft: 4,
   },
   button: {
     backgroundColor: '#FFD700',
