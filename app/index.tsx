@@ -13,7 +13,7 @@ export default function Index() {
 
   useEffect(() => {
     console.log('Index screen mounted - App starting');
-    console.log('App version: 1.0.17 (Build 17)');
+    console.log('App version: 1.0.18 (Build 18)');
   }, []);
 
   useEffect(() => {
