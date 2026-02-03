@@ -42,7 +42,7 @@ export default function SettingsScreen() {
 
   const handleContactSupport = () => {
     console.log('User tapped Contact Support');
-    Linking.openURL('mailto:support@coinhub.app');
+    Linking.openURL('mailto:support@coinhubapp.ca');
   };
 
   const handleUpdateEmail = async () => {
