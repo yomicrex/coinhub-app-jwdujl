@@ -60,7 +60,6 @@ export default function RootLayout() {
           <Stack.Screen name="user-list" options={{ title: 'Users' }} />
           <Stack.Screen name="settings" options={{ title: 'Settings', presentation: 'modal' }} />
           <Stack.Screen name="subscription" options={{ title: 'Subscription', presentation: 'modal' }} />
-          <Stack.Screen name="forgot-password" options={{ title: 'Reset Password', presentation: 'modal' }} />
         </Stack>
       </AuthProvider>
     </ErrorBoundary>

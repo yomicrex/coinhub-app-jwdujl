@@ -23,11 +23,9 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { user, signOut, refreshUser } = useAuth();
   const [showDeleteModal, setShowDeleteModal] = React.useState(false);
-  const [showPasswordResetModal, setShowPasswordResetModal] = React.useState(false);
   const [showEmailUpdateModal, setShowEmailUpdateModal] = React.useState(false);
   const [newEmail, setNewEmail] = React.useState('');
   const [isUpdatingEmail, setIsUpdatingEmail] = React.useState(false);
-  const [isResettingPassword, setIsResettingPassword] = React.useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = React.useState(false);
 
   console.log('Settings screen loaded', { userEmail: user?.email });
@@ -45,50 +43,6 @@ export default function SettingsScreen() {
   const handleContactSupport = () => {
     console.log('User tapped Contact Support');
     Linking.openURL('mailto:support@coinhub.app');
-  };
-
-  const handleRequestPasswordReset = async () => {
-    console.log('User requested password reset');
-    
-    if (!user?.email) {
-      showErrorModal('Error', 'No email address found. Please log in again.');
-      return;
-    }
-
-    setIsResettingPassword(true);
-
-    try {
-      const { default: ENV } = await import('@/config/env');
-      const response = await fetch(`${ENV.BACKEND_URL}/api/auth/request-password-reset`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-App-Type': ENV.APP_TYPE,
-          'X-Platform': ENV.PLATFORM,
-        },
-        credentials: 'omit',
-        body: JSON.stringify({ email: user.email }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        console.log('Password reset email sent successfully');
-        setShowPasswordResetModal(false);
-        showSuccessModal(
-          'Password Reset Email Sent',
-          `Check your email (${user.email}) for a link to reset your password. The link will expire in 1 hour.`
-        );
-      } else {
-        console.error('Failed to send password reset email:', data);
-        showErrorModal('Error', data.error || 'Failed to send password reset email. Please try again.');
-      }
-    } catch (error) {
-      console.error('Error requesting password reset:', error);
-      showErrorModal('Error', 'Failed to send password reset email. Please check your connection and try again.');
-    } finally {
-      setIsResettingPassword(false);
-    }
   };
 
   const handleUpdateEmail = async () => {
@@ -287,25 +241,6 @@ export default function SettingsScreen() {
             />
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={styles.option} 
-            onPress={() => setShowPasswordResetModal(true)}
-          >
-            <IconSymbol
-              ios_icon_name="key"
-              android_material_icon_name="vpn-key"
-              size={24}
-              color={colors.primary}
-            />
-            <Text style={styles.optionText}>Reset Password</Text>
-            <IconSymbol
-              ios_icon_name="chevron.right"
-              android_material_icon_name="arrow-forward"
-              size={20}
-              color={colors.textSecondary}
-            />
-          </TouchableOpacity>
-
           <TouchableOpacity style={styles.option} onPress={handleDeleteAccount}>
             <IconSymbol
               ios_icon_name="trash"
@@ -424,47 +359,6 @@ export default function SettingsScreen() {
                   <ActivityIndicator color="#FFFFFF" />
                 ) : (
                   <Text style={styles.modalButtonTextConfirm}>Update Email</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Password Reset Modal */}
-      <Modal
-        visible={showPasswordResetModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => !isResettingPassword && setShowPasswordResetModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Reset Password</Text>
-            <Text style={styles.modalMessage}>
-              We'll send a password reset link to your email address:
-              {'\n\n'}
-              <Text style={styles.modalEmail}>{user?.email}</Text>
-              {'\n\n'}
-              The link will expire in 1 hour.
-            </Text>
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonCancel]}
-                onPress={() => setShowPasswordResetModal(false)}
-                disabled={isResettingPassword}
-              >
-                <Text style={styles.modalButtonTextCancel}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonConfirm]}
-                onPress={handleRequestPasswordReset}
-                disabled={isResettingPassword}
-              >
-                {isResettingPassword ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.modalButtonTextConfirm}>Send Reset Link</Text>
                 )}
               </TouchableOpacity>
             </View>
