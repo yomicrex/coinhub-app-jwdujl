@@ -5,6 +5,7 @@ import * as authSchema from '../db/auth-schema.js';
 import type { App } from '../index.js';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
+import { hash } from 'bcryptjs';
 
 const PasswordResetRequestSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -32,8 +33,7 @@ function generateResetToken(): string {
  * Hash password using bcrypt
  */
 async function hashPassword(password: string): Promise<string> {
-  const bcrypt = await import('bcryptjs') as any;
-  return bcrypt.hash(password, 10);
+  return hash(password, 10);
 }
 
 export function registerPasswordResetRoutes(app: App) {

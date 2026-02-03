@@ -795,9 +795,10 @@ try {
   registerAuthRoutes(app);
   app.logger.info('Authentication routes registered');
 
-  app.logger.info('Registering password reset routes');
-  registerPasswordResetRoutes(app);
-  app.logger.info('Password reset routes registered');
+  // Password reset functionality has been removed
+  // app.logger.info('Registering password reset routes');
+  // registerPasswordResetRoutes(app);
+  // app.logger.info('Password reset routes registered');
 
   app.logger.info('Registering CoinHub routes');
   registerInviteCodesRoutes(app);

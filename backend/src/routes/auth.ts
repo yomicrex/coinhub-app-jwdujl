@@ -5,6 +5,7 @@ import * as authSchema from '../db/auth-schema.js';
 import type { App } from '../index.js';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
+import { hash, compare } from 'bcryptjs';
 import { extractSessionToken } from '../utils/auth-utils.js';
 
 /**
@@ -48,15 +49,6 @@ const UpdateProfileSchema = z.object({
   location: z.string().max(100).optional().nullable(),
   avatarUrl: z.string().optional().nullable(),
   collectionPrivacy: z.enum(['public', 'private']).optional(),
-});
-
-const RequestPasswordResetSchema = z.object({
-  email: z.string().email('Invalid email address'),
-});
-
-const ResetPasswordSchema = z.object({
-  token: z.string().min(1),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
 const UsernameEmailSignInSchema = z.object({
@@ -127,11 +119,6 @@ export function registerAuthRoutes(app: App) {
           'POST /api/auth/complete-profile',
           'PATCH /api/auth/profile',
           'GET /api/auth/check-username/:username'
-        ],
-        'password-reset': [
-          'POST /api/auth/request-password-reset',
-          'POST /api/auth/reset-password',
-          'GET /api/auth/verify-reset-token/:token'
         ],
         'utilities': [
           'POST /api/auth/validate-invite',
@@ -254,30 +241,29 @@ export function registerAuthRoutes(app: App) {
           app.logger.warn({ userId: authUser.id, email, accountExists: !!accountRecord }, 'POST /api/auth/sign-in/email - no account with password found');
           return reply.status(401).send({
             error: 'Authentication failed',
-            message: 'This account does not have a password set. Please use password reset or contact support.',
+            message: 'This account does not have a password set. Please contact support.',
             code: 'NO_PASSWORD_ACCOUNT'
           });
         }
 
         // Verify password
-        const bcrypt = await import('bcryptjs') as any;
         const isBcryptHash = /^\$2[aby]\$\d+\$/.test(accountRecord.password);
 
         if (!isBcryptHash) {
           app.logger.error({ userId: authUser.id, email }, 'POST /api/auth/sign-in/email - invalid password hash format');
           return reply.status(500).send({
             error: 'Authentication error',
-            message: 'Account password is corrupted. Please use password reset.'
+            message: 'Account password is corrupted. Please contact support.'
           });
         }
 
-        const passwordMatch = await bcrypt.compare(password, accountRecord.password);
+        const passwordMatch = await compare(password, accountRecord.password);
 
         if (!passwordMatch) {
           app.logger.warn({ userId: authUser.id, email }, 'POST /api/auth/sign-in/email - incorrect password');
           return reply.status(401).send({
             error: 'Authentication failed',
-            message: 'Invalid email or password. If you forgot your password, use the password reset option.',
+            message: 'Invalid email or password.',
             code: 'INVALID_PASSWORD'
           });
         }
@@ -398,10 +384,13 @@ export function registerAuthRoutes(app: App) {
 
   /**
    * POST /api/auth/sign-up/email
-   * Standard Better Auth endpoint for email/password registration
-   * This endpoint is handled by Better Auth framework
+   * Email/password registration endpoint
    * Request body: { email: string, password: string, name: string }
-   * Returns: { user: { id, email, name, ... }, session: { token, ... } }
+   * Returns: { user: { id, email, name }, session: { token, expiresAt } }
+   *
+   * Step 1 of 2-step signup:
+   * 1. Create account with email/password (this endpoint)
+   * 2. Complete profile via POST /api/auth/complete-profile (requires authentication)
    */
   app.fastify.post('/api/auth/sign-up/email', async (request: FastifyRequest, reply: FastifyReply) => {
     app.logger.info(
@@ -410,15 +399,155 @@ export function registerAuthRoutes(app: App) {
         email: (request.body as any)?.email,
         timestamp: new Date().toISOString()
       },
-      '[AUTH_ROUTE] POST /api/auth/sign-up/email - Request received (Better Auth handled)'
+      '[AUTH_ROUTE] POST /api/auth/sign-up/email - Request received'
     );
-    // This endpoint is handled by Better Auth middleware
-    // If we reach here, Better Auth didn't handle it, return 404
-    app.logger.warn(
-      { route: 'POST /api/auth/sign-up/email', status: 404 },
-      '[AUTH_ROUTE] POST /api/auth/sign-up/email - Not handled by Better Auth (404)'
-    );
-    return reply.status(404).send({ error: 'Not Found' });
+
+    try {
+      const body = request.body as { email?: string; password?: string; name?: string };
+
+      // Validate input
+      if (!body.email || !body.password || !body.name) {
+        app.logger.warn(
+          {
+            route: 'POST /api/auth/sign-up/email',
+            hasEmail: !!body.email,
+            hasPassword: !!body.password,
+            hasName: !!body.name,
+            status: 400
+          },
+          '[AUTH_ROUTE] POST /api/auth/sign-up/email - Missing required fields (400)'
+        );
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: 'Email, password, and name are required'
+        });
+      }
+
+      const email = body.email.trim().toLowerCase();
+      const password = body.password.trim();
+      const name = body.name.trim();
+
+      // Validate email format
+      if (!email.includes('@')) {
+        app.logger.warn(
+          { route: 'POST /api/auth/sign-up/email', status: 400 },
+          '[AUTH_ROUTE] POST /api/auth/sign-up/email - Invalid email format (400)'
+        );
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: 'Invalid email format'
+        });
+      }
+
+      // Validate password length
+      if (password.length < 6) {
+        app.logger.warn(
+          { route: 'POST /api/auth/sign-up/email', status: 400 },
+          '[AUTH_ROUTE] POST /api/auth/sign-up/email - Password too short (400)'
+        );
+        return reply.status(400).send({
+          error: 'Validation failed',
+          details: 'Password must be at least 6 characters'
+        });
+      }
+
+      try {
+        // Check if user already exists
+        const existingUser = await app.db.query.user.findFirst({
+          where: sql`LOWER(${authSchema.user.email}) = LOWER(${email})`
+        });
+
+        if (existingUser) {
+          app.logger.warn(
+            { route: 'POST /api/auth/sign-up/email', email, status: 409 },
+            '[AUTH_ROUTE] POST /api/auth/sign-up/email - Email already registered (409)'
+          );
+          return reply.status(409).send({
+            error: 'Email already registered',
+            details: 'An account with this email already exists'
+          });
+        }
+
+        // Create new user in Better Auth
+        const userId = randomUUID();
+        await app.db.insert(authSchema.user).values({
+          id: userId,
+          email: email,
+          name: name,
+          emailVerified: false,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+
+        // Create account with password
+        const hashedPassword = await hash(password, 10);
+
+        const accountId = randomUUID();
+        await app.db.insert(authSchema.account).values({
+          id: accountId,
+          userId: userId,
+          accountId: email,
+          providerId: 'credential',
+          password: hashedPassword,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+
+        // Create session
+        const sessionToken = randomUUID();
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+        const sessionId = randomUUID();
+        await app.db.insert(authSchema.session).values({
+          id: sessionId,
+          userId: userId,
+          token: sessionToken,
+          expiresAt: expiresAt,
+          createdAt: new Date()
+        });
+
+        app.logger.info(
+          {
+            route: 'POST /api/auth/sign-up/email',
+            userId: userId,
+            email: email,
+            status: 200
+          },
+          '[AUTH_ROUTE] POST /api/auth/sign-up/email - Account created successfully (200)'
+        );
+
+        return {
+          user: {
+            id: userId,
+            email: email,
+            name: name,
+            emailVerified: false
+          },
+          session: {
+            token: sessionToken,
+            expiresAt: expiresAt.toISOString()
+          }
+        };
+      } catch (dbError) {
+        app.logger.error(
+          { err: dbError, email, route: 'POST /api/auth/sign-up/email', status: 500 },
+          '[AUTH_ROUTE] POST /api/auth/sign-up/email - Database error (500)'
+        );
+        return reply.status(500).send({
+          error: 'Registration failed',
+          details: 'An error occurred during account creation'
+        });
+      }
+    } catch (error) {
+      app.logger.error(
+        { err: error, route: 'POST /api/auth/sign-up/email', status: 500 },
+        '[AUTH_ROUTE] POST /api/auth/sign-up/email - Unexpected error (500)'
+      );
+      return reply.status(500).send({
+        error: 'Registration failed',
+        details: 'An unexpected error occurred'
+      });
+    }
   });
 
   /**
@@ -1271,335 +1400,7 @@ export function registerAuthRoutes(app: App) {
     }
   });
 
-  /**
-   * POST /api/auth/request-password-reset
-   * Request a password reset token via email (public endpoint)
-   *
-   * Request body: { email: string }
-   * Returns: { message: "If the email exists, a password reset link has been sent" }
-   * Returns 200 regardless of whether the email exists (for security - prevents email enumeration)
-   *
-   * What happens:
-   * 1. User enters their email
-   * 2. System checks if email exists in database
-   * 3. If yes: Creates a reset token with 1-hour expiration
-   * 4. Sends email with reset link (in production)
-   * 5. Returns generic success message
-   *
-   * Log all password reset requests for security auditing
-   */
-  app.fastify.post('/api/auth/request-password-reset', async (request: FastifyRequest, reply: FastifyReply) => {
-    const requestBody = request.body as Record<string, any>;
-    const email = requestBody?.email?.toLowerCase?.() || requestBody?.email || '';
-
-    app.logger.info({ email }, 'Password reset request received');
-
-    try {
-      const body = RequestPasswordResetSchema.parse(requestBody);
-      const normalizedEmail = body.email.toLowerCase();
-
-      // Check if user exists (case-insensitive using SQL LOWER function)
-      app.logger.info({ email: normalizedEmail }, 'Looking up user for password reset');
-      const user = await app.db.query.user.findFirst({
-        where: sql`LOWER(${authSchema.user.email}) = LOWER(${normalizedEmail})`
-      });
-
-      // Always return success message (don't leak whether email exists)
-      if (!user) {
-        app.logger.warn({ email: normalizedEmail }, 'Password reset requested for non-existent email');
-        return {
-          message: 'If an account exists with this email, a password reset link will be sent shortly'
-        };
-      }
-
-      app.logger.info({ userId: user.id, email: normalizedEmail }, 'Password reset token generation started');
-
-      // Generate reset token (random string)
-      const resetToken = randomUUID();
-      const expiresAt = new Date(Date.now() + 3600000); // 1 hour from now
-
-      try {
-        // Store reset token in verification table (Better Auth convention)
-        await app.db.insert(authSchema.verification).values({
-          id: randomUUID(),
-          identifier: normalizedEmail,
-          value: resetToken,
-          expiresAt: expiresAt,
-        });
-
-        app.logger.info(
-          { userId: user.id, email: normalizedEmail, expiresAt },
-          'Password reset token generated and stored successfully'
-        );
-
-        // Send password reset email
-        const frontendUrl = process.env.FRONTEND_URL || 'https://coinhub.app';
-        const emailService = (app as any).email;
-
-        if (!emailService) {
-          app.logger.error(
-            { userId: user.id, email: normalizedEmail },
-            'Email service not available - cannot send password reset email'
-          );
-          return reply.status(500).send({
-            error: 'Email service is not available. Please try again later.'
-          });
-        }
-
-        try {
-          const emailResult = await emailService.sendPasswordResetEmail(
-            normalizedEmail,
-            resetToken,
-            frontendUrl
-          );
-
-          if (!emailResult.success) {
-            app.logger.error(
-              { userId: user.id, email: normalizedEmail, error: emailResult.error },
-              'Failed to send password reset email - returning error to user'
-            );
-            return reply.status(500).send({
-              error: emailResult.error || 'Failed to send password reset email. Please try again later.'
-            });
-          }
-
-          app.logger.info(
-            { userId: user.id, email: normalizedEmail },
-            'Password reset email sent successfully'
-          );
-
-          return {
-            message: 'Password reset link has been sent to your email address',
-            // For development/testing only - remove in production
-            ...(process.env.NODE_ENV === 'development' && {
-              debug: {
-                token: resetToken,
-                expiresAt: expiresAt.toISOString(),
-                resetLink: `${frontendUrl}/auth?mode=reset&token=${encodeURIComponent(resetToken)}`
-              }
-            })
-          };
-        } catch (emailError) {
-          app.logger.error(
-            { err: emailError, userId: user.id, email: normalizedEmail },
-            'Unexpected error sending password reset email'
-          );
-          return reply.status(500).send({
-            error: 'An unexpected error occurred while sending the reset email. Please try again later.'
-          });
-        }
-      } catch (tokenError) {
-        app.logger.error(
-          { err: tokenError, userId: user.id, email: normalizedEmail },
-          'Failed to generate password reset token'
-        );
-        // Still return success message for security
-        return {
-          message: 'If an account exists with this email, a password reset link will be sent shortly'
-        };
-      }
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        app.logger.warn({ error: error.issues, email }, 'Password reset request validation error');
-        return reply.status(400).send({
-          error: 'Validation failed',
-          details: error.issues,
-          message: 'Please provide a valid email address'
-        });
-      }
-      app.logger.error({ err: error, email }, 'Password reset request error');
-      return reply.status(500).send({
-        error: 'Server error',
-        message: 'Failed to process password reset request'
-      });
-    }
-  });
-
-  /**
-   * POST /api/auth/reset-password
-   * Reset password using a reset token (public endpoint)
-   *
-   * Request body: { token: string, password: string }
-   * Returns: { message: "Password reset successfully" }
-   * Returns 400 if token is invalid/expired
-   * Returns 500 if database error
-   *
-   * What happens:
-   * 1. User submits reset token and new password
-   * 2. System validates token exists and hasn't expired
-   * 3. System hashes new password
-   * 4. System updates user's password in account table
-   * 5. System deletes the reset token
-   * 6. Returns success message
-   *
-   * Log all password resets for security auditing
-   */
-  app.fastify.post('/api/auth/reset-password', async (request: FastifyRequest, reply: FastifyReply) => {
-    const requestBody = request.body as Record<string, any>;
-    const token = requestBody?.token;
-
-    app.logger.info({ tokenProvided: !!token }, 'Password reset attempt');
-
-    try {
-      const body = ResetPasswordSchema.parse(requestBody);
-
-      // Find verification token
-      app.logger.info('Looking up password reset token');
-      const verification = await app.db.query.verification.findFirst({
-        where: eq(authSchema.verification.value, body.token)
-      });
-
-      if (!verification) {
-        app.logger.warn({ token: body.token }, 'Password reset token not found');
-        return reply.status(400).send({
-          error: 'Invalid reset token',
-          message: 'This password reset link is invalid or has expired'
-        });
-      }
-
-      // Check if token has expired
-      if (new Date(verification.expiresAt) < new Date()) {
-        app.logger.warn({ token: body.token, expiresAt: verification.expiresAt }, 'Password reset token has expired');
-        // Delete expired token
-        try {
-          await app.db
-            .delete(authSchema.verification)
-            .where(eq(authSchema.verification.id, verification.id));
-        } catch (deleteErr) {
-          app.logger.warn({ err: deleteErr }, 'Failed to delete expired token');
-        }
-        return reply.status(400).send({
-          error: 'Reset link expired',
-          message: 'This password reset link has expired. Please request a new one.'
-        });
-      }
-
-      // Find user by email (identifier) using case-insensitive comparison
-      const user = await app.db.query.user.findFirst({
-        where: sql`LOWER(${authSchema.user.email}) = LOWER(${verification.identifier})`
-      });
-
-      if (!user) {
-        app.logger.warn({ identifier: verification.identifier }, 'User not found for password reset token');
-        return reply.status(400).send({
-          error: 'Invalid reset token',
-          message: 'This password reset link is invalid'
-        });
-      }
-
-      app.logger.info({ userId: user.id, email: user.email }, 'Resetting password for user');
-
-      try {
-        // Hash the new password using bcrypt (same as Better Auth)
-        // Better Auth stores the hash in account.password with provider_id 'credential'
-        const bcrypt = await import('bcryptjs') as any;
-        const hashedPassword = await bcrypt.hash(body.password, 10);
-
-        // Find the credential account record
-        let credentialAccount = await app.db.query.account.findFirst({
-          where: and(
-            eq(authSchema.account.userId, user.id),
-            eq(authSchema.account.providerId, 'credential')
-          )
-        });
-
-        // If credential account not found, look for any account with a password
-        if (!credentialAccount) {
-          app.logger.debug(
-            { userId: user.id },
-            'No credential account found for reset, checking for any account with password'
-          );
-          const allAccounts = await app.db.query.account.findMany({
-            where: eq(authSchema.account.userId, user.id)
-          });
-
-          app.logger.info(
-            { userId: user.id, totalAccounts: allAccounts.length, providers: allAccounts.map(a => a.providerId) },
-            'All accounts for password reset user'
-          );
-
-          // Find the first account with a password
-          credentialAccount = allAccounts.find(a => a.password) || null;
-          if (credentialAccount) {
-            app.logger.info(
-              { userId: user.id, providerId: credentialAccount.providerId },
-              'Found account with password using provider: ' + credentialAccount.providerId
-            );
-          }
-        }
-
-        if (credentialAccount) {
-          // Update existing account with new password
-          await app.db
-            .update(authSchema.account)
-            .set({ password: hashedPassword })
-            .where(eq(authSchema.account.id, credentialAccount.id));
-
-          app.logger.info(
-            { userId: user.id, accountId: credentialAccount.id, providerId: credentialAccount.providerId },
-            'Password updated in account'
-          );
-        } else {
-          // This shouldn't happen if user did sign up with password
-          app.logger.warn({ userId: user.id }, 'No account with password found for user, creating credential account');
-          await app.db.insert(authSchema.account).values({
-            id: randomUUID(),
-            userId: user.id,
-            accountId: `credential-${user.id}`,
-            providerId: 'credential',
-            password: hashedPassword,
-          });
-        }
-
-        // Delete the reset token
-        await app.db
-          .delete(authSchema.verification)
-          .where(eq(authSchema.verification.id, verification.id));
-
-        app.logger.info(
-          { userId: user.id, email: user.email },
-          'Password reset completed successfully'
-        );
-
-        // Invalidate all existing sessions for this user (for security)
-        try {
-          await app.db
-            .delete(authSchema.session)
-            .where(eq(authSchema.session.userId, user.id));
-          app.logger.info({ userId: user.id }, 'All sessions invalidated after password reset');
-        } catch (sessionErr) {
-          app.logger.warn({ err: sessionErr, userId: user.id }, 'Failed to invalidate sessions');
-        }
-
-        return {
-          message: 'Password has been reset successfully. Please sign in with your new password.'
-        };
-      } catch (hashError) {
-        app.logger.error(
-          { err: hashError, userId: user.id },
-          'Failed to hash new password'
-        );
-        return reply.status(500).send({
-          error: 'Server error',
-          message: 'Failed to reset password. Please try again later.'
-        });
-      }
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        app.logger.warn({ error: error.issues }, 'Password reset validation error');
-        return reply.status(400).send({
-          error: 'Validation failed',
-          details: error.issues,
-          message: 'Please provide a valid reset token and password'
-        });
-      }
-      app.logger.error({ err: error }, 'Password reset error');
-      return reply.status(500).send({
-        error: 'Server error',
-        message: 'Failed to reset password'
-      });
-    }
-  });
+  // PASSWORD RESET FUNCTIONALITY REMOVED - Not currently functional and removed from the system
 
   /**
    * POST /api/auth/sign-in/username-email
@@ -1765,8 +1566,6 @@ export function registerAuthRoutes(app: App) {
 
       // Step 4: Verify password
       try {
-        const bcrypt = await import('bcryptjs') as any;
-
         // Validate the hash format first (bcrypt hashes start with $2a$, $2b$, or $2y$)
         const isBcryptHash = /^\$2[aby]\$\d+\$/.test(accountRecord.password);
 
@@ -1784,7 +1583,7 @@ export function registerAuthRoutes(app: App) {
           return reply.status(500).send({ error: 'Authentication error' });
         }
 
-        const passwordMatch = await bcrypt.compare(body.password, accountRecord.password);
+        const passwordMatch = await compare(body.password, accountRecord.password);
 
         if (!passwordMatch) {
           app.logger.warn(
@@ -2116,46 +1915,7 @@ export function registerAuthRoutes(app: App) {
    *
    * Use this on the password reset form to validate the token before showing the form
    */
-  app.fastify.get('/api/auth/verify-reset-token/:token', async (request: FastifyRequest, reply: FastifyReply) => {
-    const token = (request.params as any).token;
-
-    app.logger.info({ token }, 'Verifying password reset token');
-
-    try {
-      const verification = await app.db.query.verification.findFirst({
-        where: eq(authSchema.verification.value, token)
-      });
-
-      if (!verification) {
-        app.logger.warn({ token }, 'Reset token not found');
-        return {
-          valid: false,
-          message: 'This password reset link is invalid or has expired'
-        };
-      }
-
-      // Check if token has expired
-      if (new Date(verification.expiresAt) < new Date()) {
-        app.logger.warn({ token, expiresAt: verification.expiresAt }, 'Reset token has expired');
-        return {
-          valid: false,
-          message: 'This password reset link has expired'
-        };
-      }
-
-      app.logger.info({ token }, 'Reset token is valid');
-      return {
-        valid: true,
-        email: verification.identifier
-      };
-    } catch (error) {
-      app.logger.error({ err: error, token }, 'Failed to verify reset token');
-      return reply.status(500).send({
-        error: 'Server error',
-        message: 'Failed to verify reset token'
-      });
-    }
-  });
+  // VERIFY RESET TOKEN ENDPOINT REMOVED - Password reset functionality has been removed
 
   /**
    * ADMIN ENDPOINTS FOR ACCOUNT RECOVERY
@@ -2281,8 +2041,7 @@ export function registerAuthRoutes(app: App) {
       }
 
       // Hash the new password
-      const bcrypt = await import('bcryptjs') as any;
-      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      const hashedPassword = await hash(newPassword, 10);
 
       // Find or create password account
       let account = await app.db.query.account.findFirst({
@@ -2386,8 +2145,7 @@ export function registerAuthRoutes(app: App) {
 
       // Create user in Better Auth table
       const userId = randomUUID();
-      const bcrypt = await import('bcryptjs') as any;
-      const hashedPassword = await bcrypt.hash(password, 10);
+      const hashedPassword = await hash(password, 10);
 
       await app.db
         .insert(authSchema.user)
