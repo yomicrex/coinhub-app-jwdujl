@@ -3,8 +3,11 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { authClient } from '@/lib/auth';
 import ENV from '@/config/env';
 import { addAuthDebugLog } from '@/components/AuthDebugPanel';
+import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 
 const API_URL = ENV.BACKEND_URL;
+const STORAGE_KEY = `${ENV.APP_SCHEME}_session_token`;
 
 console.log('AuthContext: Using backend URL:', API_URL);
 console.log('AuthContext: Platform:', ENV.PLATFORM, 'Standalone:', ENV.IS_STANDALONE, 'Expo Go:', ENV.IS_EXPO_GO);
@@ -33,17 +36,68 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Helper functions for token storage
+async function storeToken(token: string): Promise<void> {
+  try {
+    if (Platform.OS === 'web') {
+      localStorage.setItem(STORAGE_KEY, token);
+    } else {
+      await SecureStore.setItemAsync(STORAGE_KEY, token);
+    }
+    console.log('AuthContext: Token stored successfully');
+  } catch (error) {
+    console.error('AuthContext: Error storing token:', error);
+  }
+}
+
+async function getStoredToken(): Promise<string | null> {
+  try {
+    if (Platform.OS === 'web') {
+      return localStorage.getItem(STORAGE_KEY);
+    } else {
+      return await SecureStore.getItemAsync(STORAGE_KEY);
+    }
+  } catch (error) {
+    console.error('AuthContext: Error getting stored token:', error);
+    return null;
+  }
+}
+
+async function clearStoredToken(): Promise<void> {
+  try {
+    if (Platform.OS === 'web') {
+      localStorage.removeItem(STORAGE_KEY);
+    } else {
+      await SecureStore.deleteItemAsync(STORAGE_KEY);
+    }
+    console.log('AuthContext: Token cleared successfully');
+  } catch (error) {
+    console.error('AuthContext: Error clearing token:', error);
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   const getToken = async (): Promise<string | null> => {
     try {
+      // First try to get the token from our custom storage
+      const storedToken = await getStoredToken();
+      
+      if (storedToken) {
+        console.log('AuthContext: Token found in storage, length:', storedToken.length);
+        return storedToken;
+      }
+      
+      // Fallback to Better Auth session (for OAuth flows)
       const session = await authClient.getSession();
       const sessionToken = session?.data?.session?.token || session?.session?.token || session?.token;
       
       if (sessionToken) {
-        console.log('AuthContext: Token extracted successfully, length:', sessionToken.length);
+        console.log('AuthContext: Token extracted from Better Auth session, length:', sessionToken.length);
+        // Store it for future use
+        await storeToken(sessionToken);
         return sessionToken;
       }
       
@@ -125,8 +179,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         
         if (response.status === 401 || response.status === 404) {
-          console.log('AuthContext: User not authenticated or profile not found - clearing user state');
+          console.log('AuthContext: User not authenticated or profile not found - clearing user state and token');
           setUser(null);
+          await clearStoredToken();
           return null;
         }
         const errorText = await response.text().catch(() => 'Unknown error');
@@ -272,53 +327,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     
     try {
-      console.log('AuthContext: SignIn - Clearing cached user data BEFORE sign in');
+      console.log('AuthContext: SignIn - Clearing cached user data and token BEFORE sign in');
       setUser(null);
+      await clearStoredToken();
       
-      const result = await authClient.signIn.email({
-        email,
-        password,
+      // Use our custom backend endpoint directly
+      const response = await fetch(`${API_URL}/api/auth/sign-in/email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Platform': ENV.PLATFORM,
+          'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
+        },
+        credentials: 'omit',
+        body: JSON.stringify({ email, password }),
       });
 
-      if (result.error) {
-        console.error('AuthContext: SignIn - Failed with error:', result.error);
-        
-        const errorMessage = result.error.message || 'Sign in failed';
-        const errorStatus = (result.error as any).status || (result.error as any).statusCode || 'unknown';
-        const errorCode = (result.error as any).code || 'unknown';
-        const errorBody = JSON.stringify(result.error, null, 2).substring(0, 500);
-        
-        console.error('AuthContext: Sign-in error details:', {
-          message: errorMessage,
-          status: errorStatus,
-          code: errorCode,
-          fullError: errorBody,
-        });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Sign in failed' }));
+        console.error('AuthContext: SignIn - Failed with error:', errorData);
         
         addAuthDebugLog({
           type: 'error',
-          endpoint: '/api/auth/sign-in',
+          endpoint: '/api/auth/sign-in/email',
           method: 'POST',
-          status: typeof errorStatus === 'number' ? errorStatus : undefined,
-          error: `[${errorCode}] ${errorMessage} (Status: ${errorStatus})`,
-          body: errorBody,
+          status: response.status,
+          error: errorData.error || errorData.message || 'Sign in failed',
         });
         
-        throw new Error(errorMessage);
+        throw new Error(errorData.error || errorData.message || 'Sign in failed');
       }
 
-      console.log('AuthContext: SignIn - Better Auth sign-in successful');
+      const data = await response.json();
+      console.log('AuthContext: SignIn - Backend sign-in successful');
+      
+      // Extract and store the session token
+      const sessionToken = data.session?.token;
+      if (!sessionToken) {
+        console.error('AuthContext: SignIn - No session token in response');
+        throw new Error('No session token received');
+      }
+      
+      console.log('AuthContext: SignIn - Storing session token, length:', sessionToken.length);
+      await storeToken(sessionToken);
       
       addAuthDebugLog({
         type: 'response',
-        endpoint: '/api/auth/sign-in',
+        endpoint: '/api/auth/sign-in/email',
         method: 'POST',
         status: 200,
-        message: 'Sign in successful',
+        message: 'Sign in successful, token stored',
       });
       
-      console.log('AuthContext: SignIn - Waiting for session to be stored...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      console.log('AuthContext: SignIn - Waiting for token to be persisted...');
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       console.log('AuthContext: SignIn - Fetching fresh user profile with forced refresh');
       const userData = await fetchUserProfile(true);
@@ -351,6 +413,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       
       setUser(null);
+      await clearStoredToken();
       throw new Error(error.message || 'Sign in failed');
     }
   };
@@ -366,34 +429,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     
     try {
-      console.log('AuthContext: SignUp - Clearing cached user data BEFORE sign up');
+      console.log('AuthContext: SignUp - Clearing cached user data and token BEFORE sign up');
       setUser(null);
+      await clearStoredToken();
       
-      const result = await authClient.signUp.email({
-        email,
-        password,
-        name: email.split('@')[0],
+      // Use our custom backend endpoint directly
+      const response = await fetch(`${API_URL}/api/auth/sign-up/email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Platform': ENV.PLATFORM,
+          'X-App-Type': ENV.IS_STANDALONE ? 'standalone' : ENV.IS_EXPO_GO ? 'expo-go' : 'unknown',
+        },
+        credentials: 'omit',
+        body: JSON.stringify({ 
+          email, 
+          password,
+          name: email.split('@')[0]
+        }),
       });
 
-      if (result.error) {
-        console.error('AuthContext: SignUp - Failed with error:', result.error);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Sign up failed' }));
+        console.error('AuthContext: SignUp - Failed with error:', errorData);
         
         addAuthDebugLog({
           type: 'error',
-          endpoint: '/api/auth/sign-up',
+          endpoint: '/api/auth/sign-up/email',
           method: 'POST',
-          error: result.error.message || 'Sign up failed',
+          status: response.status,
+          error: errorData.error || errorData.details || 'Sign up failed',
         });
         
-        throw new Error(result.error.message || 'Sign up failed');
+        throw new Error(errorData.error || errorData.details || 'Sign up failed');
       }
 
-      console.log('AuthContext: SignUp - Better Auth sign-up successful');
+      const data = await response.json();
+      console.log('AuthContext: SignUp - Backend sign-up successful');
       
-      const resultData = result.data as any;
+      // Extract and store the session token
+      const sessionToken = data.session?.token;
+      if (!sessionToken) {
+        console.error('AuthContext: SignUp - No session token in response');
+        throw new Error('No session token received');
+      }
+      
+      console.log('AuthContext: SignUp - Storing session token, length:', sessionToken.length);
+      await storeToken(sessionToken);
+      
       const userWithoutProfile: User = {
-        id: resultData?.user?.id || resultData?.id,
-        email: resultData?.user?.email || resultData?.email || email,
+        id: data.user?.id,
+        email: data.user?.email || email,
         needsProfileCompletion: true,
       };
       
@@ -401,7 +487,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       addAuthDebugLog({
         type: 'response',
-        endpoint: '/api/auth/sign-up',
+        endpoint: '/api/auth/sign-up/email',
         method: 'POST',
         status: 200,
         message: 'Sign up successful - profile completion needed',
@@ -419,6 +505,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       
       setUser(null);
+      await clearStoredToken();
       throw new Error(error.message || 'Sign up failed');
     }
   };
@@ -449,7 +536,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error('Not authenticated. Please sign in again.');
       }
       
-      const response = await fetch(`${API_URL}/api/profiles/complete`, {
+      const response = await fetch(`${API_URL}/api/auth/complete-profile`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -467,7 +554,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         addAuthDebugLog({
           type: 'error',
-          endpoint: '/api/profiles/complete',
+          endpoint: '/api/auth/complete-profile',
           method: 'POST',
           status: response.status,
           error: errorData.message || errorData.error || 'Failed to complete profile',
@@ -482,7 +569,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       addAuthDebugLog({
         type: 'response',
-        endpoint: '/api/profiles/complete',
+        endpoint: '/api/auth/complete-profile',
         method: 'POST',
         status: 200,
         message: 'Profile completed successfully',
@@ -520,12 +607,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     
     try {
-      console.log('AuthContext: SignOut - Clearing user state IMMEDIATELY');
+      console.log('AuthContext: SignOut - Clearing user state and token IMMEDIATELY');
       setUser(null);
+      await clearStoredToken();
       
-      await authClient.signOut();
-      
-      console.log('AuthContext: SignOut - Better Auth signOut complete');
+      // Try to sign out from Better Auth (for OAuth sessions)
+      try {
+        await authClient.signOut();
+        console.log('AuthContext: SignOut - Better Auth signOut complete');
+      } catch (authError) {
+        console.log('AuthContext: SignOut - Better Auth signOut not needed or failed (expected for email/password)');
+      }
       
       addAuthDebugLog({
         type: 'response',
@@ -544,7 +636,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         error: error instanceof Error ? error.message : String(error),
       });
       
+      // Still clear local state even if backend call fails
       setUser(null);
+      await clearStoredToken();
     }
     
     console.log('AuthContext: SignOut - User state cleared, user should be redirected to login');

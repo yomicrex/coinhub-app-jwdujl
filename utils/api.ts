@@ -1,24 +1,30 @@
 
-import { authClient } from '@/lib/auth';
 import ENV from '@/config/env';
 import { addAuthDebugLog } from '@/components/AuthDebugPanel';
+import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 
 const API_URL = ENV.BACKEND_URL;
+const STORAGE_KEY = `${ENV.APP_SCHEME}_session_token`;
 
 console.log('API: Using backend URL:', API_URL);
 
 /**
- * Get the session token from Better Auth
+ * Get the session token from storage
  */
 async function getSessionToken(): Promise<string | null> {
   try {
-    const session = await authClient.getSession();
+    // Get token from our custom storage
+    let sessionToken: string | null = null;
     
-    // CRITICAL FIX: Better Auth returns session in different formats
-    const sessionToken = session?.data?.session?.token || session?.session?.token || session?.token;
+    if (Platform.OS === 'web') {
+      sessionToken = localStorage.getItem(STORAGE_KEY);
+    } else {
+      sessionToken = await SecureStore.getItemAsync(STORAGE_KEY);
+    }
     
     if (sessionToken) {
-      console.log('API: Token extracted successfully, length:', sessionToken.length);
+      console.log('API: Token extracted successfully from storage, length:', sessionToken.length);
       
       // Debug log
       addAuthDebugLog({
@@ -30,7 +36,7 @@ async function getSessionToken(): Promise<string | null> {
       return sessionToken;
     }
     
-    console.log('API: No session token found');
+    console.log('API: No session token found in storage');
     
     // Debug log
     addAuthDebugLog({
