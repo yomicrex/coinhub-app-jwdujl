@@ -15,7 +15,6 @@ import {
 import Constants from 'expo-constants';
 import { colors } from '@/styles/commonStyles';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { authClient } from '@/lib/auth';
 import { Stack, useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -79,26 +78,53 @@ export default function SearchUsersScreen() {
       const url = `${API_URL}/api/search/users?${params.toString()}`;
       console.log('SearchUsersScreen: Fetching from:', url);
 
-      const response = await authClient.$fetch(url);
-      console.log('SearchUsersScreen: Search results received:', response);
+      // Use regular fetch for public search endpoint
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
-      if (Array.isArray(response)) {
-        setUsers(response);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Failed to search users' }));
+        throw new Error(errorData.message || 'Failed to search users');
+      }
+
+      const data = await response.json();
+      console.log('SearchUsersScreen: Search results received:', data);
+
+      if (Array.isArray(data)) {
+        setUsers(data);
         
-        // Check follow status for each user
-        const followStates: { [key: string]: boolean } = {};
-        await Promise.all(
-          response.map(async (searchUser: SearchUser) => {
-            try {
-              const followStatus = await authClient.$fetch(`${API_URL}/api/users/${searchUser.id}/is-following`);
-              followStates[searchUser.id] = followStatus.isFollowing;
-            } catch (err) {
-              console.error('SearchUsersScreen: Error checking follow status for user:', searchUser.id, err);
-              followStates[searchUser.id] = false;
-            }
-          })
-        );
-        setFollowingStates(followStates);
+        // Check follow status for each user (only if logged in)
+        if (user) {
+          const followStates: { [key: string]: boolean } = {};
+          await Promise.all(
+            data.map(async (searchUser: SearchUser) => {
+              try {
+                const followResponse = await fetch(`${API_URL}/api/users/${searchUser.id}/is-following`, {
+                  method: 'GET',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  credentials: 'include',
+                });
+                
+                if (followResponse.ok) {
+                  const followStatus = await followResponse.json();
+                  followStates[searchUser.id] = followStatus.isFollowing;
+                } else {
+                  followStates[searchUser.id] = false;
+                }
+              } catch (err) {
+                console.error('SearchUsersScreen: Error checking follow status for user:', searchUser.id, err);
+                followStates[searchUser.id] = false;
+              }
+            })
+          );
+          setFollowingStates(followStates);
+        }
       } else {
         setUsers([]);
       }
@@ -109,7 +135,7 @@ export default function SearchUsersScreen() {
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, agencyFilter, countryFilter, unitFilter]);
+  }, [searchQuery, agencyFilter, countryFilter, unitFilter, user]);
 
   const handleSearch = () => {
     console.log('SearchUsersScreen: User initiated search');
@@ -129,6 +155,11 @@ export default function SearchUsersScreen() {
   const handleFollowToggle = async (userId: string) => {
     console.log('SearchUsersScreen: Toggle follow for user:', userId);
     
+    if (!user) {
+      console.log('SearchUsersScreen: User not logged in, cannot follow');
+      return;
+    }
+    
     if (processingFollow[userId]) {
       console.log('SearchUsersScreen: Already processing follow for user:', userId);
       return;
@@ -141,23 +172,39 @@ export default function SearchUsersScreen() {
       if (isCurrentlyFollowing) {
         // Unfollow
         console.log('SearchUsersScreen: Unfollowing user:', userId);
-        await authClient.$fetch(`${API_URL}/api/users/${userId}/follow`, {
+        const response = await fetch(`${API_URL}/api/users/${userId}/follow`, {
           method: 'DELETE',
+          credentials: 'include',
         });
+        
+        if (!response.ok) {
+          throw new Error('Failed to unfollow user');
+        }
+        
         setFollowingStates({ ...followingStates, [userId]: false });
         console.log('SearchUsersScreen: Successfully unfollowed user:', userId);
       } else {
         // Follow
         console.log('SearchUsersScreen: Following user:', userId);
-        await authClient.$fetch(`${API_URL}/api/users/${userId}/follow`, {
+        const response = await fetch(`${API_URL}/api/users/${userId}/follow`, {
           method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
           body: JSON.stringify({}),
+          credentials: 'include',
         });
+        
+        if (!response.ok) {
+          throw new Error('Failed to follow user');
+        }
+        
         setFollowingStates({ ...followingStates, [userId]: true });
         console.log('SearchUsersScreen: Successfully followed user:', userId);
       }
     } catch (err: any) {
       console.error('SearchUsersScreen: Error toggling follow:', err);
+      setError('Failed to update follow status. Please try again.');
     } finally {
       setProcessingFollow({ ...processingFollow, [userId]: false });
     }
@@ -261,7 +308,7 @@ export default function SearchUsersScreen() {
     return (
       <View style={styles.emptyContainer}>
         <IconSymbol
-          ios_icon_name="person-off"
+          ios_icon_name="person.crop.circle.badge.xmark"
           android_material_icon_name="person-off"
           size={64}
           color={colors.textSecondary}
