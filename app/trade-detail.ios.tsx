@@ -129,6 +129,8 @@ export default function TradeDetailScreen() {
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [shippingAddress, setShippingAddress] = useState('');
   const [submittingAddress, setSubmittingAddress] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   // Upload coin form state
   const [uploadImages, setUploadImages] = useState<string[]>([]);
@@ -555,46 +557,43 @@ export default function TradeDetailScreen() {
     );
   };
 
-  const handleCancelTrade = async () => {
+  const handleCancelTrade = () => {
     console.log('TradeDetailScreen: User tapped Cancel Trade button');
+    setShowCancelModal(true);
+  };
 
-    Alert.alert(
-      'Cancel Trade',
-      'Are you sure you want to cancel this trade?',
-      [
-        { text: 'No', style: 'cancel' },
-        {
-          text: 'Yes, Cancel',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              console.log('TradeDetailScreen: Sending cancel trade request to backend');
-              const response = await authenticatedFetch(`/api/trades/${id}/cancel`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({}),
-              });
+  const confirmCancelTrade = async () => {
+    console.log('TradeDetailScreen: User confirmed trade cancellation');
+    setCancelling(true);
 
-              if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                console.error('TradeDetailScreen: Cancel trade failed:', errorData);
-                throw new Error(errorData.message || 'Failed to cancel trade');
-              }
-
-              console.log('TradeDetailScreen: Trade canceled successfully');
-              Alert.alert('Success', 'Trade canceled.', [
-                { text: 'OK', onPress: () => router.back() },
-              ]);
-            } catch (error: any) {
-              console.error('TradeDetailScreen: Error canceling trade:', error);
-              Alert.alert('Error', error.message || 'Failed to cancel trade');
-            }
-          },
+    try {
+      console.log('TradeDetailScreen: Sending cancel trade request to backend');
+      const response = await authenticatedFetch(`/api/trades/${id}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-      ]
-    );
+        body: JSON.stringify({}),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('TradeDetailScreen: Cancel trade failed:', errorData);
+        throw new Error(errorData.message || 'Failed to cancel trade');
+      }
+
+      console.log('TradeDetailScreen: Trade canceled successfully');
+      setShowCancelModal(false);
+      Alert.alert('Success', 'Trade has been canceled. Both parties have been notified.', [
+        { text: 'OK', onPress: () => router.replace('/(tabs)/trades') },
+      ]);
+    } catch (error: any) {
+      console.error('TradeDetailScreen: Error canceling trade:', error);
+      setShowCancelModal(false);
+      Alert.alert('Error', error.message || 'Failed to cancel trade');
+    } finally {
+      setCancelling(false);
+    }
   };
 
   const handleSubmitAddress = async () => {
@@ -997,6 +996,9 @@ export default function TradeDetailScreen() {
   
   const canMakeOffer = isInitiator || (isCoinOwner && hasReceivedOffer);
 
+  // Both users can cancel pending, countered, or accepted trades
+  const canCancelTrade = (trade.status === 'pending' || trade.status === 'countered' || trade.status === 'accepted');
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Stack.Screen
@@ -1045,12 +1047,18 @@ export default function TradeDetailScreen() {
               </TouchableOpacity>
             )}
 
-            {/* Cancel button - available for pending and accepted trades */}
-            {(trade.status === 'pending' || trade.status === 'accepted' || trade.status === 'countered') && (
+            {/* Cancel button - available to BOTH users for pending, countered, and accepted trades */}
+            {canCancelTrade && (
               <TouchableOpacity
-                style={[styles.actionButton, styles.secondaryButton, { marginTop: 12 }]}
+                style={[styles.actionButton, styles.dangerButton, { marginTop: 12 }]}
                 onPress={handleCancelTrade}
               >
+                <IconSymbol
+                  ios_icon_name="xmark.circle"
+                  android_material_icon_name="cancel"
+                  size={18}
+                  color="#FFFFFF"
+                />
                 <Text style={styles.buttonText}>Cancel Trade</Text>
               </TouchableOpacity>
             )}
@@ -1628,6 +1636,77 @@ export default function TradeDetailScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Cancel Trade Confirmation Modal */}
+      <Modal
+        visible={showCancelModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => !cancelling && setShowCancelModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '40%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Cancel Trade</Text>
+              {!cancelling && (
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={() => setShowCancelModal(false)}
+                >
+                  <IconSymbol
+                    ios_icon_name="xmark"
+                    android_material_icon_name="close"
+                    size={24}
+                    color={colors.text}
+                  />
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={styles.cancelModalContent}>
+              <IconSymbol
+                ios_icon_name="exclamationmark.triangle.fill"
+                android_material_icon_name="warning"
+                size={48}
+                color="#F44336"
+              />
+              <Text style={styles.cancelModalTitle}>
+                Are you sure you want to cancel this trade?
+              </Text>
+              <Text style={styles.cancelModalText}>
+                This action cannot be undone. Both you and @{otherUser.username} will be notified that the trade has been canceled.
+              </Text>
+              <View style={styles.cancelModalButtons}>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.secondaryButton, { flex: 1, marginRight: 8 }]}
+                  onPress={() => setShowCancelModal(false)}
+                  disabled={cancelling}
+                >
+                  <Text style={styles.buttonText}>Keep Trade</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.dangerButton, { flex: 1 }]}
+                  onPress={confirmCancelTrade}
+                  disabled={cancelling}
+                >
+                  {cancelling ? (
+                    <ActivityIndicator size="small" color={colors.background} />
+                  ) : (
+                    <>
+                      <IconSymbol
+                        ios_icon_name="xmark.circle.fill"
+                        android_material_icon_name="cancel"
+                        size={18}
+                        color="#FFFFFF"
+                      />
+                      <Text style={styles.buttonText}>Yes, Cancel</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Address Modal */}
       <Modal
@@ -2857,5 +2936,28 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 16,
     textAlign: 'center',
+  },
+  cancelModalContent: {
+    padding: 24,
+    alignItems: 'center',
+  },
+  cancelModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  cancelModalText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  cancelModalButtons: {
+    flexDirection: 'row',
+    width: '100%',
   },
 });
