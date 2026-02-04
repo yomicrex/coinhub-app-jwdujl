@@ -69,6 +69,7 @@ export default function FeedScreen() {
   const [errorMessage, setErrorMessage] = useState('');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [showSearchMenu, setShowSearchMenu] = useState(false);
 
   const fetchCoins = useCallback(async () => {
     console.log('FeedScreen: Fetching public coins feed');
@@ -96,8 +97,6 @@ export default function FeedScreen() {
   const fetchTradeCoins = useCallback(async () => {
     console.log('FeedScreen: Fetching trade coins');
     try {
-      // If user is authenticated, use authenticated fetch to exclude own coins
-      // If not authenticated, use regular fetch to show all trade coins
       let response;
       if (user) {
         console.log('FeedScreen: User authenticated, fetching trade coins with session');
@@ -273,13 +272,20 @@ export default function FeedScreen() {
     router.push('/add-coin');
   };
 
+  const handleSearchMenu = () => {
+    console.log('FeedScreen: User tapped Search button');
+    setShowSearchMenu(true);
+  };
+
   const handleSearchCoins = () => {
-    console.log('FeedScreen: User tapped Search Coins button');
+    console.log('FeedScreen: User selected Search Coins');
+    setShowSearchMenu(false);
     router.push('/search-coins');
   };
 
   const handleSearchUsers = () => {
-    console.log('FeedScreen: User tapped Search Users button');
+    console.log('FeedScreen: User selected Search Users');
+    setShowSearchMenu(false);
     router.push('/search-users');
   };
 
@@ -498,7 +504,7 @@ export default function FeedScreen() {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>🪙 CoinHub</Text>
           <View style={styles.headerActions}>
-            <TouchableOpacity onPress={handleSearchCoins} style={styles.searchButton}>
+            <TouchableOpacity onPress={handleSearchMenu} style={styles.searchButton}>
               <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={20} color="#000" />
               <Text style={styles.searchButtonText}>Search</Text>
             </TouchableOpacity>
@@ -520,7 +526,7 @@ export default function FeedScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>🪙 CoinHub</Text>
         <View style={styles.headerActions}>
-          <TouchableOpacity onPress={handleSearchCoins} style={styles.searchButton}>
+          <TouchableOpacity onPress={handleSearchMenu} style={styles.searchButton}>
             <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={20} color="#000" />
             <Text style={styles.searchButtonText}>Search</Text>
           </TouchableOpacity>
@@ -570,6 +576,74 @@ export default function FeedScreen() {
         }
         contentContainerStyle={coins.length === 0 ? styles.emptyList : undefined}
       />
+
+      <Modal
+        visible={showSearchMenu}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowSearchMenu(false)}
+      >
+        <TouchableOpacity 
+          style={styles.searchMenuOverlay}
+          activeOpacity={1}
+          onPress={() => setShowSearchMenu(false)}
+        >
+          <View style={styles.searchMenuContent}>
+            <Text style={styles.searchMenuTitle}>What would you like to search?</Text>
+            
+            <TouchableOpacity
+              style={styles.searchMenuItem}
+              onPress={handleSearchCoins}
+            >
+              <IconSymbol
+                ios_icon_name="photo.circle.fill"
+                android_material_icon_name="image"
+                size={32}
+                color="#FFD700"
+              />
+              <View style={styles.searchMenuItemText}>
+                <Text style={styles.searchMenuItemTitle}>Search Coins</Text>
+                <Text style={styles.searchMenuItemSubtitle}>Find coins by country, year, agency, and more</Text>
+              </View>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="arrow-forward"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.searchMenuItem}
+              onPress={handleSearchUsers}
+            >
+              <IconSymbol
+                ios_icon_name="person.circle.fill"
+                android_material_icon_name="person"
+                size={32}
+                color="#FFD700"
+              />
+              <View style={styles.searchMenuItemText}>
+                <Text style={styles.searchMenuItemTitle}>Search Users</Text>
+                <Text style={styles.searchMenuItemSubtitle}>Find collectors by username or collection</Text>
+              </View>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="arrow-forward"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.searchMenuCancel}
+              onPress={() => setShowSearchMenu(false)}
+            >
+              <Text style={styles.searchMenuCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       <Modal
         visible={showCommentModal}
@@ -931,6 +1005,59 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.background,
+  },
+  searchMenuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  searchMenuContent: {
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+  },
+  searchMenuTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  searchMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  searchMenuItemText: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  searchMenuItemTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  searchMenuItemSubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  searchMenuCancel: {
+    marginTop: 8,
+    padding: 16,
+    alignItems: 'center',
+  },
+  searchMenuCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
   modalOverlay: {
     flex: 1,
