@@ -2301,21 +2301,63 @@ export function registerTradesRoutes(app: App) {
         'Trade found - checking cancellation eligibility'
       );
 
-      // Only initiator can cancel pending/countered trades; either party for accepted
-      const canCancel =
-        (trade.status === 'pending' || trade.status === 'countered') && trade.initiatorId === userId ||
-        trade.status === 'accepted' && (trade.initiatorId === userId || trade.coinOwnerId === userId);
+      // Both initiator AND coin owner can cancel at ANY stage (pending, countered, or accepted)
+      const isInitiator = trade.initiatorId === userId;
+      const isCoinOwner = trade.coinOwnerId === userId;
+      const canCancelStatus = ['pending', 'countered', 'accepted'].includes(trade.status);
+
+      const canCancel = (isInitiator || isCoinOwner) && canCancelStatus;
 
       if (!canCancel) {
         app.logger.warn(
-          { tradeId, userId, tradeStatus: trade.status, initiatorId: trade.initiatorId, coinOwnerId: trade.coinOwnerId },
+          {
+            tradeId,
+            userId,
+            tradeStatus: trade.status,
+            initiatorId: trade.initiatorId,
+            coinOwnerId: trade.coinOwnerId,
+            isInitiator,
+            isCoinOwner,
+            canCancelStatus
+          },
           'User is not eligible to cancel this trade'
         );
+
+        let errorDetail = '';
+        if (!canCancelStatus) {
+          errorDetail = `Trade status is '${trade.status}'. Only pending, countered, or accepted trades can be cancelled.`;
+        } else if (!isInitiator && !isCoinOwner) {
+          errorDetail = `You are not the initiator or coin owner of this trade.`;
+        }
+
         return reply.status(400).send({
-          error: 'Cannot cancel this trade in its current status',
-          detail: `Trade status is '${trade.status}'. Only the initiator can cancel pending/countered trades, or either party can cancel accepted trades.`
+          error: 'Cannot cancel this trade',
+          detail: errorDetail
         });
       }
+
+      // Get the cancelling user's profile for notification purposes
+      const cancellingUserProfile = await app.db.query.users.findFirst({
+        where: eq(schema.users.id, userId),
+      });
+
+      const cancellingUserName = cancellingUserProfile?.username || 'Unknown user';
+
+      // Identify the other party
+      const otherPartyId = trade.initiatorId === userId ? trade.coinOwnerId : trade.initiatorId;
+
+      app.logger.info(
+        {
+          tradeId,
+          cancellingUserId: userId,
+          cancellingUserName,
+          otherPartyId,
+          tradeStatus: trade.status,
+          isInitiator,
+          isCoinOwner
+        },
+        'Trade cancellation validated - proceeding with deletion'
+      );
 
       // Delete all related records in proper order (respecting foreign key constraints)
       // 1. Delete trade reports
@@ -2343,9 +2385,33 @@ export function registerTradesRoutes(app: App) {
         'Trade and all related records deleted successfully'
       );
 
+      // Log notifications that should be sent to both parties
+      // TODO: Implement notification system and send actual notifications
+      app.logger.info(
+        {
+          tradeId,
+          cancellingUserId: userId,
+          cancellingUserName,
+          otherPartyId,
+          notificationType: 'trade_cancelled',
+          notificationToUser1: {
+            userId: userId,
+            message: `You cancelled trade with coin owner`
+          },
+          notificationToUser2: {
+            userId: otherPartyId,
+            message: `Trade cancelled by ${cancellingUserName}`
+          }
+        },
+        '[NOTIFICATION_EVENT] Trade cancellation notifications should be sent to both parties'
+      );
+
       return {
         success: true,
-        message: 'Trade cancelled and removed successfully',
+        message: `Trade cancelled successfully by ${cancellingUserName}`,
+        tradeId,
+        cancelledBy: userId,
+        otherParty: otherPartyId
       };
     } catch (error) {
       app.logger.error({ err: error, tradeId, userId }, 'Failed to cancel trade');
