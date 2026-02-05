@@ -1651,18 +1651,11 @@ export default function TradeDetailScreen() {
           </View>
         </ScrollView>
 
-        {/* Message Input - Fixed to ensure keyboard appears */}
-        <TouchableOpacity
-          activeOpacity={1}
-          style={[
-            styles.inputContainer,
-            keyboardVisible && styles.inputContainerKeyboardActive
-          ]}
-          onPress={() => {
-            console.log('TradeDetailScreen: Input container tapped, focusing input');
-            messageInputRef.current?.focus();
-          }}
-        >
+        {/* Message Input - Simplified and direct */}
+        <View style={[
+          styles.inputContainer,
+          keyboardVisible && styles.inputContainerKeyboardActive
+        ]}>
           <TextInput
             ref={messageInputRef}
             style={[
@@ -1673,16 +1666,22 @@ export default function TradeDetailScreen() {
             placeholderTextColor={colors.textSecondary}
             value={message}
             onChangeText={setMessage}
-            multiline
+            multiline={true}
             maxLength={500}
             editable={true}
+            autoCorrect={true}
+            autoCapitalize="sentences"
             returnKeyType="default"
             blurOnSubmit={false}
+            enablesReturnKeyAutomatically={false}
             onFocus={() => {
-              console.log('TradeDetailScreen: Message input focused');
+              console.log('TradeDetailScreen: Message input focused - keyboard should appear');
               setTimeout(() => {
                 scrollViewRef.current?.scrollToEnd({ animated: true });
               }, 300);
+            }}
+            onBlur={() => {
+              console.log('TradeDetailScreen: Message input blurred');
             }}
           />
           <TouchableOpacity
@@ -1701,7 +1700,7 @@ export default function TradeDetailScreen() {
               />
             )}
           </TouchableOpacity>
-        </TouchableOpacity>
+        </View>
       </KeyboardAvoidingView>
 
       {/* Cancel Trade Confirmation Modal */}
@@ -2717,11 +2716,11 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    fontSize: 14,
+    fontSize: 16,
     color: colors.text,
     marginRight: 8,
     maxHeight: 100,
-    minHeight: 40,
+    minHeight: 44,
   },
   inputKeyboardActive: {
     backgroundColor: colors.background,
