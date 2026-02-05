@@ -243,7 +243,16 @@ export function registerProfileRoutes(app: App) {
   app.fastify.get('/api/users/:username', async (request: FastifyRequest, reply: FastifyReply) => {
     const { username } = request.params as { username: string };
 
-    app.logger.info({ username }, 'Fetching user profile');
+    app.logger.info(
+      {
+        route: 'GET /api/users/:username',
+        username,
+        timestamp: new Date().toISOString(),
+        hasAuth: !!request.headers.authorization,
+        hasCookie: !!request.headers.cookie
+      },
+      '[PROFILE_ROUTE] GET /api/users/:username - Request received'
+    );
 
     try {
       let profile;
@@ -261,10 +270,16 @@ export function registerProfileRoutes(app: App) {
         return reply.status(404).send({ error: 'User not found' });
       }
 
+      app.logger.debug(
+        { username, userId: profile.id },
+        'Profile found - proceeding with follow detection'
+      );
+
       // Get follow counts
       let followerCount = 0;
       let followingCount = 0;
       let isFollowing = false;
+      let currentUserId: string | null = null;
 
       try {
         const followers = await app.db.query.follows.findMany({
@@ -279,33 +294,92 @@ export function registerProfileRoutes(app: App) {
         });
         followingCount = following.length;
 
+        app.logger.debug(
+          { username, profileId: profile.id, followerCount, followingCount },
+          'Follow counts calculated'
+        );
+
         // Check if authenticated user is following
         // Use extractSessionToken instead of requireAuth to avoid sending 401 response on public endpoint
         const sessionToken = extractSessionToken(request);
+
+        app.logger.debug(
+          { username, sessionTokenPresent: !!sessionToken },
+          'Session token extraction result'
+        );
+
         if (sessionToken) {
           try {
             const sessionRecord = await app.db.query.session.findFirst({
               where: eq(authSchema.session.token, sessionToken),
             });
 
+            app.logger.debug(
+              { username, sessionFound: !!sessionRecord },
+              'Session lookup result'
+            );
+
             if (sessionRecord && new Date(sessionRecord.expiresAt) > new Date()) {
               const userRecord = await app.db.query.user.findFirst({
                 where: eq(authSchema.user.id, sessionRecord.userId),
               });
 
+              app.logger.debug(
+                { username, userFound: !!userRecord, userId: sessionRecord.userId },
+                'User lookup result'
+              );
+
               if (userRecord) {
+                currentUserId = userRecord.id;
+
+                app.logger.debug(
+                  {
+                    username,
+                    currentUserId: userRecord.id,
+                    profileId: profile.id,
+                    checkingFollowRelationship: `followerId=${userRecord.id} AND followingId=${profile.id}`
+                  },
+                  'About to check follow relationship'
+                );
+
                 const follow = await app.db.query.follows.findFirst({
                   where: and(
                     eq(schema.follows.followerId, userRecord.id),
                     eq(schema.follows.followingId, profile.id)
                   ),
                 });
+
                 isFollowing = !!follow;
+
+                app.logger.info(
+                  {
+                    username,
+                    profileId: profile.id,
+                    currentUserId: userRecord.id,
+                    followFound: !!follow,
+                    isFollowing
+                  },
+                  'Follow relationship check completed'
+                );
               }
+            } else {
+              app.logger.debug(
+                { username, sessionExpired: sessionRecord ? new Date(sessionRecord.expiresAt) <= new Date() : 'N/A' },
+                'Session is invalid or expired'
+              );
             }
-          } catch {
+          } catch (error) {
+            app.logger.debug(
+              { err: error, username },
+              'Error during session validation for follow check'
+            );
             // Not authenticated, that's fine
           }
+        } else {
+          app.logger.debug(
+            { username },
+            'No session token provided - returning isFollowing: false'
+          );
         }
       } catch (dbError) {
         app.logger.warn({ err: dbError, userId: profile.id }, 'Failed to fetch follow counts');
