@@ -1044,19 +1044,13 @@ export default function TradeDetailScreen() {
           headerBackTitle: 'Back',
         }}
       />
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-      >
+      <View style={{ flex: 1 }}>
         <ScrollView
           ref={scrollViewRef}
           style={{ flex: 1 }}
-          contentContainerStyle={[
-            styles.scrollContent,
-            keyboardVisible && { paddingBottom: 20 }
-          ]}
+          contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           {/* Status Section */}
           <View style={styles.section}>
@@ -1651,57 +1645,50 @@ export default function TradeDetailScreen() {
           </View>
         </ScrollView>
 
-        {/* Message Input - Simplified and direct */}
-        <View style={[
-          styles.inputContainer,
-          keyboardVisible && styles.inputContainerKeyboardActive
-        ]}>
-          <TextInput
-            ref={messageInputRef}
-            style={[
-              styles.input,
-              keyboardVisible && styles.inputKeyboardActive
-            ]}
-            placeholder="Type a message..."
-            placeholderTextColor={colors.textSecondary}
-            value={message}
-            onChangeText={setMessage}
-            multiline={true}
-            maxLength={500}
-            editable={true}
-            autoCorrect={true}
-            autoCapitalize="sentences"
-            returnKeyType="default"
-            blurOnSubmit={false}
-            enablesReturnKeyAutomatically={false}
-            onFocus={() => {
-              console.log('TradeDetailScreen: Message input focused - keyboard should appear');
-              setTimeout(() => {
-                scrollViewRef.current?.scrollToEnd({ animated: true });
-              }, 300);
-            }}
-            onBlur={() => {
-              console.log('TradeDetailScreen: Message input blurred');
-            }}
-          />
-          <TouchableOpacity
-            style={styles.sendButton}
-            onPress={handleSendMessage}
-            disabled={!message.trim() || sending}
-          >
-            {sending ? (
-              <ActivityIndicator size="small" color={colors.background} />
-            ) : (
-              <IconSymbol
-                ios_icon_name="paperplane.fill"
-                android_material_icon_name="send"
-                size={20}
-                color={colors.background}
-              />
-            )}
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+        {/* Message Input - Fixed at bottom with KeyboardAvoidingView wrapper */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        >
+          <View style={styles.inputContainer}>
+            <TextInput
+              ref={messageInputRef}
+              style={styles.input}
+              placeholder="Type a message..."
+              placeholderTextColor={colors.textSecondary}
+              value={message}
+              onChangeText={setMessage}
+              multiline
+              maxLength={500}
+              onFocus={() => {
+                console.log('TradeDetailScreen: Message input focused - keyboard should appear');
+                setTimeout(() => {
+                  scrollViewRef.current?.scrollToEnd({ animated: true });
+                }, 300);
+              }}
+              onBlur={() => {
+                console.log('TradeDetailScreen: Message input blurred');
+              }}
+            />
+            <TouchableOpacity
+              style={styles.sendButton}
+              onPress={handleSendMessage}
+              disabled={!message.trim() || sending}
+            >
+              {sending ? (
+                <ActivityIndicator size="small" color={colors.background} />
+              ) : (
+                <IconSymbol
+                  ios_icon_name="paperplane.fill"
+                  android_material_icon_name="send"
+                  size={20}
+                  color={colors.background}
+                />
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
 
       {/* Cancel Trade Confirmation Modal */}
       <Modal
@@ -2332,7 +2319,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   scrollContent: {
-    paddingBottom: 100,
+    paddingBottom: 20,
   },
   section: {
     padding: 16,
@@ -2698,40 +2685,22 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     alignItems: 'center',
   },
-  inputContainerKeyboardActive: {
-    paddingVertical: 16,
-    backgroundColor: colors.card,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: -2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 8,
-  },
   input: {
     flex: 1,
     backgroundColor: colors.card,
     borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
     fontSize: 16,
     color: colors.text,
     marginRight: 8,
     maxHeight: 100,
     minHeight: 44,
   },
-  inputKeyboardActive: {
-    backgroundColor: colors.background,
-    borderWidth: 2,
-    borderColor: colors.primary,
-    minHeight: 48,
-  },
   sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
