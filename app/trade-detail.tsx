@@ -436,6 +436,10 @@ export default function TradeDetailScreen() {
       const result = await response.json();
       console.log('TradeDetailScreen: Message sent successfully, response:', result);
       setMessage('');
+      
+      // Dismiss keyboard after sending
+      Keyboard.dismiss();
+      
       await fetchTradeDetail();
       
       // Scroll to bottom after sending message
@@ -1648,10 +1652,17 @@ export default function TradeDetailScreen() {
         </ScrollView>
 
         {/* Message Input - Fixed to ensure keyboard appears */}
-        <View style={[
-          styles.inputContainer,
-          keyboardVisible && styles.inputContainerKeyboardActive
-        ]}>
+        <TouchableOpacity
+          activeOpacity={1}
+          style={[
+            styles.inputContainer,
+            keyboardVisible && styles.inputContainerKeyboardActive
+          ]}
+          onPress={() => {
+            console.log('TradeDetailScreen: Input container tapped, focusing input');
+            messageInputRef.current?.focus();
+          }}
+        >
           <TextInput
             ref={messageInputRef}
             style={[
@@ -1690,7 +1701,7 @@ export default function TradeDetailScreen() {
               />
             )}
           </TouchableOpacity>
-        </View>
+        </TouchableOpacity>
       </KeyboardAvoidingView>
 
       {/* Cancel Trade Confirmation Modal */}
