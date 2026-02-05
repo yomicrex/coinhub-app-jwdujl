@@ -57,6 +57,52 @@ export default function UserProfileScreen() {
   const { user } = useAuth();
   const router = useRouter();
 
+  const fetchProfileAndCoins = async () => {
+    try {
+      console.log('UserProfileScreen: Fetching profile for username:', username);
+      
+      // Fetch profile with authentication to get correct isFollowing status
+      const profileResponse = await authenticatedFetch(`/api/users/${username}`, {
+        method: 'GET',
+      });
+
+      if (!profileResponse.ok) {
+        console.error('UserProfileScreen: Failed to fetch profile, status:', profileResponse.status);
+        throw new Error('Failed to fetch profile');
+      }
+
+      const profileData = await profileResponse.json();
+      console.log('UserProfileScreen: Profile data received:', profileData);
+      console.log('UserProfileScreen: isFollowing from backend:', profileData.isFollowing);
+      setProfile(profileData);
+      setIsFollowing(profileData.isFollowing || false);
+      setLoading(false);
+
+      // Fetch coins for this user
+      console.log('UserProfileScreen: Fetching coins for user ID:', profileData.id);
+      const coinsResponse = await fetch(`${API_URL}/api/users/${profileData.id}/coins`, {
+        credentials: 'include',
+      });
+
+      if (!coinsResponse.ok) {
+        console.error('UserProfileScreen: Failed to fetch coins, status:', coinsResponse.status);
+        throw new Error('Failed to fetch coins');
+      }
+
+      const coinsData = await coinsResponse.json();
+      // Handle both response formats: { coins: [] } or direct array
+      const coinsArray = coinsData.coins || coinsData;
+      console.log('UserProfileScreen: Fetched', coinsArray.length, 'coins');
+      setCoins(coinsArray);
+      setLoadingCoins(false);
+    } catch (error) {
+      console.error('UserProfileScreen: Error fetching profile or coins:', error);
+      Alert.alert('Error', 'Failed to load user profile');
+      setLoading(false);
+      setLoadingCoins(false);
+    }
+  };
+
   useEffect(() => {
     console.log('UserProfileScreen: Component mounted, username:', username);
     
@@ -65,51 +111,6 @@ export default function UserProfileScreen() {
       setLoading(false);
       return;
     }
-
-    const fetchProfileAndCoins = async () => {
-      try {
-        console.log('UserProfileScreen: Fetching profile for username:', username);
-        
-        // Fetch profile
-        const profileResponse = await fetch(`${API_URL}/api/users/${username}`, {
-          credentials: 'include',
-        });
-
-        if (!profileResponse.ok) {
-          console.error('UserProfileScreen: Failed to fetch profile, status:', profileResponse.status);
-          throw new Error('Failed to fetch profile');
-        }
-
-        const profileData = await profileResponse.json();
-        console.log('UserProfileScreen: Profile data received:', profileData);
-        setProfile(profileData);
-        setIsFollowing(profileData.isFollowing || false);
-        setLoading(false);
-
-        // Fetch coins for this user
-        console.log('UserProfileScreen: Fetching coins for user ID:', profileData.id);
-        const coinsResponse = await fetch(`${API_URL}/api/users/${profileData.id}/coins`, {
-          credentials: 'include',
-        });
-
-        if (!coinsResponse.ok) {
-          console.error('UserProfileScreen: Failed to fetch coins, status:', coinsResponse.status);
-          throw new Error('Failed to fetch coins');
-        }
-
-        const coinsData = await coinsResponse.json();
-        // Handle both response formats: { coins: [] } or direct array
-        const coinsArray = coinsData.coins || coinsData;
-        console.log('UserProfileScreen: Fetched', coinsArray.length, 'coins');
-        setCoins(coinsArray);
-        setLoadingCoins(false);
-      } catch (error) {
-        console.error('UserProfileScreen: Error fetching profile or coins:', error);
-        Alert.alert('Error', 'Failed to load user profile');
-        setLoading(false);
-        setLoadingCoins(false);
-      }
-    };
 
     fetchProfileAndCoins();
   }, [username]);
@@ -128,28 +129,31 @@ export default function UserProfileScreen() {
     }
 
     console.log('UserProfileScreen: User tapped follow/unfollow button');
-    console.log('UserProfileScreen: Current follow state:', isFollowing);
-    console.log('UserProfileScreen: Profile ID:', profile.id);
+    console.log('UserProfileScreen: Current isFollowing state:', isFollowing);
+    console.log('UserProfileScreen: Profile user:', profile.username, 'ID:', profile.id);
+    console.log('UserProfileScreen: Current user:', user.username, 'ID:', user.id);
     
     const previousState = isFollowing;
     const previousCount = profile.followerCount;
     
     // Optimistically update UI
-    setIsFollowing(!isFollowing);
+    const newFollowState = !isFollowing;
+    setIsFollowing(newFollowState);
     setProfile({
       ...profile,
-      followerCount: previousState ? profile.followerCount - 1 : profile.followerCount + 1,
+      followerCount: newFollowState ? profile.followerCount + 1 : profile.followerCount - 1,
     });
 
     try {
       const method = previousState ? 'DELETE' : 'POST';
-      console.log('UserProfileScreen: Sending', method, 'request to /api/users/' + profile.id + '/follow');
+      const action = previousState ? 'Unfollowing' : 'Following';
+      console.log(`UserProfileScreen: ${action} user - sending ${method} request to /api/users/${profile.id}/follow`);
       
       const response = await authenticatedFetch(`/api/users/${profile.id}/follow`, {
         method,
-        headers: {
+        headers: method === 'POST' ? {
           'Content-Type': 'application/json',
-        },
+        } : undefined,
         body: method === 'POST' ? JSON.stringify({}) : undefined,
       });
 
@@ -161,6 +165,7 @@ export default function UserProfileScreen() {
 
       const data = await response.json();
       console.log('UserProfileScreen: Follow toggled successfully:', data);
+      console.log('UserProfileScreen: New follow state:', newFollowState);
     } catch (error) {
       console.error('UserProfileScreen: Error toggling follow:', error);
       // Revert optimistic update
@@ -381,7 +386,7 @@ export default function UserProfileScreen() {
               onPress={handleFollowToggle}
             >
               <Text style={[styles.followButtonText, isFollowing && styles.followingButtonText]}>
-                {isFollowing ? 'Following' : 'Follow'}
+                {isFollowing ? 'Unfollow' : 'Follow'}
               </Text>
             </TouchableOpacity>
           </View>
