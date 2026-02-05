@@ -110,6 +110,7 @@ export default function TradeDetailScreen() {
   const { user } = useAuth();
   const { id } = useLocalSearchParams();
   const scrollViewRef = useRef<ScrollView>(null);
+  const messageInputRef = useRef<TextInput>(null);
 
   const [trade, setTrade] = useState<TradeDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1646,12 +1647,13 @@ export default function TradeDetailScreen() {
           </View>
         </ScrollView>
 
-        {/* Message Input - Enhanced visibility when keyboard is active */}
+        {/* Message Input - Fixed to ensure keyboard appears */}
         <View style={[
           styles.inputContainer,
           keyboardVisible && styles.inputContainerKeyboardActive
         ]}>
           <TextInput
+            ref={messageInputRef}
             style={[
               styles.input,
               keyboardVisible && styles.inputKeyboardActive
@@ -1662,6 +1664,9 @@ export default function TradeDetailScreen() {
             onChangeText={setMessage}
             multiline
             maxLength={500}
+            editable={true}
+            returnKeyType="default"
+            blurOnSubmit={false}
             onFocus={() => {
               console.log('TradeDetailScreen: Message input focused');
               setTimeout(() => {
