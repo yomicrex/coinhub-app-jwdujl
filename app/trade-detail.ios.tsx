@@ -23,6 +23,7 @@ import {
   FlatList,
   Modal,
   Dimensions,
+  Keyboard,
 } from 'react-native';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -131,6 +132,7 @@ export default function TradeDetailScreen() {
   const [submittingAddress, setSubmittingAddress] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   // Upload coin form state
   const [uploadImages, setUploadImages] = useState<string[]>([]);
@@ -139,6 +141,28 @@ export default function TradeDetailScreen() {
   const [uploadYear, setUploadYear] = useState('');
   const [uploadDescription, setUploadDescription] = useState('');
   const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    const keyboardWillShowListener = Keyboard.addListener(
+      'keyboardWillShow',
+      () => {
+        console.log('TradeDetailScreen: Keyboard shown');
+        setKeyboardVisible(true);
+      }
+    );
+    const keyboardWillHideListener = Keyboard.addListener(
+      'keyboardWillHide',
+      () => {
+        console.log('TradeDetailScreen: Keyboard hidden');
+        setKeyboardVisible(false);
+      }
+    );
+
+    return () => {
+      keyboardWillShowListener.remove();
+      keyboardWillHideListener.remove();
+    };
+  }, []);
 
   const fetchTradeDetail = useCallback(async () => {
     if (!id) {
@@ -1010,13 +1034,17 @@ export default function TradeDetailScreen() {
       />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        behavior="padding"
+        keyboardVerticalOffset={90}
       >
         <ScrollView
           ref={scrollViewRef}
           style={{ flex: 1 }}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            keyboardVisible && { paddingBottom: 20 }
+          ]}
+          keyboardShouldPersistTaps="handled"
         >
           {/* Status Section */}
           <View style={styles.section}>
@@ -1607,16 +1635,28 @@ export default function TradeDetailScreen() {
           </View>
         </ScrollView>
 
-        {/* Message Input */}
-        <View style={styles.inputContainer}>
+        {/* Message Input - Enhanced visibility when keyboard is active */}
+        <View style={[
+          styles.inputContainer,
+          keyboardVisible && styles.inputContainerKeyboardActive
+        ]}>
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              keyboardVisible && styles.inputKeyboardActive
+            ]}
             placeholder="Type a message..."
             placeholderTextColor={colors.textSecondary}
             value={message}
             onChangeText={setMessage}
             multiline
             maxLength={500}
+            onFocus={() => {
+              console.log('TradeDetailScreen: Message input focused');
+              setTimeout(() => {
+                scrollViewRef.current?.scrollToEnd({ animated: true });
+              }, 300);
+            }}
           />
           <TouchableOpacity
             style={styles.sendButton}
@@ -1717,7 +1757,7 @@ export default function TradeDetailScreen() {
       >
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior="padding"
             style={{ flex: 1, justifyContent: 'flex-end' }}
           >
             <View style={[styles.modalContent, { maxHeight: '70%' }]}>
@@ -2008,7 +2048,7 @@ export default function TradeDetailScreen() {
       >
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior="padding"
             style={{ flex: 1, justifyContent: 'flex-end' }}
           >
             <View style={[styles.modalContent, { height: SCREEN_HEIGHT * 0.9, marginTop: SCREEN_HEIGHT * 0.1 }]}>
@@ -2666,16 +2706,25 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   inputContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     flexDirection: 'row',
     padding: 12,
+    paddingBottom: 12,
     backgroundColor: colors.background,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     alignItems: 'center',
+  },
+  inputContainerKeyboardActive: {
+    paddingVertical: 16,
+    backgroundColor: colors.card,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 8,
   },
   input: {
     flex: 1,
@@ -2687,6 +2736,13 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginRight: 8,
     maxHeight: 100,
+    minHeight: 40,
+  },
+  inputKeyboardActive: {
+    backgroundColor: colors.background,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    minHeight: 48,
   },
   sendButton: {
     width: 40,
